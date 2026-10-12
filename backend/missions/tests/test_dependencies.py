@@ -242,6 +242,7 @@ class DependencyApiTests(TestCase):
         dependency_id = MissionDependency.objects.get(
             mission=self.mission, prerequisite=self.prereq
         ).id
+        self.assertEqual(str(body["prerequisites"][0]["dependency_id"]), str(dependency_id))
         version = utils.version_of(self.mission)
         deleted = self.client.delete(
             f"/api/missions/{self.mission.id}/dependencies/{dependency_id}/?expected_version={version}"
@@ -259,6 +260,8 @@ class DependencyApiTests(TestCase):
 
         detail = self.client.get(f"/api/missions/{self.mission.id}/").json()
         self.assertEqual([p["id"] for p in detail["prerequisites"]], [str(self.prereq.id)])
+        edge = MissionDependency.objects.get(mission=self.mission, prerequisite=self.prereq)
+        self.assertEqual([p["dependency_id"] for p in detail["prerequisites"]], [str(edge.id)])
         self.assertTrue(detail["is_blocked"])
 
         prereq_detail = self.client.get(f"/api/missions/{self.prereq.id}/").json()

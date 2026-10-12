@@ -19,6 +19,7 @@ from .serializers import (
     RegisterSerializer,
     RegistrationRequestSerializer,
     RejectSerializer,
+    UserBriefSerializer,
 )
 
 
@@ -106,6 +107,21 @@ class MeView(APIView):
 
     def get(self, request):
         return Response(MeSerializer(request.user).data)
+
+
+class MemberListView(ListAPIView):
+    """Active team members, used by the SPA to pick a reviewer.
+
+    Read-only and visible to every authenticated member (unlike the admin
+    ``/api/admin/users`` list); only id / username / display_name are exposed.
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserBriefSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return User.objects.filter(is_active=True).order_by("username")
 
 
 class AdminRegistrationViewSet(

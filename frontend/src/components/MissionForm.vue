@@ -2,39 +2,63 @@
 import { onMounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 
+import { listTeamMembers } from '../api/auth'
+import { listMilestones } from '../api/milestones'
 import { listTags } from '../api/missions'
-import type { MissionWritePayload } from '../api/types'
+import type { Milestone, MissionFormValues, User } from '../api/types'
+import {
+  MILESTONE_ACCEPTING_STATUSES,
+  PRIORITY_OPTIONS,
+  TYPE_OPTIONS,
+} from '../missionMeta'
 import MarkdownEditor from './MarkdownEditor.vue'
 
 const props = withDefaults(
   defineProps<{
-    initial?: Partial<MissionWritePayload>
+    initial?: Partial<MissionFormValues>
     submitLabel?: string
     loading?: boolean
   }>(),
   { submitLabel: '保存', loading: false },
 )
 
-const emit = defineEmits<{ (e: 'submit', payload: MissionWritePayload): void }>()
+const emit = defineEmits<{ (e: 'submit', payload: MissionFormValues): void }>()
 
 const formRef = ref<FormInstance>()
-const form = reactive({
+const form = reactive<MissionFormValues>({
   title: props.initial?.title ?? '',
   content: props.initial?.content ?? '',
   acceptance_criteria: props.initial?.acceptance_criteria ?? '',
   tags: [...(props.initial?.tags ?? [])] as string[],
+  type: props.initial?.type ?? 'Task',
+  priority: props.initial?.priority ?? 'P2',
+  reviewer_id: props.initial?.reviewer_id ?? null,
+  milestone_id: props.initial?.milestone_id ?? null,
 })
 const tagOptions = ref<string[]>([])
+const members = ref<User[]>([])
+const milestones = ref<Milestone[]>([])
 const rules: FormRules = {
   title: [{ required: true, message: '请填写标题', trigger: 'blur' }],
 }
 
+/** Closed milestones cannot receive tasks, but the current one stays visible. */
+function milestoneDisabled(milestone: Milestone): boolean {
+  return (
+    !MILESTONE_ACCEPTING_STATUSES.includes(milestone.status) &&
+    milestone.id !== form.milestone_id
+  )
+}
+
 onMounted(async () => {
-  try {
-    tagOptions.value = (await listTags()).map((tag) => tag.name)
-  } catch {
-    tagOptions.value = []
-  }
+  const [tags, memberList, milestoneList] = await Promise.allSettled([
+    listTags(),
+    listTeamMembers(),
+    listMilestones({ page_size: 100 }),
+  ])
+  if (tags.status === 'fulfilled') tagOptions.value = tags.value.map((tag) => tag.name)
+  if (memberList.status === 'fulfilled') members.value = memberList.value
+  if (milestoneList.status === 'fulfilled') milestones.value = milestoneList.value.results
 })
 
 async function onSubmit() {
@@ -46,6 +70,10 @@ async function onSubmit() {
     content: form.content,
     acceptance_criteria: form.acceptance_criteria,
     tags: form.tags,
+    type: form.type,
+    priority: form.priority,
+    reviewer_id: form.reviewer_id,
+    milestone_id: form.milestone_id,
   })
 }
 </script>
@@ -66,6 +94,57 @@ async function onSubmit() {
     </el-form-item>
     <el-form-item label="验收标准（Markdown）">
       <MarkdownEditor v-model="form.acceptance_criteria" :rows="4" placeholder="可验证的完成标准" />
+    </el-form-item>
+    <el-row :gutter="16">
+      <el-col :md="8" :sm="12">
+        <el-form-item label="类型">
+          <el-select v-model="form.type" style="width: 100%">
+            <el-option v-for="item in TYPE_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+      </el-col>
+      <el-col :md="8" :sm="12">
+        <el-form-item label="优先级">
+          <el-select v-model="form.priority" style="width: 100%">
+            <el-option v-for="item in PRIORITY_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+      </el-col>
+      <el-col :md="8" :sm="24">
+        <el-form-item label="目标里程碑">
+          <el-select
+            v-model="form.milestone_id"
+            clearable
+            filterable
+            placeholder="不关联里程碑"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="milestone in milestones"
+              :key="milestone.id"
+              :label="milestone.name"
+              :value="milestone.id"
+              :disabled="milestoneDisabled(milestone)"
+            />
+          </el-select>
+        </el-form-item>
+      </el-col>
+    </el-row>
+    <el-form-item label="验收者">
+      <el-select
+        v-model="form.reviewer_id"
+        clearable
+        filterable
+        placeholder="默认由发起者验收"
+        style="width: 100%"
+      >
+        <el-option
+          v-for="member in members"
+          :key="member.id"
+          :label="member.display_name"
+          :value="member.id"
+        />
+      </el-select>
     </el-form-item>
     <el-form-item label="标签">
       <el-select

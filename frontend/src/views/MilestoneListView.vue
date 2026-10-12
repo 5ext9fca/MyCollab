@@ -1,0 +1,180 @@
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+
+import { ApiException } from '../api/client'
+import { createMilestone, listMilestones } from '../api/milestones'
+import type { Milestone, MilestoneStatus } from '../api/types'
+import { MILESTONE_STATUS_LABELS, MILESTONE_STATUS_TAG } from '../missionMeta'
+
+const milestones = ref<Milestone[]>([])
+const total = ref(0)
+const loading = ref(false)
+const page = ref(1)
+const pageSize = 10
+const statusFilter = ref<MilestoneStatus | ''>('')
+
+const statusOptions: { label: string; value: MilestoneStatus | '' }[] = [
+  { label: '全部', value: '' },
+  { label: '计划中', value: 'Planned' },
+  { label: '进行中', value: 'Active' },
+  { label: '已完成', value: 'Completed' },
+  { label: '已取消', value: 'Cancelled' },
+]
+
+const dialogVisible = ref(false)
+const creating = ref(false)
+const form = reactive({ name: '', description: '', due_date: '' })
+
+const hasMore = computed(() => total.value > pageSize)
+
+async function load() {
+  loading.value = true
+  try {
+    const data = await listMilestones({
+      status: statusFilter.value || undefined,
+      page: page.value,
+      page_size: pageSize,
+    })
+    milestones.value = data.results
+    total.value = data.count
+  } catch (error) {
+    ElMessage.error(error instanceof ApiException ? error.message : '加载失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+function onFilter() {
+  page.value = 1
+  load()
+}
+
+function onPage(next: number) {
+  page.value = next
+  load()
+}
+
+function progressText(milestone: Milestone): string {
+  if (milestone.progress === null) return '无有效任务'
+  return `${Math.round(milestone.progress * 100)}%（${milestone.mission_counts.done}/${milestone.mission_counts.effective_total}）`
+}
+
+function openCreate() {
+  form.name = ''
+  form.description = ''
+  form.due_date = ''
+  dialogVisible.value = true
+}
+
+async function confirmCreate() {
+  if (!form.name.trim()) {
+    ElMessage.warning('请填写里程碑名称')
+    return
+  }
+  creating.value = true
+  try {
+    await createMilestone({
+      name: form.name,
+      description: form.description,
+      due_date: form.due_date || null,
+    })
+    dialogVisible.value = false
+    ElMessage.success('里程碑已创建')
+    await load()
+  } catch (error) {
+    ElMessage.error(error instanceof ApiException ? error.message : '创建失败')
+  } finally {
+    creating.value = false
+  }
+}
+
+onMounted(load)
+</script>
+
+<template>
+  <div class="page">
+    <div class="page-header">
+      <h2>里程碑</h2>
+      <el-button type="primary" @click="openCreate">新建里程碑</el-button>
+    </div>
+
+    <div class="toolbar">
+      <el-select v-model="statusFilter" style="width: 140px" @change="onFilter">
+        <el-option v-for="item in statusOptions" :key="item.label" :label="item.label" :value="item.value" />
+      </el-select>
+      <el-button @click="onFilter">查询</el-button>
+    </div>
+
+    <div v-loading="loading">
+      <el-empty v-if="!loading && !milestones.length" description="暂无里程碑" />
+      <el-card v-for="milestone in milestones" :key="milestone.id" class="milestone-card" shadow="hover">
+        <div class="milestone-card__row">
+          <router-link :to="{ name: 'milestone-detail', params: { id: milestone.id } }">
+            <strong>{{ milestone.name }}</strong>
+          </router-link>
+          <div class="milestone-card__tags">
+            <el-tag :type="MILESTONE_STATUS_TAG[milestone.status]" size="small" disable-transitions>
+              {{ MILESTONE_STATUS_LABELS[milestone.status] }}
+            </el-tag>
+            <el-tag v-if="milestone.overdue" type="danger" size="small" disable-transitions>
+              已延期
+            </el-tag>
+          </div>
+        </div>
+        <div class="meta">
+          目标日期：{{ milestone.due_date || '未设置' }} · 进度：{{ progressText(milestone) }}
+        </div>
+        <div v-if="milestone.description" class="meta">{{ milestone.description }}</div>
+      </el-card>
+    </div>
+
+    <el-pagination
+      v-if="hasMore"
+      background
+      layout="prev, pager, next"
+      :total="total"
+      :page-size="pageSize"
+      :current-page="page"
+      @current-change="onPage"
+    />
+
+    <el-dialog v-model="dialogVisible" title="新建里程碑" width="480px">
+      <el-form label-position="top">
+        <el-form-item label="名称">
+          <el-input v-model="form.name" maxlength="200" placeholder="如：首个可玩版本" />
+        </el-form-item>
+        <el-form-item label="目标说明">
+          <el-input v-model="form.description" type="textarea" :rows="3" />
+        </el-form-item>
+        <el-form-item label="目标日期">
+          <el-date-picker v-model="form.due_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="confirmCreate">创建</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<style scoped>
+.milestone-card {
+  margin-bottom: 12px;
+}
+
+.milestone-card__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.milestone-card__tags {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+</style>

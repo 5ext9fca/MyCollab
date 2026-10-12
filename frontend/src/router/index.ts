@@ -47,6 +47,17 @@ export const router = createRouter({
           component: () => import('../views/MyPublishedView.vue'),
         },
         {
+          path: 'milestones',
+          name: 'milestones',
+          component: () => import('../views/MilestoneListView.vue'),
+        },
+        {
+          path: 'milestones/:id',
+          name: 'milestone-detail',
+          component: () => import('../views/MilestoneDetailView.vue'),
+          props: true,
+        },
+        {
           path: 'library',
           name: 'library',
           component: () => import('../views/LibraryView.vue'),

@@ -5,18 +5,18 @@ import { ElMessage } from 'element-plus'
 
 import { ApiException } from '../api/client'
 import { createMission } from '../api/missions'
-import type { MissionWritePayload } from '../api/types'
+import type { MissionFormValues } from '../api/types'
 import MissionForm from '../components/MissionForm.vue'
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 
-async function onSubmit(payload: MissionWritePayload) {
+async function onSubmit(values: MissionFormValues) {
   loading.value = true
   try {
     const parent = typeof route.query.parent === 'string' ? route.query.parent : undefined
-    const mission = await createMission({ ...payload, parent })
+    const mission = await createMission({ ...values, parent })
     ElMessage.success('任务已发布')
     await router.push({ name: 'mission-detail', params: { id: mission.id } })
   } catch (error) {

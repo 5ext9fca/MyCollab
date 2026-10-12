@@ -177,6 +177,7 @@ Bob 将其拆成：
 | 提交注册申请 | 任何人，无需登录 |
 | 审批注册申请（通过 / 拒绝） | 管理员（`is_staff`） |
 | 查看成员列表 | 管理员（`is_staff`） |
+| 查看可验收成员（简要） | 任何团队成员（`GET /api/members/`，仅 id/username/display_name） |
 | 发表评论 | 任何团队成员；限可见任务，任意状态 |
 | 编辑 / 删除评论 | 评论作者本人 |
 | 上传素材 | 团队成员；只能写入自己的 library |
@@ -192,15 +193,16 @@ Bob 将其拆成：
 
 登录后的首页提供三个入口：
 
-- **任务广场**：默认显示待认领任务，支持多标签（需同时包含）、关键词和发起者筛选。
+- **任务广场**：默认显示待认领任务，支持多标签（需同时包含）、关键词、发起者、类型、优先级、里程碑与阻塞状态筛选，并支持按优先级排序。
 - **我认领的**：显示自己的进行中、待验收任务。
 - **我发布的**：查看任务进展，并处理验收。
+- **里程碑（`/milestones`）**：新建与筛选里程碑，查看进度、延期提示与关联任务；里程碑详情可编辑字段并做受控状态流转。
 - **素材库（`/library`）**：上传、查看、复制 Markdown 引用、删除自己的文件。任务与评论编辑器提供「插入素材」按钮，可从素材库选择或直接上传，并把引用插入到光标处。
 - **管理后台（`/manage`，仅管理员）**：审批注册申请、查看成员列表。由 SPA 自行实现，与 Django Admin（`/admin/`）相互独立。
 
 未登录用户可访问 **注册页（`/register`）** 提交注册申请，等待管理员审批后方可登录。
 
-详情页显示内容、验收标准、父子任务树、成果、讨论区与活动记录。操作按钮随状态变化，例如“认领”“退出”“提交成果”“验收通过”。
+详情页显示内容、验收标准、任务树、前置依赖、下游任务、未完成子任务、成果与验收历史、讨论区与活动记录。操作按钮随状态变化，例如“认领”“退出”“提交成果”“验收”“转交验收”“重新打开”。所有针对现有对象的写操作在前端携带当前 `expected_version`，遇到 `409` 时提示并刷新数据，不乐观显示成功。
 
 后端使用明确的操作接口，避免允许客户端任意修改状态：
 
@@ -216,7 +218,7 @@ Bob 将其拆成：
 | `POST /missions/{id}/transfer-review` | 待验收时转交验收者 |
 | `POST /missions/{id}/reopen` | 重新打开已完成任务（原因 + `expected_version`） |
 | `POST /missions/{id}/cancel` | 取消 |
-| `GET /missions/{id}/dependencies` | 查询直接前置与直接下游任务 |
+| `GET /missions/{id}/dependencies` | 查询直接前置与直接下游任务（前置项附带 `dependency_id` 以便移除） |
 | `POST /missions/{id}/dependencies` | 添加前置依赖 |
 | `DELETE /missions/{id}/dependencies/{dependency_id}` | 移除该任务的依赖（`?expected_version=`） |
 | `GET /missions/{id}/submissions` | 分页查询各轮成果与证据 |
@@ -224,6 +226,7 @@ Bob 将其拆成：
 | `GET /milestones/{id}` / `PATCH /milestones/{id}` | 里程碑详情与普通字段编辑（`expected_version`） |
 | `POST /milestones/{id}/transition` | 受控里程碑状态流转 |
 | `POST /api/auth/register` | 提交注册申请（公开，需 CSRF） |
+| `GET /api/members` | 已登录成员均可读取的有效成员列表（id / username / display_name），用于选择验收者 |
 | `GET /api/admin/registrations` | 管理员查看注册申请，可按 `status` 筛选 |
 | `POST /api/admin/registrations/{id}/approve` | 管理员通过注册申请 |
 | `POST /api/admin/registrations/{id}/reject` | 管理员拒绝注册申请，可附原因 |
@@ -386,7 +389,7 @@ WHERE id = :mission_id
 
 **8.8 事务、并发与版本**
 
-- 所有写接口强制要求 `expected_version`（创建对象除外，由服务端初始化版本）：现有动作接口 `claim` / `release` / `submit` / `review` / `transfer-review` / `reopen` / `cancel` / `PATCH`，以及依赖增删、里程碑编辑与流转都校验版本；过期返回 `409`（`version_conflict`）。**这是相对旧接口的破坏性变更**，旧客户端必须携带 `expected_version`；前端将随后续迭代同步。评论没有版本字段，沿用作者权限校验。
+- 所有写接口强制要求 `expected_version`（创建对象除外，由服务端初始化版本）：现有动作接口 `claim` / `release` / `submit` / `review` / `transfer-review` / `reopen` / `cancel` / `PATCH`，以及依赖增删、里程碑编辑与流转都校验版本；过期返回 `409`（`version_conflict`）。**这是相对旧接口的破坏性变更**，旧客户端必须携带 `expected_version`；SPA 已同步适配并在冲突时刷新数据。评论没有版本字段，沿用作者权限校验。
 - 图结构变更与可能改变完成约束的状态操作统一使用固定键的 PostgreSQL 事务级 advisory lock（单团队一把团队级锁），在读取约束与写入之前获取；只读查询不取锁，锁内不做外部网络请求。提交、验收、依赖、里程碑完成、改里程碑与重新打开的操作相互串行，避免「检查后集合发生变化」。
 - Mission 字段、依赖、提交、验收、转交、重新打开均递增所属 Mission 的 `version`；里程碑字段与状态变更递增其 `version`。版本检查与递增同业务写入原子执行。
 
@@ -396,6 +399,8 @@ WHERE id = :mission_id
 - 旧的 `Submitted` / `Done` 成果用 `is_legacy=True` 的导入记录保存；不虚构源码/构建证据与验收人、验收时间。
 - 历史已完成任务不因缺少新证据被自动重新打开。
 
-**8.10 前端（本轮未完成）**
+**8.10 前端**
 
-四组功能的后端 API、迁移与测试已完成。前端筛选、详情（任务树 / 前置 / 下游 / 未完成子任务分开展示）、提交与评审表单、里程碑页面以及 `expected_version` 适配属于下一轮迭代，当前 SPA 尚未适配新的强制版本与验收请求格式。
+四组功能的前端已适配：任务创建/编辑表单包含类型、优先级、验收者与目标里程碑；列表展示类型/优先级/受阻标识与里程碑，并支持 type / priority / milestone / blocked 筛选与优先级排序；详情页将任务树、前置依赖、下游任务、未完成子任务分开展示，并处理阻塞原因、依赖复核与验收者失效提示；提供成果提交（含源码/构建引用）、按轮次的成果与验收历史、验收构建选择、转交验收与重新打开原因输入；新增里程碑列表与详情页（进度、延期、关联任务、受控流转）；所有写操作携带 `expected_version`，遇到 `409` 刷新数据。前端路由新增 `/milestones` 与 `/milestones/:id`，导航新增「里程碑」。
+
+前端验证命令（`frontend/`）：`npm run type-check`、`npm run test`、`npm run build`。

@@ -9,6 +9,7 @@ from .models import (
     Milestone,
     MilestoneEvent,
     Mission,
+    MissionDependency,
     MissionEvent,
     MissionPriority,
     MissionSubmission,
@@ -39,6 +40,25 @@ class MissionRefSerializer(serializers.ModelSerializer):
     class Meta:
         model = Mission
         fields = ["id", "title", "status", "type", "priority"]
+
+
+class DependencyRefSerializer(serializers.ModelSerializer):
+    """A prerequisite edge: the prerequisite mission fields plus its edge id.
+
+    ``dependency_id`` lets the client remove the dependency via
+    ``DELETE /missions/{id}/dependencies/{dependency_id}/``.
+    """
+
+    dependency_id = serializers.UUIDField(source="id", read_only=True)
+    id = serializers.UUIDField(source="prerequisite_id", read_only=True)
+    title = serializers.CharField(source="prerequisite.title", read_only=True)
+    status = serializers.CharField(source="prerequisite.status", read_only=True)
+    type = serializers.CharField(source="prerequisite.type", read_only=True)
+    priority = serializers.CharField(source="prerequisite.priority", read_only=True)
+
+    class Meta:
+        model = MissionDependency
+        fields = ["dependency_id", "id", "title", "status", "type", "priority"]
 
 
 class MissionListSerializer(serializers.ModelSerializer):
@@ -143,8 +163,12 @@ class MissionDetailSerializer(MissionListSerializer):
         return MissionListSerializer(children, many=True, context=self.context).data
 
     def get_prerequisites(self, obj):
-        prerequisites = Mission.objects.filter(dependents__mission_id=obj.id).order_by("created_at")
-        return MissionRefSerializer(prerequisites, many=True).data
+        edges = (
+            MissionDependency.objects.filter(mission_id=obj.id)
+            .select_related("prerequisite")
+            .order_by("created_at")
+        )
+        return DependencyRefSerializer(edges, many=True).data
 
     def get_dependents(self, obj):
         dependents = Mission.objects.filter(dependencies__prerequisite_id=obj.id).order_by("created_at")

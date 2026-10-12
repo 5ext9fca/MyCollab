@@ -158,3 +158,29 @@ class AdminApiPermissionTests(TestCase):
         self.assertEqual(response.status_code, 200)
         usernames = {row["username"] for row in response.json()["results"]}
         self.assertEqual(usernames, {"admin", "member"})
+
+
+class MemberListApiTests(TestCase):
+    """``GET /api/members/`` powers the reviewer picker for any team member."""
+
+    def setUp(self):
+        self.client = APIClient(enforce_csrf_checks=False)
+        self.member = User.objects.create_user("member", password="pw")
+
+    def test_anonymous_is_rejected(self):
+        self.assertIn(self.client.get("/api/members/").status_code, (401, 403))
+
+    def test_member_lists_only_active_members_without_sensitive_fields(self):
+        User.objects.create_user("alice", password="pw", first_name="Alice")
+        ghost = User.objects.create_user("ghost", password="pw")
+        ghost.is_active = False
+        ghost.save(update_fields=["is_active"])
+
+        self.client.force_authenticate(self.member)
+        response = self.client.get("/api/members/")
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()
+        self.assertEqual([row["username"] for row in rows], ["alice", "member"])
+        self.assertEqual(set(rows[0]), {"id", "username", "display_name"})
+        self.assertEqual(rows[0]["display_name"], "Alice")

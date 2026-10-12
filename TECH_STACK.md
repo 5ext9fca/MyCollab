@@ -146,6 +146,7 @@ cancel_mission(...)
 | `GET/POST /api/milestones/` | 里程碑列表与创建 |
 | `GET/PATCH /api/milestones/{id}/` | 里程碑详情与字段编辑 |
 | `POST /api/milestones/{id}/transition/` | 受控里程碑状态流转 |
+| `GET /api/members/` | 有效成员列表（id / username / display_name），供选择验收者 |
 | `POST /api/auth/register/` | 提交注册申请（公开） |
 | `GET /api/admin/registrations/` | 管理员查看注册申请，可按状态筛选 |
 | `POST /api/admin/registrations/{id}/approve/` | 管理员通过注册申请 |
@@ -168,7 +169,7 @@ cancel_mission(...)
 - Session Cookie 使用生产所需的 Secure、HttpOnly 与适当 SameSite 配置。
 - POST、PATCH、DELETE 等修改请求 MUST 校验 CSRF；登录入口也必须有 CSRF 保护。
 - 权限拒绝返回明确错误；认领冲突、状态冲突或版本冲突使用 `409 Conflict`。
-- 现有对象的变更请求 MUST 携带 `expected_version`（创建由服务端初始化版本）；版本过期返回 `409`（`version_conflict`）。缺少 `expected_version` 的写请求返回 `400`。这相对旧客户端是破坏性变更，过渡期策略是让前端一并升级。
+- 现有对象的变更请求 MUST 携带 `expected_version`（创建由服务端初始化版本）；版本过期返回 `409`（`version_conflict`）。缺少 `expected_version` 的写请求返回 `400`。这相对旧客户端是破坏性变更，SPA 已与后端一并升级并携带 `expected_version`。
 - Markdown 字段（Mission 的 `content`、`acceptance_criteria`、`result` 与评论 `content`）写入时 MUST 校验引用：只允许作者自己的 `/api/library/files/{id}/` 或 `http(s)` 外链，其余返回 `400`（`validation_error`）；校验位于服务层，API 与 Admin 等写入口一致。
 - API SHOULD 使用一致的错误结构，例如 `code`、`message`、`field_errors`。
 - 默认日期时间以带时区 ISO 8601 格式输出，数据库和后端使用 UTC，前端按显示时区格式化。

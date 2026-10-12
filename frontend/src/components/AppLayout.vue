@@ -11,6 +11,7 @@ const router = useRouter()
 const activeMenu = computed(() => {
   if (route.name === 'claimed') return '/claimed'
   if (route.name === 'published') return '/published'
+  if (route.name === 'milestones' || route.name === 'milestone-detail') return '/milestones'
   if (route.name === 'library') return '/library'
   if (route.name === 'manage') return '/manage'
   return '/missions'
@@ -36,6 +37,7 @@ async function onLogout() {
         <el-menu-item index="/missions">任务广场</el-menu-item>
         <el-menu-item index="/claimed">我认领的</el-menu-item>
         <el-menu-item index="/published">我发布的</el-menu-item>
+        <el-menu-item index="/milestones">里程碑</el-menu-item>
         <el-menu-item index="/library">素材库</el-menu-item>
         <el-menu-item v-if="auth.user?.is_staff" index="/manage">管理后台</el-menu-item>
       </el-menu>

@@ -13,6 +13,7 @@ from .models import (
     Milestone,
     MilestoneStatus,
     Mission,
+    MissionDependency,
     MissionPriority,
     MissionStatus,
     MissionType,
@@ -26,6 +27,7 @@ from .serializers import (
     CommentSerializer,
     CommentUpdateSerializer,
     DependencyCreateSerializer,
+    DependencyRefSerializer,
     MilestoneCreateSerializer,
     MilestoneSerializer,
     MilestoneTransitionSerializer,
@@ -34,6 +36,7 @@ from .serializers import (
     MissionDetailSerializer,
     MissionEventSerializer,
     MissionListSerializer,
+    MissionRefSerializer,
     MissionSubmissionSerializer,
     MissionUpdateSerializer,
     ReopenSerializer,
@@ -338,17 +341,17 @@ class MissionViewSet(
             ).get(pk=mission.id)
             return self._detail_response(mission)
 
-        from .serializers import MissionRefSerializer
-
-        prerequisites = Mission.objects.filter(dependents__mission_id=mission.id).order_by(
-            "created_at"
+        prerequisites = (
+            MissionDependency.objects.filter(mission=mission)
+            .select_related("prerequisite")
+            .order_by("created_at")
         )
         dependents = Mission.objects.filter(dependencies__prerequisite_id=mission.id).order_by(
             "created_at"
         )
         return Response(
             {
-                "prerequisites": MissionRefSerializer(prerequisites, many=True).data,
+                "prerequisites": DependencyRefSerializer(prerequisites, many=True).data,
                 "dependents": MissionRefSerializer(dependents, many=True).data,
                 "has_unresolved_prerequisites": services.derived_state(mission)[
                     "has_unresolved_prerequisites"
