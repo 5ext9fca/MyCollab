@@ -1,0 +1,25 @@
+# Single-domain deployment. Route priority matters: /api and /admin are matched
+# (and proxied) before the SPA fallback, so an API 404 never returns index.html.
+
+{$DOMAIN:localhost} {
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle /admin/* {
+		reverse_proxy backend:8000
+	}
+
+	handle /static/* {
+		root * /srv
+		file_server
+	}
+
+	handle {
+		root * /srv/frontend
+		try_files {path} /index.html
+		file_server
+	}
+}

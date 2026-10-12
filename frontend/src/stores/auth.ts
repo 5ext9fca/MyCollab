@@ -1,0 +1,35 @@
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+
+import * as authApi from '../api/auth'
+import type { CurrentUser } from '../api/types'
+
+export const useAuthStore = defineStore('auth', () => {
+  const user = ref<CurrentUser | null>(null)
+  const ready = ref(false)
+
+  async function fetchMe(): Promise<void> {
+    try {
+      user.value = await authApi.me()
+    } catch {
+      user.value = null
+    } finally {
+      ready.value = true
+    }
+  }
+
+  async function login(username: string, password: string): Promise<void> {
+    user.value = await authApi.login(username, password)
+    ready.value = true
+  }
+
+  async function logout(): Promise<void> {
+    try {
+      await authApi.logout()
+    } finally {
+      user.value = null
+    }
+  }
+
+  return { user, ready, fetchMe, login, logout }
+})

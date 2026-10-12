@@ -1,0 +1,82 @@
+import { createRouter, createWebHistory } from 'vue-router'
+
+import AppLayout from '../components/AppLayout.vue'
+import LoginView from '../views/LoginView.vue'
+import { useAuthStore } from '../stores/auth'
+
+export const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    { path: '/login', name: 'login', component: LoginView, meta: { guestOnly: true } },
+    {
+      path: '/register',
+      name: 'register',
+      component: () => import('../views/RegisterView.vue'),
+      meta: { guestOnly: true },
+    },
+    {
+      path: '/',
+      component: AppLayout,
+      meta: { requiresAuth: true },
+      children: [
+        { path: '', redirect: { name: 'square' } },
+        {
+          path: 'missions',
+          name: 'square',
+          component: () => import('../views/MissionSquareView.vue'),
+        },
+        {
+          path: 'missions/new',
+          name: 'mission-create',
+          component: () => import('../views/MissionCreateView.vue'),
+        },
+        {
+          path: 'missions/:id',
+          name: 'mission-detail',
+          component: () => import('../views/MissionDetailView.vue'),
+          props: true,
+        },
+        {
+          path: 'claimed',
+          name: 'claimed',
+          component: () => import('../views/MyClaimedView.vue'),
+        },
+        {
+          path: 'published',
+          name: 'published',
+          component: () => import('../views/MyPublishedView.vue'),
+        },
+        {
+          path: 'library',
+          name: 'library',
+          component: () => import('../views/LibraryView.vue'),
+        },
+        {
+          // SPA admin console. Deliberately not `/admin`, which is Django Admin.
+          path: 'manage',
+          name: 'manage',
+          component: () => import('../views/AdminView.vue'),
+          meta: { requiresStaff: true },
+        },
+      ],
+    },
+    { path: '/:pathMatch(.*)*', redirect: { name: 'square' } },
+  ],
+})
+
+router.beforeEach(async (to) => {
+  const auth = useAuthStore()
+  if (!auth.ready) {
+    await auth.fetchMe()
+  }
+  if (to.meta.requiresAuth && !auth.user) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+  if (to.meta.requiresStaff && auth.user && !auth.user.is_staff) {
+    return { name: 'square' }
+  }
+  if (to.meta.guestOnly && auth.user) {
+    return { name: 'square' }
+  }
+  return true
+})
