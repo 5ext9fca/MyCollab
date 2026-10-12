@@ -124,7 +124,6 @@ export interface Mission {
   milestone_closed: boolean
   content?: string
   acceptance_criteria?: string
-  result?: string
   children?: Mission[]
   prerequisites?: MissionPrerequisiteRef[]
   dependents?: MissionRef[]
@@ -164,7 +163,6 @@ export interface MissionSubmission {
   submitted_at: string
   description: string
   verification_description: string
-  is_legacy: boolean
   reviewer_snapshot: User | null
   outcome: SubmissionOutcome
   reviewed_by: User | null

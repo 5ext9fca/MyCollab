@@ -667,9 +667,9 @@ function formatDate(value: string | null) {
         <MarkdownContent :source="mission.acceptance_criteria" />
       </section>
 
-      <section v-if="mission.result" class="section">
+      <section v-if="currentSubmission" class="section">
         <h3>最新成果</h3>
-        <MarkdownContent :source="mission.result" />
+        <MarkdownContent :source="currentSubmission.description" />
       </section>
 
       <section class="section">
@@ -768,7 +768,6 @@ function formatDate(value: string | null) {
             <div class="submission__head">
               <span class="meta">
                 {{ item.submitted_by.display_name }} · {{ formatDate(item.submitted_at) }}
-                <template v-if="item.is_legacy"> · 旧数据导入</template>
               </span>
               <el-tag size="small" :type="item.outcome === 'Accepted' ? 'success' : item.outcome === 'Rejected' ? 'danger' : 'warning'">
                 {{ SUBMISSION_OUTCOME_LABELS[item.outcome] }}

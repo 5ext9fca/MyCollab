@@ -15,13 +15,12 @@ Mission 可以采用以下结构：
 | `acceptance_criteria` | Markdown | 验收标准 |
 | `creator_id` | User ID | 发起者，创建后固定 |
 | `assignee_id` | User ID / null | 唯一认领者 |
-| `reviewer_id` | User ID / null | 独立验收者；新建默认发起者，旧任务回填发起者 |
+| `reviewer_id` | User ID / null | 独立验收者；新建默认发起者 |
 | `parent_id` | Mission ID / null | 父 Mission；为空表示顶层任务 |
 | `type` | enum | `Feature` / `Task` / `Bug`，默认 `Task` |
 | `priority` | enum | `P0` / `P1` / `P2` / `P3`，默认 `P2` |
 | `milestone_id` | Milestone ID / null | 唯一目标里程碑（排期维度，非父任务） |
 | `status` | enum | 当前状态 |
-| `result` | Markdown / null | 最新一轮成果说明（兼容展示，等于 `current_submission.description`） |
 | `current_submission_id` | MissionSubmission ID / null | 当前一轮成果；历史轮次不可覆盖 |
 | `version` | integer | 用于检测并发修改 |
 | `created_at` / `updated_at` | datetime | 创建、更新时间 |
@@ -35,7 +34,7 @@ Tag
 MissionTag(mission_id, tag_id)
 MissionDependency(mission_id, prerequisite_id, created_by_id, created_at)
 Milestone(id, name, description, due_date, status, version, created_by_id, created_at, updated_at)
-MissionSubmission(id, mission_id, submitted_by_id, submitted_at, description, verification_description, is_legacy, reviewer_id_snapshot, outcome, reviewed_by_id, reviewed_at, review_comment, verified_build_reference_id)
+MissionSubmission(id, mission_id, submitted_by_id, submitted_at, description, verification_description, reviewer_id_snapshot, outcome, reviewed_by_id, reviewed_at, review_comment, verified_build_reference_id)
 SubmissionSourceReference(id, submission_id, provider, repository, revision, browse_url)
 SubmissionBuildReference(id, submission_id, provider, build_id, platform, source_revision, artifact_url, status, verification_note)
 MissionEvent(mission_id, actor_id, action, payload, created_at)
@@ -341,7 +340,7 @@ WHERE id = :mission_id
 
 **8.5 独立验收者与成果历史（F3）**
 
-- `Mission.reviewer_id`：新建任务默认发起者，旧任务迁移时回填发起者；必须是团队有效成员。发起者或管理员可在 `Open` / `InProgress` 修改（记录 `reviewer_changed`）；`Submitted` 状态可通过专用「转交验收」动作修改并记录原因（`review_transferred`），但不得用普通 `PATCH` 修改。
+- `Mission.reviewer_id`：新建任务默认发起者；必须是团队有效成员。发起者或管理员可在 `Open` / `InProgress` 修改（记录 `reviewer_changed`）；`Submitted` 状态可通过专用「转交验收」动作修改并记录原因（`review_transferred`），但不得用普通 `PATCH` 修改。
 - 验收通过 / 退回只能由当前验收者或管理员执行；发起者只有在同时是验收者或管理员时才能验收。默认允许 `assignee == reviewer`。
 - 验收者失效或离开团队（`is_active=False`）时，任务显示 `reviewer_missing`，需重新指定；新增提交必须具有有效验收者（否则 `reviewer_missing`）。
 - `MissionSubmission` 记录每一轮成果，永不覆盖旧记录：
@@ -351,7 +350,6 @@ WHERE id = :mission_id
 | `mission_id` / `submitted_by_id` / `submitted_at` | 所属任务、提交者与时间 |
 | `description` | 本轮成果与验证说明（Markdown） |
 | `verification_description` | 人工验证步骤与结果；无源码/构建引用时必填 |
-| `is_legacy` | 是否由旧数据导入，默认 false，客户端不可设置 |
 | `reviewer_snapshot_id` | 提交时的验收者，仅作历史 |
 | `outcome` | `Pending` / `Accepted` / `Rejected` |
 | `reviewed_by_id` / `reviewed_at` | 实际验收者与时间（可空） |
@@ -360,7 +358,7 @@ WHERE id = :mission_id
 
 - 提交者只能是当前认领者；提交后描述与证据冻结，退回后重新提交产生新记录。
 - 验收请求必须针对**当前 Pending 提交**（携带 `submission_id`），过期或不属于当前提交返回 `409`（`submission_conflict`）。
-- `result` 字段作为最新成果描述的兼容展示；客户端不能通过改 `result` 绕过提交动作。
+- 提交术语固定为 `description`（不再接受旧字段 `result` 作为别名）；验收决定只接受 `accept` / `reject`。
 
 **8.6 重新打开（F3）**
 
@@ -393,11 +391,12 @@ WHERE id = :mission_id
 - 图结构变更与可能改变完成约束的状态操作统一使用固定键的 PostgreSQL 事务级 advisory lock（单团队一把团队级锁），在读取约束与写入之前获取；只读查询不取锁，锁内不做外部网络请求。提交、验收、依赖、里程碑完成、改里程碑与重新打开的操作相互串行，避免「检查后集合发生变化」。
 - Mission 字段、依赖、提交、验收、转交、重新打开均递增所属 Mission 的 `version`；里程碑字段与状态变更递增其 `version`。版本检查与递增同业务写入原子执行。
 
-**8.9 迁移与兼容**
+**8.9 迁移与数据**
 
-- 迁移保留原 Mission ID、关系、状态与成果文本；新增 `type=Task`、`priority=P2`、`reviewer=creator`、`milestone=null`。
-- 旧的 `Submitted` / `Done` 成果用 `is_legacy=True` 的导入记录保存；不虚构源码/构建证据与验收人、验收时间。
-- 历史已完成任务不因缺少新证据被自动重新打开。
+- 迁移新增 `type=Task`、`priority=P2`、`reviewer=creator`、`milestone=null`，为任务补充默认值。
+- 不保留任何旧版兼容层：`Mission.result` 字段与 `MissionSubmission.is_legacy` 已移除，也不再提供旧数据回填；`submit` 不接受 `result` 别名，`review` 不接受 `approve` 旧决定名。
+- 当前进度任务使用 `current_submission_id` 指向最新一轮提交；历史轮次以 `MissionSubmission` 记录，永不覆盖。
+- `python manage.py seed_demo` 通过服务层创建一组样板数据（见 `README.md`），用于本地开发与演示；`--reset` 会先清空任务、里程碑、标签与样板用户再重建。
 
 **8.10 前端**
 

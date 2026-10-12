@@ -1,6 +1,3 @@
-import importlib
-
-from django.apps import apps as global_apps
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -119,7 +116,6 @@ class SubmissionTests(TestCase):
         first = MissionSubmission.objects.get(pk=mission.current_submission_id)
         self.assertEqual(first.description, "v1")
         self.assertEqual(first.outcome, SubmissionOutcome.PENDING)
-        self.assertEqual(mission.result, "v1")
 
         mission = utils.review(self.alice, mission, decision="reject", comment="再改")
         self.assertEqual(MissionSubmission.objects.get(pk=first.id).outcome, SubmissionOutcome.REJECTED)
@@ -280,22 +276,44 @@ class SubmissionTests(TestCase):
                 expected_version=utils.version_of(mission),
             )
 
-    def test_submission_listing_and_is_legacy_not_client_set(self):
+    def test_submission_listing_and_result_alias_removed(self):
         mission = self._claimed()
         utils.submit(self.bob, mission, description="r")
         client = APIClient()
-        client.force_authenticate(self.alice)
-        response = client.post(
-            f"/api/missions/{mission.id}/submit/",
-            {"description": "again", "is_legacy": True, "expected_version": utils.version_of(mission)},
-            format="json",
-        )
-        # Not the assignee anymore? bob is the assignee; alice is not.
-        self.assertEqual(response.status_code, 403)
+        client.force_authenticate(self.bob)
 
         listing = client.get(f"/api/missions/{mission.id}/submissions/")
         self.assertEqual(listing.status_code, 200)
-        self.assertTrue(all(not row["is_legacy"] for row in listing.json()["results"]))
+        rows = listing.json()["results"]
+        self.assertEqual([row["description"] for row in rows], ["r"])
+        self.assertNotIn("is_legacy", rows[0])
+
+        # `result` is no longer a backward-compatible alias for `description`.
+        mission = utils.review(self.alice, mission, decision="reject", comment="再改")
+        rejected = client.post(
+            f"/api/missions/{mission.id}/submit/",
+            {"result": "旧字段", "expected_version": utils.version_of(mission)},
+            format="json",
+        )
+        self.assertEqual(rejected.status_code, 400)
+
+    def test_review_rejects_removed_approve_decision(self):
+        mission = self._claimed()
+        utils.submit(self.bob, mission)
+        client = APIClient()
+        client.force_authenticate(self.alice)
+        response = client.post(
+            f"/api/missions/{mission.id}/review/",
+            {
+                "submission_id": str(mission.current_submission_id),
+                "decision": "approve",
+                "comment": "x",
+                "expected_version": utils.version_of(mission),
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "validation_error")
 
 
 class ReopenTests(TestCase):
@@ -475,63 +493,3 @@ class TransferReopenApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()["status"], "Done")
 
-
-class LegacyBackfillTests(TestCase):
-    def setUp(self):
-        self.alice = User.objects.create_user("alice", password="pw")
-        self.bob = User.objects.create_user("bob", password="pw")
-
-    def test_backfill_imports_legacy_submissions_without_fabricating_evidence(self):
-        # Build a mission, then strip it down to look like pre-migration data.
-        mission = services.create_mission(actor=self.alice, title="old")
-        utils.claim(self.bob, mission)
-        mission = utils.submit(self.bob, mission, description="旧成果")
-        MissionSubmission.objects.filter(mission=mission).delete()
-        Mission.objects.filter(pk=mission.id).update(
-            reviewer=None, current_submission=None, status="Done", result="旧成果"
-        )
-
-        backfill_module = importlib.import_module(
-            "missions.migrations.0004_backfill_legacy"
-        )
-        backfill_module.backfill(global_apps, None)
-
-        mission.refresh_from_db()
-        self.assertEqual(mission.reviewer_id, self.alice.id)
-        submission = MissionSubmission.objects.get(mission=mission)
-        self.assertTrue(submission.is_legacy)
-        self.assertEqual(submission.description, "旧成果")
-        self.assertEqual(submission.outcome, SubmissionOutcome.ACCEPTED)
-        # A reviewer identity / time must not be fabricated.
-        self.assertIsNone(submission.reviewed_by_id)
-        self.assertIsNone(submission.reviewed_at)
-        self.assertEqual(submission.reviewer_snapshot_id, self.alice.id)
-        self.assertEqual(mission.status, MissionStatus.DONE)
-
-    def test_backfill_pending_for_submitted(self):
-        mission = services.create_mission(actor=self.alice, title="old")
-        utils.claim(self.bob, mission)
-        mission = utils.submit(self.bob, mission, description="待验收旧成果")
-        MissionSubmission.objects.filter(mission=mission).delete()
-        Mission.objects.filter(pk=mission.id).update(reviewer=None, current_submission=None)
-
-        backfill_module = importlib.import_module("missions.migrations.0004_backfill_legacy")
-        backfill_module.backfill(global_apps, None)
-
-        submission = MissionSubmission.objects.get(mission=mission)
-        self.assertEqual(submission.outcome, SubmissionOutcome.PENDING)
-        self.assertTrue(submission.is_legacy)
-
-    def test_legacy_pending_can_be_reviewed_with_manual_note(self):
-        mission = services.create_mission(actor=self.alice, title="old")
-        utils.claim(self.bob, mission)
-        mission = utils.submit(self.bob, mission, description="旧待验收成果")
-        MissionSubmission.objects.filter(mission=mission).delete()
-        Mission.objects.filter(pk=mission.id).update(reviewer=None, current_submission=None)
-        backfill_module = importlib.import_module("missions.migrations.0004_backfill_legacy")
-        backfill_module.backfill(global_apps, None)
-
-        mission = Mission.objects.get(pk=mission.id)
-        mission = utils.review(self.alice, mission, decision="accept")
-        self.assertEqual(mission.status, MissionStatus.DONE)
-        self.assertTrue(mission.events.filter(action="review_approved").exists())

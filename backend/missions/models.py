@@ -153,7 +153,6 @@ class Mission(models.Model):
         null=True,
         blank=True,
     )
-    result = models.TextField(blank=True)
     current_submission = models.ForeignKey(
         "MissionSubmission",
         on_delete=models.SET_NULL,
@@ -295,8 +294,7 @@ class MissionSubmission(models.Model):
     """F3/F4: one immutable round of deliverables.
 
     Every submit creates a new row; rejecting/resubmitting never overwrites an
-    older round. ``is_legacy`` marks rows imported from pre-submission data and
-    cannot be set by clients.
+    older round.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -309,7 +307,6 @@ class MissionSubmission(models.Model):
     submitted_at = models.DateTimeField(auto_now_add=True)
     description = models.TextField(blank=True)
     verification_description = models.TextField(blank=True)
-    is_legacy = models.BooleanField(default=False)
     reviewer_snapshot = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

@@ -661,12 +661,11 @@ def submit_mission(
     _build_source_references(submission, source_references)
     _build_build_references(submission, build_references)
 
-    mission.result = description
     mission.current_submission = submission
     mission.status = MissionStatus.SUBMITTED
     mission.version += 1
     mission.save(
-        update_fields=["result", "current_submission", "status", "version", "updated_at"]
+        update_fields=["current_submission", "status", "version", "updated_at"]
     )
     _record_event(
         mission, actor, MissionEventAction.SUBMITTED, {"submission_id": str(submission.id)}
@@ -706,7 +705,7 @@ def review_mission(
 
     decision = (decision or "").strip().lower()
     comment = (comment or "").strip()
-    if decision in {"accept", "approve"}:
+    if decision == "accept":
         approve = True
     elif decision == "reject":
         approve = False

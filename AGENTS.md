@@ -41,7 +41,7 @@ MyCollab 是一个**单团队 Mission 协作系统**：发布 Mission、认领�
 - 认证是 Django Session + CSRF。Vite 代理必须保持 `changeOrigin: false`，否则 CSRF Origin 校验会失败。
 - 前端 API 调用集中在 `src/api/`，统一用 `request()` 处理 CSRF/错误；Markdown 必须经 `MarkdownContent.vue`（DOMPurify 清洗）渲染，不得直接 `v-html` 用户输入。
 - 用户素材库（`backend/library/`）：文件按用户隔离存放于 `MEDIA_ROOT/library/<user_id>/`，**不作为公开静态目录**（生产由 Caddy 代理 `/api` 后经 API 下载），只能经 `GET /api/library/files/{id}/` 授权下载；上传与删除走 `library/services.py`。
-- 所有 Markdown 字段（Mission 的 `content`/`acceptance_criteria`/`result` 与评论 `content`）在服务层校验引用：只允许作者自己的素材链接或 `http(s)` 外链，其余返回 `400`（见 `library/references.py`）。
+- 所有 Markdown 字段（Mission 的 `content`/`acceptance_criteria` 与评论 `content`）在服务层校验引用：只允许作者自己的素材链接或 `http(s)` 外链，其余返回 `400`（见 `library/references.py`）。
 - **不要用 SQLite 跑并发/事务测试**：`missions/tests/test_concurrency.py` 依赖 PostgreSQL。
 
 ## 修改后如何验证

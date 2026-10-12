@@ -149,7 +149,6 @@ class MissionDetailSerializer(MissionListSerializer):
         fields = MissionListSerializer.Meta.fields + [
             "content",
             "acceptance_criteria",
-            "result",
             "children",
             "prerequisites",
             "dependents",
@@ -250,18 +249,11 @@ class BuildReferenceSerializer(serializers.Serializer):
 
 
 class SubmitSerializer(serializers.Serializer):
-    # ``result`` is accepted as a backward-compatible alias for ``description``.
     description = serializers.CharField(required=False, allow_blank=True, default="")
-    result = serializers.CharField(required=False, allow_blank=True, default="")
     verification_description = serializers.CharField(required=False, allow_blank=True, default="")
     source_references = SourceReferenceSerializer(many=True, required=False, default=list)
     build_references = BuildReferenceSerializer(many=True, required=False, default=list)
     expected_version = serializers.IntegerField()
-
-    def validate(self, attrs):
-        if not attrs.get("description") and attrs.get("result"):
-            attrs["description"] = attrs.pop("result")
-        return attrs
 
 
 class ReviewSerializer(serializers.Serializer):
@@ -334,7 +326,6 @@ class MissionSubmissionSerializer(serializers.ModelSerializer):
             "submitted_at",
             "description",
             "verification_description",
-            "is_legacy",
             "reviewer_snapshot",
             "outcome",
             "reviewed_by",

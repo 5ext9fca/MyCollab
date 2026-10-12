@@ -63,8 +63,8 @@ class MilestoneAdmin(admin.ModelAdmin):
 class MissionSubmissionAdmin(admin.ModelAdmin):
     """Inspection only: submissions are immutable history."""
 
-    list_display = ["mission", "outcome", "submitted_by", "submitted_at", "is_legacy"]
-    list_filter = ["outcome", "is_legacy"]
+    list_display = ["mission", "outcome", "submitted_by", "submitted_at"]
+    list_filter = ["outcome"]
     search_fields = ["description", "mission__title"]
     readonly_fields = [
         "id",
@@ -73,7 +73,6 @@ class MissionSubmissionAdmin(admin.ModelAdmin):
         "submitted_at",
         "description",
         "verification_description",
-        "is_legacy",
         "reviewer_snapshot",
         "outcome",
         "reviewed_by",
@@ -110,7 +109,6 @@ class MissionAdmin(admin.ModelAdmin):
         "assignee",
         "reviewer",
         "milestone",
-        "result",
         "current_submission",
         "version",
         "created_at",

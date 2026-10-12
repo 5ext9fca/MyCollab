@@ -101,7 +101,7 @@ cancel_mission(...)
 - Mission 有固定 `type`（`Feature` / `Task` / `Bug`，默认 `Task`）与 `priority`（`P0`–`P3`，默认 `P2`）；发起者或管理员可在可编辑状态修改。
 - Mission 可有唯一目标里程碑（`Milestone`，Planned / Active / Completed / Cancelled）；里程碑是排期维度，不是父任务或构建版本。完成需人工确认且所有有效关联任务 Done/Cancelled。
 - Mission 可有显式前置依赖（`MissionDependency`）；阻塞为派生信息，不新增状态。提交与验收通过都要求所有直接前置 Done 且所有有效直接子任务 Done。
-- 成果按轮次保存为不可变的 `MissionSubmission`（含 `source` / `build` 引用与验收结论），历史不被覆盖；旧成果以 `is_legacy` 导入。
+- 成果按轮次保存为不可变的 `MissionSubmission`（含 `source` / `build` 引用与验收结论），历史不被覆盖。
 - 用户可通过自助注册申请加入团队：申请先进入待审批状态，管理员批准后才创建可登录的用户；未批准的用户名不占用、不可登录。
 - Mission 下的评论（Comment）复用与 `Mission.content` 相同的 Markdown 文本定义；任何成员可在任意状态（含已完成/已取消）发表评论，只有作者可编辑或删除自己的评论。
 - 用户上传的文件按用户隔离存放（每个用户一个 library）；读取对团队开放，但 Markdown 只能引用作者自己的素材或外链 URL。类型白名单为 `png/jpg/jpeg/gif/webp/pdf/zip/txt/md`，单文件上限 20 MB。
@@ -170,7 +170,7 @@ cancel_mission(...)
 - POST、PATCH、DELETE 等修改请求 MUST 校验 CSRF；登录入口也必须有 CSRF 保护。
 - 权限拒绝返回明确错误；认领冲突、状态冲突或版本冲突使用 `409 Conflict`。
 - 现有对象的变更请求 MUST 携带 `expected_version`（创建由服务端初始化版本）；版本过期返回 `409`（`version_conflict`）。缺少 `expected_version` 的写请求返回 `400`。这相对旧客户端是破坏性变更，SPA 已与后端一并升级并携带 `expected_version`。
-- Markdown 字段（Mission 的 `content`、`acceptance_criteria`、`result` 与评论 `content`）写入时 MUST 校验引用：只允许作者自己的 `/api/library/files/{id}/` 或 `http(s)` 外链，其余返回 `400`（`validation_error`）；校验位于服务层，API 与 Admin 等写入口一致。
+- Markdown 字段（Mission 的 `content`、`acceptance_criteria` 与评论 `content`）写入时 MUST 校验引用：只允许作者自己的 `/api/library/files/{id}/` 或 `http(s)` 外链，其余返回 `400`（`validation_error`）；校验位于服务层，API 与 Admin 等写入口一致。
 - API SHOULD 使用一致的错误结构，例如 `code`、`message`、`field_errors`。
 - 默认日期时间以带时区 ISO 8601 格式输出，数据库和后端使用 UTC，前端按显示时区格式化。
 

@@ -63,6 +63,18 @@ npm run dev                                  # http://127.0.0.1:5173
 
 Vite 开发服务器把 `/api` 代理到 Django，代理不改变 Host/Origin，因此 Session Cookie 与 CSRF 在开发环境可直接工作。
 
+## 演示数据
+
+本地开发可一键生成样板数据（通过服务层写入，包含任务树、依赖、里程碑与成果验收）：
+
+```bash
+cd backend
+.venv/bin/python manage.py seed_demo         # 不存在样板数据时创建
+.venv/bin/python manage.py seed_demo --reset # 先清空任务/里程碑/标签，再重建
+```
+
+演示账号为 `alice`、`bob`、`carol`、`dave`、`erin`，密码统一为 `demo12345`。
+
 ## 用户注册与审批
 
 成员加入采用「先申请、后审批」：
@@ -85,7 +97,7 @@ cd backend
 每个用户有自己的素材库，文件存放在 `MEDIA_ROOT` 的 `library/<user_id>/` 下（数据库记录归属与元信息）。在素材库页面（`/library`）或任务/评论编辑器的「插入素材」按钮上传后，会得到形如 `/api/library/files/{id}/` 的链接。
 
 - **读取**：任何登录成员都可以下载（`GET /api/library/files/{id}/`），图片内联显示、其余作为附件下载；删除只能由所有者本人发起。
-- **引用**：Mission 的 `content`、`acceptance_criteria`、提交的 `result` 以及评论 `content` 在写入时校验，只允许引用**作者自己的素材**或 **`http(s)` 外链**；他人素材、站内路径（如 `/media/...`）、相对路径与 `javascript:`/`data:` 等协议一律返回 `400`。校验同时覆盖 Markdown 语法与内联 HTML 属性，并忽略代码块。
+- **引用**：Mission 的 `content`、`acceptance_criteria`、提交的 `description` 以及评论 `content` 在写入时校验，只允许引用**作者自己的素材**或 **`http(s)` 外链**；他人素材、站内路径（如 `/media/...`）、相对路径与 `javascript:`/`data:` 等协议一律返回 `400`。校验同时覆盖 Markdown 语法与内联 HTML 属性，并忽略代码块。
 - **限制**：允许 `png/jpg/jpeg/gif/webp/pdf/zip/txt/md`，单文件上限 20 MB（可用环境变量 `LIBRARY_MAX_UPLOAD_BYTES`、`LIBRARY_ALLOWED_EXTENSIONS`、`DJANGO_MEDIA_ROOT` 调整）。
 
 附件目录**不对外静态公开**，生产环境也不挂到 Caddy，只通过上述 API 经授权下载。
