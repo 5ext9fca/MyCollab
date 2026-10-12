@@ -5,6 +5,8 @@ from accounts.models import User
 from missions import services
 from missions.models import MissionStatus
 
+from . import utils
+
 
 class AuthApiTests(TestCase):
     def setUp(self):
@@ -64,6 +66,8 @@ class MissionApiTests(TestCase):
                 "content": "背景",
                 "acceptance_criteria": "可跳跃",
                 "tags": ["Unity", "Gameplay"],
+                "type": "Feature",
+                "priority": "P1",
             },
             format="json",
         )
@@ -71,6 +75,11 @@ class MissionApiTests(TestCase):
         data = response.json()
         self.assertEqual(data["status"], "Open")
         self.assertIsNone(data["assignee"])
+        self.assertEqual(data["type"], "Feature")
+        self.assertEqual(data["priority"], "P1")
+        self.assertEqual(data["reviewer"]["username"], "alice")
+        self.assertIsNone(data["milestone"])
+        self.assertFalse(data["is_blocked"])
         self.assertEqual({tag["name"] for tag in data["tags"]}, {"Unity", "Gameplay"})
         self.assertIn("claim", data["allowed_actions"])
         self.assertIn("children", data)
@@ -84,24 +93,47 @@ class MissionApiTests(TestCase):
     def test_claim_conflict_returns_409_with_error_shape(self):
         mission = services.create_mission(actor=self.alice, title="t")
         self.client.force_authenticate(self.bob)
-        first = self.client.post(f"/api/missions/{mission.id}/claim/", {}, format="json")
+        first = self.client.post(
+            f"/api/missions/{mission.id}/claim/",
+            {"expected_version": mission.version},
+            format="json",
+        )
         self.assertEqual(first.status_code, 200)
 
         self.client.force_authenticate(self.carol)
-        second = self.client.post(f"/api/missions/{mission.id}/claim/", {}, format="json")
+        fresh = self.client.get(f"/api/missions/{mission.id}/").json()
+        second = self.client.post(
+            f"/api/missions/{mission.id}/claim/",
+            {"expected_version": fresh["version"]},
+            format="json",
+        )
         self.assertEqual(second.status_code, 409)
         body = second.json()
         self.assertEqual(body["code"], "claim_conflict")
         self.assertIn("message", body)
         self.assertIn("field_errors", body)
 
+    def test_claim_without_expected_version_is_400(self):
+        mission = services.create_mission(actor=self.alice, title="t")
+        self.client.force_authenticate(self.bob)
+        response = self.client.post(f"/api/missions/{mission.id}/claim/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "validation_error")
+
     def test_permission_denied_returns_403(self):
         mission = services.create_mission(actor=self.alice, title="t")
-        services.claim_mission(actor=self.bob, mission_id=mission.id)
-        services.submit_mission(actor=self.bob, mission_id=mission.id, result="成果")
+        utils.claim(self.bob, mission)
+        mission = utils.submit(self.bob, mission)
         self.client.force_authenticate(self.bob)
         response = self.client.post(
-            f"/api/missions/{mission.id}/review/", {"approve": True}, format="json"
+            f"/api/missions/{mission.id}/review/",
+            {
+                "submission_id": str(mission.current_submission_id),
+                "decision": "accept",
+                "comment": "人工验证",
+                "expected_version": mission.version,
+            },
+            format="json",
         )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["code"], "permission_denied")
@@ -109,7 +141,7 @@ class MissionApiTests(TestCase):
     def test_filters(self):
         services.create_mission(actor=self.alice, title="可认领", tags=["Unity"])
         claimed = services.create_mission(actor=self.alice, title="进行中")
-        services.claim_mission(actor=self.bob, mission_id=claimed.id)
+        utils.claim(self.bob, claimed)
 
         self.client.force_authenticate(self.bob)
 
@@ -170,7 +202,7 @@ class MissionApiTests(TestCase):
 
     def test_events_endpoint(self):
         mission = services.create_mission(actor=self.alice, title="t")
-        services.claim_mission(actor=self.bob, mission_id=mission.id)
+        utils.claim(self.bob, mission)
         self.client.force_authenticate(self.alice)
         response = self.client.get(f"/api/missions/{mission.id}/events/")
         self.assertEqual(response.status_code, 200)

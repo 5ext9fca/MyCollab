@@ -92,13 +92,16 @@ cancel_mission(...)
 - 状态使用固定枚举：`Open`、`InProgress`、`Submitted`、`Done`、`Cancelled`。
 - `Open` 的认领者为空；`InProgress`、`Submitted`、`Done` 的认领者非空。
 - 认领使任务从 `Open` 进入 `InProgress`；退出使其回到 `Open`。
-- 认领者提交后进入 `Submitted`；发起者验收进入 `Done`，退回进入 `InProgress`。
-- 待验收和已完成任务冻结目标与成果内容；修改待验收任务前应先退回。
+- 认领者提交后进入 `Submitted`；**验收者（`reviewer`，新建默认发起者）或管理员**验收进入 `Done`，退回进入 `InProgress`。默认允许认领者与验收者相同，也允许指定为他人。
+- 待验收和已完成任务冻结目标与成果内容；修改待验收任务前应先退回。`Done` 任务可由发起者、验收者或管理员带原因重新打开。
 - 父任务在有效子任务全部完成后允许提交，但不会自动完成。
 - 取消子任务必须记录原因，父任务验收者判断是否接受该范围变化。
 - 父任务的取消不自动取消子任务；已完成或已取消的父任务禁止新增子任务。
 - 创建或调整父子关系必须禁止自引用与循环，并遵守父任务状态约束。
-- 初始版本允许用户认领并验收自己发布的任务。
+- Mission 有固定 `type`（`Feature` / `Task` / `Bug`，默认 `Task`）与 `priority`（`P0`–`P3`，默认 `P2`）；发起者或管理员可在可编辑状态修改。
+- Mission 可有唯一目标里程碑（`Milestone`，Planned / Active / Completed / Cancelled）；里程碑是排期维度，不是父任务或构建版本。完成需人工确认且所有有效关联任务 Done/Cancelled。
+- Mission 可有显式前置依赖（`MissionDependency`）；阻塞为派生信息，不新增状态。提交与验收通过都要求所有直接前置 Done 且所有有效直接子任务 Done。
+- 成果按轮次保存为不可变的 `MissionSubmission`（含 `source` / `build` 引用与验收结论），历史不被覆盖；旧成果以 `is_legacy` 导入。
 - 用户可通过自助注册申请加入团队：申请先进入待审批状态，管理员批准后才创建可登录的用户；未批准的用户名不占用、不可登录。
 - Mission 下的评论（Comment）复用与 `Mission.content` 相同的 Markdown 文本定义；任何成员可在任意状态（含已完成/已取消）发表评论，只有作者可编辑或删除自己的评论。
 - 用户上传的文件按用户隔离存放（每个用户一个 library）；读取对团队开放，但 Markdown 只能引用作者自己的素材或外链 URL。类型白名单为 `png/jpg/jpeg/gif/webp/pdf/zip/txt/md`，单文件上限 20 MB。
@@ -114,9 +117,10 @@ cancel_mission(...)
 - 查询列表 MUST 分页；按标签、状态、发起者和认领者筛选。多标签查询为 AND 语义（任务需同时含有全部标签），客户端可重复 `tag` 参数（`?tag=a&tag=b`）或用逗号（`?tag=a,b`）。
 - 认领 MUST 使用条件更新或事务内行锁，保证同时认领只有一个成功。
 - 禁止使用“先查询未认领，再无条件写入认领者”的方式。
-- 编辑 SHOULD 使用 `version` 做乐观并发检查，避免覆盖其他用户的修改。
-- 与父子结构有关的写入必须采用一致的并发策略，防止检查完子任务后另一个事务新增子任务，或并发改父节点形成循环。
-- 第一版可将结构变更与父任务提交放在同一事务中，并通过共享的树级锁协调；读列表不需要该锁。
+- 编辑与所有写动作 MUST 使用 `version` 做乐观并发检查（`expected_version`），避免覆盖其他用户的修改；创建对象由服务端初始化版本。冲突返回 `409`。
+- 与父子/依赖结构有关的写入必须采用一致的并发策略，防止检查完子任务后另一个事务新增子任务，或并发改父节点/加依赖形成循环。
+- 图结构变更（父节点、依赖）与可能改变完成约束的状态操作（提交、验收、里程碑完成、改里程碑、重新打开）统一使用固定键的 PostgreSQL 事务级 advisory lock：在读取约束和写入之前获取，只读查询不取锁，锁内不做外部网络请求。单团队第一版复用一个团队级事务锁即可。
+- 依赖环检查 MUST 在「子任务先于父任务完成」的隐含边与显式 `prerequisite -> dependent` 边的合并图上进行；只检查依赖表不足以防止死锁。
 - PostgreSQL 是涉及事务和并发的测试环境；不能只依赖 SQLite 测试这些行为。
 
 ## 7. API 与权限
@@ -131,9 +135,17 @@ cancel_mission(...)
 | `PATCH /api/missions/{id}/` | 修改允许编辑的内容 |
 | `POST /api/missions/{id}/claim/` | 认领 |
 | `POST /api/missions/{id}/release/` | 退出 |
-| `POST /api/missions/{id}/submit/` | 提交成果 |
-| `POST /api/missions/{id}/review/` | 验收通过或退回 |
+| `POST /api/missions/{id}/submit/` | 提交成果与证据（description、验证说明、source/build 引用） |
+| `POST /api/missions/{id}/review/` | 验收（`submission_id`、`decision`、`comment`、`verified_build_reference_id`） |
+| `POST /api/missions/{id}/transfer-review/` | 转交验收者 |
+| `POST /api/missions/{id}/reopen/` | 重新打开已完成任务 |
 | `POST /api/missions/{id}/cancel/` | 取消 |
+| `GET/POST /api/missions/{id}/dependencies/` | 查询 / 添加前置依赖 |
+| `DELETE /api/missions/{id}/dependencies/{dependency_id}/` | 移除依赖 |
+| `GET /api/missions/{id}/submissions/` | 分页查询各轮成果与证据 |
+| `GET/POST /api/milestones/` | 里程碑列表与创建 |
+| `GET/PATCH /api/milestones/{id}/` | 里程碑详情与字段编辑 |
+| `POST /api/milestones/{id}/transition/` | 受控里程碑状态流转 |
 | `POST /api/auth/register/` | 提交注册申请（公开） |
 | `GET /api/admin/registrations/` | 管理员查看注册申请，可按状态筛选 |
 | `POST /api/admin/registrations/{id}/approve/` | 管理员通过注册申请 |
@@ -156,6 +168,7 @@ cancel_mission(...)
 - Session Cookie 使用生产所需的 Secure、HttpOnly 与适当 SameSite 配置。
 - POST、PATCH、DELETE 等修改请求 MUST 校验 CSRF；登录入口也必须有 CSRF 保护。
 - 权限拒绝返回明确错误；认领冲突、状态冲突或版本冲突使用 `409 Conflict`。
+- 现有对象的变更请求 MUST 携带 `expected_version`（创建由服务端初始化版本）；版本过期返回 `409`（`version_conflict`）。缺少 `expected_version` 的写请求返回 `400`。这相对旧客户端是破坏性变更，过渡期策略是让前端一并升级。
 - Markdown 字段（Mission 的 `content`、`acceptance_criteria`、`result` 与评论 `content`）写入时 MUST 校验引用：只允许作者自己的 `/api/library/files/{id}/` 或 `http(s)` 外链，其余返回 `400`（`validation_error`）；校验位于服务层，API 与 Admin 等写入口一致。
 - API SHOULD 使用一致的错误结构，例如 `code`、`message`、`field_errors`。
 - 默认日期时间以带时区 ISO 8601 格式输出，数据库和后端使用 UTC，前端按显示时区格式化。
@@ -203,6 +216,10 @@ Redis、后台任务队列、WebSocket、独立搜索服务与 Kubernetes 不属
 8. 评论权限：任意成员可评论，非作者不能编辑或删除他人的评论。
 9. 多标签查询：多个 `tag` 为 AND（需同时包含），重复参数与逗号写法等价。
 10. 素材库：上传的类型/大小校验、经授权下载、非所有者不能删除；Markdown 引用只接受自己的素材与外链，他人素材、站内路径与非 http(s) 协议返回 `400`。
+11. 依赖：自依赖、重复、显式环、父子与依赖组合环均被拒绝；跨父依赖允许；阻塞任务可认领但不能提交/验收通过；前置取消仍阻塞、取消子任务不阻塞父任务；前置重开后下游显示阻塞/复核。
+12. 优先级与里程碑：默认值与筛选/排序；里程碑受控流转、完成条件（有效任务全 Done）、恢复需原因、只有 Planned/Active 可接收任务、进度与延期。
+13. 独立验收与成果：发起者/认领者/验收者可分离，仅当前验收者或管理员验收；转交后旧验收者被拒；每轮成果不可覆盖；重新打开需原因并保留历史，成员失效、祖先完成、里程碑关闭正确处理。
+14. 证据引用：非法引用/空 revision/跨提交构建被拒；成功构建与选择验证版本规则；无构建文档任务凭人工说明验收；并发验收、并发环、里程碑完成与加任务互斥。
 
 后端测试、迁移检查、前端类型检查、前端测试和生产构建的真实命令已记录在 `README.md` 与 `AGENTS.md`。新增或修改脚本时同步更新这两处；不得把尚未创建的脚本写成可直接运行的命令。
 

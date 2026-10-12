@@ -15,9 +15,14 @@ Mission 可以采用以下结构：
 | `acceptance_criteria` | Markdown | 验收标准 |
 | `creator_id` | User ID | 发起者，创建后固定 |
 | `assignee_id` | User ID / null | 唯一认领者 |
+| `reviewer_id` | User ID / null | 独立验收者；新建默认发起者，旧任务回填发起者 |
 | `parent_id` | Mission ID / null | 父 Mission；为空表示顶层任务 |
+| `type` | enum | `Feature` / `Task` / `Bug`，默认 `Task` |
+| `priority` | enum | `P0` / `P1` / `P2` / `P3`，默认 `P2` |
+| `milestone_id` | Milestone ID / null | 唯一目标里程碑（排期维度，非父任务） |
 | `status` | enum | 当前状态 |
-| `result` | Markdown / null | 提交的成果说明、链接等 |
+| `result` | Markdown / null | 最新一轮成果说明（兼容展示，等于 `current_submission.description`） |
+| `current_submission_id` | MissionSubmission ID / null | 当前一轮成果；历史轮次不可覆盖 |
 | `version` | integer | 用于检测并发修改 |
 | `created_at` / `updated_at` | datetime | 创建、更新时间 |
 
@@ -28,12 +33,20 @@ User
 Mission
 Tag
 MissionTag(mission_id, tag_id)
+MissionDependency(mission_id, prerequisite_id, created_by_id, created_at)
+Milestone(id, name, description, due_date, status, version, created_by_id, created_at, updated_at)
+MissionSubmission(id, mission_id, submitted_by_id, submitted_at, description, verification_description, is_legacy, reviewer_id_snapshot, outcome, reviewed_by_id, reviewed_at, review_comment, verified_build_reference_id)
+SubmissionSourceReference(id, submission_id, provider, repository, revision, browse_url)
+SubmissionBuildReference(id, submission_id, provider, build_id, platform, source_revision, artifact_url, status, verification_note)
 MissionEvent(mission_id, actor_id, action, payload, created_at)
+MilestoneEvent(milestone_id, actor_id, action, payload, created_at)
 Comment(mission_id, author_id, content, created_at, updated_at)
 LibraryFile(owner_id, file, original_name, content_type, size, created_at)
 ```
 
-`MissionEvent` 记录认领、退出、修改目标、提交和验收等操作，形成活动记录。
+`MissionEvent` 记录认领、退出、修改目标、提交、验收、依赖、转交与重新打开等操作；`MilestoneEvent` 记录里程碑的创建、修改与状态流转。所有事件与对应业务变更在同一事务内写入，包含实际操作者、动作、原因与必要前后值。
+
+`MissionDependency` 表示「`mission` 依赖 `prerequisite`」：`prerequisite` 必须先完成，依赖它的 `mission` 才能提交与验收通过。唯一约束禁止重复 `(mission_id, prerequisite_id)` 与自依赖；依赖方向与父子关系是两种不同关系，分别建模（详见第 8 节）。
 
 `Comment` 是挂在 Mission 下的讨论内容：`content` 与 `Mission.content` 定义完全一致（Markdown 文本，允许为空，不设长度上限）。任何团队成员都可以在可见任务下发表评论，**任意状态都允许评论**（包括已完成、已取消）；只有作者本人可以编辑或删除自己的评论。评论列表按创建时间倒序返回。
 
@@ -87,8 +100,10 @@ stateDiagram-v2
     Open --> Working: 用户认领
     Working --> Open: 认领者退出
     Working --> Submitted: 认领者提交成果
-    Submitted --> Working: 发起者退回
-    Submitted --> Done: 发起者验收
+    Submitted --> Working: 验收者退回
+    Submitted --> Done: 验收者验收通过
+    Done --> Working: 重新打开（原认领者有效）
+    Done --> Open: 重新打开（原认领者失效）
     Open --> Cancelled: 发起者取消
     Working --> Cancelled: 发起者取消
 ```
@@ -105,7 +120,11 @@ Open, InProgress, Submitted, Done, Cancelled
 - `InProgress`、`Submitted`、`Done`：认领者非空。
 - `Cancelled`：保留取消时的认领者，便于追踪历史。
 
-MVP 中允许用户认领自己发布的任务，并自行确认完成；如果以后需要独立审核，可以再加入审核者角色。
+验收由任务的 **验收者（`reviewer`）或管理员**执行，而不是固定为发起者；新建任务时验收者默认等于发起者，但可以指定为他人。默认仍允许认领者与验收者是同一个人，独立验收表示角色可以分开，不强制双人审核。
+
+已完成任务可通过 `reopen` 动作重新打开（仅限 `Done`，必须填写原因）：原认领者仍是有效成员时恢复 `InProgress`，否则清空认领者恢复 `Open`；历史提交与验收记录全部保留，`current_submission_id` 清空。若存在已完成的祖先任务，必须先从最上层向下逐级重新打开祖先，不允许留下「父任务已完成、子任务进行中」的结构。
+
+阻塞是**派生信息**，不新增 `Blocked` 状态：只要存在未完成的前置依赖，任务即显示为阻塞（见第 8 节）。
 
 **3. 父子 Mission 的协作规则**
 
@@ -143,12 +162,18 @@ Bob 将其拆成：
 |---|---|
 | 发布 Mission | 团队成员 |
 | 认领待认领任务 | 团队成员 |
-| 编辑目标与验收标准 | 当前任务发起者 |
+| 编辑目标与验收标准 | 当前任务发起者或管理员 |
+| 修改类型 / 优先级 / 验收者 / 目标里程碑 | 当前任务发起者或管理员；限 `Open` / `InProgress` |
 | 创建子 Mission | 当前任务发起者或认领者 |
-| 更新成果说明、提交成果 | 当前任务认领者 |
+| 添加 / 移除前置依赖 | 当前任务发起者、当前认领者或管理员；限 `Open` / `InProgress` |
+| 提交成果与证据 | 当前任务认领者 |
 | 退出认领 | 当前任务认领者；限进行中 |
-| 验收或退回 | 当前任务发起者 |
-| 取消 | 当前任务发起者；限待认领或进行中 |
+| 验收通过 / 退回 | 当前任务验收者或管理员 |
+| 转交验收（仅待验收） | 当前任务发起者或管理员 |
+| 重新打开已完成任务 | 当前任务发起者、当前验收者或管理员；仅限 `Done`，须填原因 |
+| 取消 | 当前任务发起者或管理员；限待认领或进行中 |
+| 创建里程碑 | 团队成员 |
+| 编辑里程碑 / 变更里程碑状态 | 里程碑创建者或管理员 |
 | 提交注册申请 | 任何人，无需登录 |
 | 审批注册申请（通过 / 拒绝） | 管理员（`is_staff`） |
 | 查看成员列表 | 管理员（`is_staff`） |
@@ -181,14 +206,23 @@ Bob 将其拆成：
 
 | 接口 | 用途 |
 |---|---|
-| `POST /missions` | 发布任务 |
-| `GET /missions` | 筛选、查询任务（多标签 AND：`?tag=a&tag=b`） |
-| `PATCH /missions/{id}` | 编辑允许修改的内容 |
+| `POST /missions` | 发布任务（支持 type / priority / reviewer_id / milestone_id） |
+| `GET /missions` | 筛选、查询任务（多标签 AND：`?tag=a&tag=b`；新增 type / priority / milestone / blocked 筛选与 priority 排序） |
+| `PATCH /missions/{id}` | 编辑允许修改的内容（携带 `expected_version`） |
 | `POST /missions/{id}/claim` | 认领 |
 | `POST /missions/{id}/release` | 退出 |
-| `POST /missions/{id}/submit` | 提交成果 |
-| `POST /missions/{id}/review` | 通过或退回，附验收意见 |
+| `POST /missions/{id}/submit` | 提交成果（description、验证说明、源码与构建引用） |
+| `POST /missions/{id}/review` | 验收通过或退回（`submission_id`、`decision`、`comment`、`verified_build_reference_id`） |
+| `POST /missions/{id}/transfer-review` | 待验收时转交验收者 |
+| `POST /missions/{id}/reopen` | 重新打开已完成任务（原因 + `expected_version`） |
 | `POST /missions/{id}/cancel` | 取消 |
+| `GET /missions/{id}/dependencies` | 查询直接前置与直接下游任务 |
+| `POST /missions/{id}/dependencies` | 添加前置依赖 |
+| `DELETE /missions/{id}/dependencies/{dependency_id}` | 移除该任务的依赖（`?expected_version=`） |
+| `GET /missions/{id}/submissions` | 分页查询各轮成果与证据 |
+| `GET /milestones` / `POST /milestones` | 里程碑列表与创建 |
+| `GET /milestones/{id}` / `PATCH /milestones/{id}` | 里程碑详情与普通字段编辑（`expected_version`） |
+| `POST /milestones/{id}/transition` | 受控里程碑状态流转 |
 | `POST /api/auth/register` | 提交注册申请（公开，需 CSRF） |
 | `GET /api/admin/registrations` | 管理员查看注册申请，可按 `status` 筛选 |
 | `POST /api/admin/registrations/{id}/approve` | 管理员通过注册申请 |
@@ -234,7 +268,7 @@ WHERE id = :mission_id
 
 **允许的类型与大小。** 白名单扩展名：`png`、`jpg`、`jpeg`、`gif`、`webp`、`pdf`、`zip`、`txt`、`md`；单文件上限 20 MB。内容类型由扩展名推导，不采用客户端声明的类型，避免伪装成 HTML/JS。
 
-**引用规则（写入时校验）。** 所有 Markdown 字段（Mission 的 `content`、`acceptance_criteria`、提交的 `result`，以及评论 `content`）在写入时必须满足：每个链接/图片目标要么是 **作者自己的素材库链接**（`/api/library/files/<id>/`，且该文件属于作者），要么是 **外链 URL**（`http(s)://` 或协议相对 `//host/...`）。以下一律拒绝并返回 `400`（`code=validation_error`，`field_errors` 指向对应字段）：
+**引用规则（写入时校验）。** 所有 Markdown 字段（Mission 的 `content`、`acceptance_criteria`、每轮成果 `MissionSubmission.description`，以及评论 `content`）在写入时必须满足：每个链接/图片目标要么是 **作者自己的素材库链接**（`/api/library/files/<id>/`，且该文件属于作者），要么是 **外链 URL**（`http(s)://` 或协议相对 `//host/...`）。以下一律拒绝并返回 `400`（`code=validation_error`，`field_errors` 指向对应字段）：
 
 - 其他成员的素材库链接，或不存在/非法 id 的素材链接；
 - 任意站内路径（如 `/media/...`、`/api/missions/...`）与相对路径；
@@ -242,4 +276,126 @@ WHERE id = :mission_id
 
 纯文档内锚点（`#section`）允许，因为它不引用任何资源；Markdown 语法与内联 HTML（如 `<img src=...>`、`srcset`）都会被检查，代码块与行内代码会被忽略，避免示例代码误报。校验在服务层完成（`library/references.py` + `missions/services.py`），因此 API 与 Admin 等所有写入口都受同一规则约束。
 
-这个版本已经能跑通一次完整协作：**发布 → 发现 → 认领 → 拆分 → 执行 → 提交 → 验收**；并在此基础上增加了带管理员审批的用户自助注册、SPA 管理后台与按用户隔离的素材库。后续可根据实际使用增加依赖关系、多人参与和通知。
+**8. 扩展：类型、依赖与阻塞、优先级与里程碑、独立验收与重新打开、提交与构建引用**
+
+本节记录在基础 MVP 之上新增的四组能力。它们复用同一 `Mission` 模型、认领与状态机，全部业务写入集中在 `missions/services.py`。
+
+**8.1 类型（F1）**
+
+`Mission.type` 为固定枚举 `Feature` / `Task` / `Bug`，默认 `Task`；三种类型复用同一模型、认领与状态机，不限制父子组合，也不影响「是否完成」的判断。发起者或管理员可在 `Open` / `InProgress` 修改类型并记录 `type_changed` 事件；类型不能只通过标签表达。
+
+**8.2 依赖与派生阻塞（F1）**
+
+`MissionDependency(mission_id, prerequisite_id)` 表示 `mission` 依赖 `prerequisite`，即 `prerequisite` 必须先完成。约束：
+
+- 唯一约束禁止重复 `(mission_id, prerequisite_id)`，并禁止自依赖（数据库 CheckConstraint）。
+- 依赖可跨父任务；只能引用同一团队内、操作者可见的任务（本系统所有登录成员可见全部任务）。
+- **必须同时检查依赖边与父子边的组合环**：完成顺序图中，子任务默认先于父任务完成，因此隐含 `child -> parent` 边，显式依赖为 `prerequisite -> dependent` 边。新增依赖、调整父节点都在这张合并图上做可达性检查；仅检查依赖表不足以防止死锁。例如「子任务依赖祖先任务」会被拒绝。
+- 发起者、当前认领者或管理员可在 `Open` / `InProgress` 添加/移除依赖；`Submitted` / `Done` / `Cancelled` 不允许直接修改依赖，需先退回可编辑状态。
+
+阻塞是派生信息，不新增状态、不维护手工同步字段。API 返回：
+
+| 字段 | 含义 |
+|---|---|
+| `has_unresolved_prerequisites` | 任一直接前置任务不是 `Done` |
+| `is_blocked` | 状态为 `Open` / `InProgress` / `Submitted` 且存在未完成前置任务 |
+| `blocking_mission_ids` | 未完成前置任务 ID |
+| `unfinished_child_ids` | 尚未完成的有效直接子任务 ID（与依赖阻塞分开表示） |
+| `needs_dependency_review` | 已 `Done` 但前置任务不再满足，提示需复核 |
+
+- 前置任务仅在 `Done` 时满足依赖；`Cancelled` 仍阻塞，需显式移除依赖或改前置。
+- 父任务的有效子任务排除 `Cancelled` 子任务。
+- 阻塞任务仍可认领；提交与验收通过都必须同时检查所有直接前置任务为 `Done` 且所有有效直接子任务为 `Done`，因此阻塞期间禁止提交与验收通过。
+- 前置任务重新打开后，下游未完成任务自动显示阻塞；下游已 `Done` 不自动重开，只显示复核提示。不实现递归自动推进。
+
+**8.3 优先级（F2）**
+
+`Mission.priority` 为固定枚举 `P0` / `P1` / `P2` / `P3`，默认 `P2`；`P0` 最紧急。发起者或管理员可在 `Open` / `InProgress` 修改，认领者只能在评论中建议。优先级不代表状态、依赖或截止日期，不触发自动抢占。列表支持按 priority 筛选与排序，相同优先级按创建时间与 ID 稳定排序。
+
+**8.4 里程碑（F2）**
+
+`Milestone` 是排期维度，不是父任务，也不是游戏构建版本：
+
+| 字段 | 含义 |
+|---|---|
+| `id` | 主键 |
+| `name` | 名称 |
+| `description` | 交付目标 |
+| `due_date` | 可空目标日期（按 `settings.TIME_ZONE` 解释） |
+| `status` | `Planned` / `Active` / `Completed` / `Cancelled`，默认 `Planned` |
+| `version` | 乐观并发版本号 |
+| `created_by_id` | 创建者 |
+| `created_at` / `updated_at` | 时间戳 |
+
+- 团队成员可创建；创建者或管理员可编辑字段、变更状态；变更记录 `MilestoneEvent`。
+- 受控流转：`Planned -> Active`、`Planned/Active -> Cancelled`、`Active -> Completed`、`Completed/Cancelled -> Active`（恢复需记录原因）。
+- 只有 `Planned` / `Active` 的里程碑可接收新的或重新分配的任务（`milestone_not_accepting`）。
+- 完成条件：至少一个**有效**（非 `Cancelled`）关联任务，且关联任务全部为 `Done` 或 `Cancelled`；必须由创建者或管理员手动确认，不自动完成。仅含已取消任务或没有任务的里程碑不能完成。
+- 不硬删除有任务关联的里程碑，用 `Cancelled` 保留历史。
+- 进度 = 直接关联且非 `Cancelled` 的 Mission 中 `Done` 数量 / 有效总数；没有有效任务时为 `null`。`overdue` = 已过目标日期且状态为 `Planned` / `Active`。
+- 父子任务分别关联时按不同任务计数；这是任务数比例，不表示工时。
+- 已 `Completed` 里程碑中的任务要重新打开时，需先把里程碑恢复为 `Active`；`Cancelled` 同理。
+
+**8.5 独立验收者与成果历史（F3）**
+
+- `Mission.reviewer_id`：新建任务默认发起者，旧任务迁移时回填发起者；必须是团队有效成员。发起者或管理员可在 `Open` / `InProgress` 修改（记录 `reviewer_changed`）；`Submitted` 状态可通过专用「转交验收」动作修改并记录原因（`review_transferred`），但不得用普通 `PATCH` 修改。
+- 验收通过 / 退回只能由当前验收者或管理员执行；发起者只有在同时是验收者或管理员时才能验收。默认允许 `assignee == reviewer`。
+- 验收者失效或离开团队（`is_active=False`）时，任务显示 `reviewer_missing`，需重新指定；新增提交必须具有有效验收者（否则 `reviewer_missing`）。
+- `MissionSubmission` 记录每一轮成果，永不覆盖旧记录：
+
+| 字段 | 含义 |
+|---|---|
+| `mission_id` / `submitted_by_id` / `submitted_at` | 所属任务、提交者与时间 |
+| `description` | 本轮成果与验证说明（Markdown） |
+| `verification_description` | 人工验证步骤与结果；无源码/构建引用时必填 |
+| `is_legacy` | 是否由旧数据导入，默认 false，客户端不可设置 |
+| `reviewer_snapshot_id` | 提交时的验收者，仅作历史 |
+| `outcome` | `Pending` / `Accepted` / `Rejected` |
+| `reviewed_by_id` / `reviewed_at` | 实际验收者与时间（可空） |
+| `review_comment` | 验收意见；退回时必填 |
+| `verified_build_reference_id` | 验收通过时选定的构建引用 |
+
+- 提交者只能是当前认领者；提交后描述与证据冻结，退回后重新提交产生新记录。
+- 验收请求必须针对**当前 Pending 提交**（携带 `submission_id`），过期或不属于当前提交返回 `409`（`submission_conflict`）。
+- `result` 字段作为最新成果描述的兼容展示；客户端不能通过改 `result` 绕过提交动作。
+
+**8.6 重新打开（F3）**
+
+- 仅限 `Done`；`Cancelled` 不通过 reopen 恢复。发起者、当前验收者或管理员可执行，必须提供非空原因。
+- 原认领者仍是有效成员时恢复 `InProgress`；失效时清空认领者恢复 `Open`。
+- 保留全部历史提交与验收；清空 `current_submission_id`，后续提交创建新记录；保留 `reviewer`（失效时提示重新指定）。
+- 祖先任务已 `Done` 时必须先从上到下逐级重开祖先（`ancestor_done`）；目标里程碑已关闭时必须先恢复里程碑（`milestone_closed`）。
+- 不自动重开依赖它的其他任务，按 8.2 展示阻塞或复核提示。失败时不部分改变任务或历史。
+
+**8.7 提交与游戏构建引用（F4）**
+
+`MissionSubmission` 下挂不可变的两类证据，一轮成果可引用多条：
+
+| 对象 | 字段 |
+|---|---|
+| `SubmissionSourceReference` | id、submission_id、provider（Git / Perforce / UVCS / Other）、repository、revision、browse_url（可空） |
+| `SubmissionBuildReference` | id、submission_id、provider、build_id、platform、source_revision（可空）、artifact_url（可空）、status（Unknown / Pending / Succeeded / Failed）、verification_note（可空） |
+
+规则：
+
+- `repository` 与 `revision` 不能为空；`build_id` 与 `platform` 必填。
+- `submit` 在同一事务内保存证据并进入 `Submitted`。证据必须满足之一：至少一个源码引用、至少一个构建引用、或清楚的人工验证说明。
+- 验收通过时，若附带构建，至少一个构建必须为 `Succeeded`，且验收者须选择所验证的构建（`verified_build_reference_id`），该构建必须属于当前提交；只有失败/等待/未知构建时禁止通过。无构建时该字段为空，验收意见须说明人工验证方式。
+- 构建 `status` 表示构建结果，不代表 QA 验收；构建成功不会自动把任务设为 `Done`。
+- URL 仅允许 `http(s)`，拒绝带访问凭据的链接；后端不自动访问用户填写的 URL。
+
+**8.8 事务、并发与版本**
+
+- 所有写接口强制要求 `expected_version`（创建对象除外，由服务端初始化版本）：现有动作接口 `claim` / `release` / `submit` / `review` / `transfer-review` / `reopen` / `cancel` / `PATCH`，以及依赖增删、里程碑编辑与流转都校验版本；过期返回 `409`（`version_conflict`）。**这是相对旧接口的破坏性变更**，旧客户端必须携带 `expected_version`；前端将随后续迭代同步。评论没有版本字段，沿用作者权限校验。
+- 图结构变更与可能改变完成约束的状态操作统一使用固定键的 PostgreSQL 事务级 advisory lock（单团队一把团队级锁），在读取约束与写入之前获取；只读查询不取锁，锁内不做外部网络请求。提交、验收、依赖、里程碑完成、改里程碑与重新打开的操作相互串行，避免「检查后集合发生变化」。
+- Mission 字段、依赖、提交、验收、转交、重新打开均递增所属 Mission 的 `version`；里程碑字段与状态变更递增其 `version`。版本检查与递增同业务写入原子执行。
+
+**8.9 迁移与兼容**
+
+- 迁移保留原 Mission ID、关系、状态与成果文本；新增 `type=Task`、`priority=P2`、`reviewer=creator`、`milestone=null`。
+- 旧的 `Submitted` / `Done` 成果用 `is_legacy=True` 的导入记录保存；不虚构源码/构建证据与验收人、验收时间。
+- 历史已完成任务不因缺少新证据被自动重新打开。
+
+**8.10 前端（本轮未完成）**
+
+四组功能的后端 API、迁移与测试已完成。前端筛选、详情（任务树 / 前置 / 下游 / 未完成子任务分开展示）、提交与评审表单、里程碑页面以及 `expected_version` 适配属于下一轮迭代，当前 SPA 尚未适配新的强制版本与验收请求格式。

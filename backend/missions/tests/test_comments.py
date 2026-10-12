@@ -6,6 +6,8 @@ from rest_framework.test import APIClient
 from accounts.models import User
 from missions import services
 
+from . import utils
+
 
 class CommentApiTests(TestCase):
     def setUp(self):
@@ -53,12 +55,12 @@ class CommentApiTests(TestCase):
         self.assertFalse(row["can_edit"])
 
     def test_comments_allowed_in_done_and_cancelled_status(self):
-        services.claim_mission(actor=self.bob, mission_id=self.mission.id)
-        services.submit_mission(actor=self.bob, mission_id=self.mission.id, result="r")
-        services.review_mission(actor=self.alice, mission_id=self.mission.id, approve=True)
+        utils.claim(self.bob, self.mission)
+        utils.submit(self.bob, self.mission)
+        utils.review(self.alice, self.mission, decision="accept")
 
         cancelled = services.create_mission(actor=self.alice, title="c")
-        services.cancel_mission(actor=self.alice, mission_id=cancelled.id)
+        utils.cancel(self.alice, cancelled)
 
         self.client.force_authenticate(self.bob)
         self.assertEqual(

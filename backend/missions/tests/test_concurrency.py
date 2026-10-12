@@ -6,7 +6,7 @@ from django.test import TransactionTestCase
 from accounts.models import User
 from missions import services
 from missions.exceptions import ConflictError
-from missions.models import MissionEvent, MissionStatus
+from missions.models import Mission, MissionEvent, MissionStatus
 
 
 class ClaimConcurrencyTests(TransactionTestCase):
@@ -29,7 +29,10 @@ class ClaimConcurrencyTests(TransactionTestCase):
         def worker(user):
             barrier.wait()
             try:
-                services.claim_mission(actor=user, mission_id=mission.id)
+                version = Mission.objects.values_list("version", flat=True).get(pk=mission.id)
+                services.claim_mission(
+                    actor=user, mission_id=mission.id, expected_version=version
+                )
                 outcome = "ok"
             except ConflictError:
                 outcome = "conflict"

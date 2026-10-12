@@ -6,6 +6,8 @@ from common.exceptions import ValidationFailure
 from library.models import LibraryFile
 from missions import services
 
+from . import utils
+
 
 def make_file(owner) -> LibraryFile:
     return LibraryFile.objects.create(
@@ -56,20 +58,22 @@ class MarkdownReferenceServiceTests(TestCase):
             services.update_mission(
                 actor=self.alice,
                 mission_id=mission.id,
-                version=mission.version,
+                expected_version=mission.version,
                 changes={"content": "[x](/tmp/a.png)"},
             )
 
     def test_submit_mission_validates_result(self):
         mission = services.create_mission(actor=self.alice, title="t")
-        services.claim_mission(actor=self.bob, mission_id=mission.id)
+        utils.claim(self.bob, mission)
         with self.assertRaises(ValidationFailure) as ctx:
             services.submit_mission(
                 actor=self.bob,
                 mission_id=mission.id,
-                result=f"![](/api/library/files/{self.alice_file.id}/)",
+                description=f"![](/api/library/files/{self.alice_file.id}/)",
+                verification_description="人工验证",
+                expected_version=utils.version_of(mission),
             )
-        self.assertIn("result", ctx.exception.field_errors)
+        self.assertIn("description", ctx.exception.field_errors)
 
     def test_comment_uses_the_authors_own_library(self):
         mission = services.create_mission(actor=self.alice, title="t")
