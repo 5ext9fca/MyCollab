@@ -1,4 +1,5 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { getWorkspaceGraph, getWorkspaceOverview } from '../api/workspace'
@@ -58,6 +59,15 @@ const stubs = {
   'el-empty': { template: '<div />' },
   'el-radio-group': { template: '<div><slot /></div>' },
   'el-radio-button': { template: '<div><slot /></div>' },
+  'el-input': { template: '<input />' },
+  'el-select': { template: '<div><slot /></div>' },
+  'el-option': { template: '<div><slot /></div>' },
+  'el-tooltip': { template: '<div><slot /></div>' },
+  'el-checkbox': { template: '<label><slot /></label>' },
+  'el-checkbox-button': { template: '<button><slot /></button>' },
+  'el-alert': { template: '<div><slot /></div>' },
+  'el-table': { template: '<div><slot /></div>' },
+  'el-table-column': { template: '<div />' },
 }
 
 describe('workspace api', () => {
@@ -91,6 +101,76 @@ describe('workspace api', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(
       '/api/workspace/graph/?scope=mission&focus=m1&expand=all&direction=downstream&include_parent=true',
     )
+  })
+})
+
+describe('WorkspaceView', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('renders the page summary from the overview API', async () => {
+    const overviewPayload = {
+      generated_at: '2026-10-14T10:00:00Z',
+      snapshot_id: 's1',
+      filters_active: false,
+      column_limit: 20,
+      columns: ['Open', 'Done'],
+      column_labels: { Open: '待认领', Done: '已完成' },
+      summary: {
+        matched_total: 5,
+        effective_total: 4,
+        done: 2,
+        blocked: 1,
+        submitted: 1,
+        requires_revalidation: 1,
+      },
+      groups: [],
+    }
+    const fetchMock = vi.fn((input: unknown) => {
+      const target = String(input)
+      if (target.startsWith('/api/members')) return Promise.resolve(jsonResponse([]))
+      if (target.startsWith('/api/milestones')) {
+        return Promise.resolve(
+          jsonResponse({ count: 0, next: null, previous: null, results: [] }),
+        )
+      }
+      if (target.startsWith('/api/workspace/overview')) {
+        return Promise.resolve(jsonResponse(overviewPayload))
+      }
+      return Promise.resolve(jsonResponse({}))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: { template: '<div />' } },
+        { path: '/workspace', name: 'workspace', component: { template: '<div />' } },
+        { path: '/missions/new', name: 'mission-create', component: { template: '<div />' } },
+        { path: '/missions/:id', name: 'mission-detail', component: { template: '<div />' } },
+      ],
+    })
+    router.push('/workspace')
+    await router.isReady()
+
+    const WorkspaceView = (await import('../views/WorkspaceView.vue')).default
+    const wrapper = mount(WorkspaceView, {
+      global: {
+        plugins: [router],
+        stubs: {
+          ...stubs,
+          WorkspaceMilestoneBoard: true,
+          DependencyGraph: true,
+          MissionDetailDrawer: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('任务总数 5')
+    expect(text).toContain('有效完成 2 / 4')
+    expect(text).toContain('需复核 1')
+    expect(text).toContain('上次刷新')
   })
 })
 
