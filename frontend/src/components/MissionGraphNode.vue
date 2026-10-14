@@ -28,6 +28,7 @@ const emit = defineEmits<{
       :node="data.node"
       :selected="data.selected"
       :dimmed="data.dimmed"
+      :milestone-color="data.color"
       compact
       @select="emit('select', $event)"
       @focus="emit('focus', $event)"

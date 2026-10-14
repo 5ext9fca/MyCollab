@@ -10,6 +10,7 @@ import { MarkerType } from '@vue-flow/core'
 import type { Edge, Node, XYPosition } from '@vue-flow/core'
 
 import type { WorkspaceEdge, WorkspaceNode, WorkspaceParentEdge } from '../api/types'
+import { milestoneColor } from './milestoneColor'
 
 export const MISSION_NODE_TYPE = 'mission'
 export const NODE_WIDTH = 240
@@ -19,6 +20,8 @@ export interface MissionNodeData {
   node: WorkspaceNode
   selected: boolean
   dimmed: boolean
+  /** Stable swatch derived from the mission's milestone id. */
+  color: string
 }
 
 export interface MissionEdgeData {
@@ -26,7 +29,6 @@ export interface MissionEdgeData {
   highlighted: boolean
   dimmed: boolean
   satisfied: boolean
-  crossMilestone: boolean
 }
 
 export interface ParentEdgeData {
@@ -53,6 +55,7 @@ export function buildMissionNodes(
       node,
       selected: node.id === selectedId,
       dimmed: emphasis ? !emphasis.has(node.id) : false,
+      color: milestoneColor(node.milestone_id),
     },
   }))
 }
@@ -75,13 +78,11 @@ export function buildDependencyEdges(
       type: 'smoothstep',
       markerEnd: MarkerType.ArrowClosed,
       class: classes.join(' '),
-      label: edge.cross_milestone ? '跨里程碑' : undefined,
       data: {
         edge,
         highlighted,
         dimmed: !!selectedId && !highlighted,
         satisfied: edge.is_satisfied,
-        crossMilestone: edge.cross_milestone,
       },
     }
   })

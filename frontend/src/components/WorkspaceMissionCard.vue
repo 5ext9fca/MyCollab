@@ -13,8 +13,10 @@ const props = withDefaults(
     dimmed?: boolean
     /** Graph nodes rendered at a reduced size show only the core fields. */
     compact?: boolean
+    /** Milestone swatch; empty keeps the neutral board card look. */
+    milestoneColor?: string
   }>(),
-  { selected: false, dimmed: false, compact: false },
+  { selected: false, dimmed: false, compact: false, milestoneColor: '' },
 )
 
 const emit = defineEmits<{
@@ -23,6 +25,9 @@ const emit = defineEmits<{
 }>()
 
 const shortId = (id: string) => id.slice(0, 8)
+
+/** Tooltip for the milestone swatch, so colour is never the only cue. */
+const milestoneTitle = computed(() => `所属里程碑：${props.node.milestone_name ?? '未归属里程碑'}`)
 
 /** Unfinished prerequisites and unfinished children never collapse into one. */
 const unfinishedPrerequisites = computed(() => props.node.blocking_count)
@@ -52,7 +57,9 @@ function onKey(event: KeyboardEvent) {
       'ws-card--context': node.is_context,
       'ws-card--cancelled': node.status === 'Cancelled',
       'ws-card--compact': compact,
+      'ws-card--milestoned': !!milestoneColor,
     }"
+    :style="milestoneColor ? { '--ws-milestone': milestoneColor } : undefined"
     role="button"
     tabindex="0"
     :aria-pressed="selected"
@@ -62,7 +69,15 @@ function onKey(event: KeyboardEvent) {
     @keydown="onKey"
   >
     <div class="ws-card__head">
-      <span class="ws-card__id">#{{ shortId(node.id) }}</span>
+      <span class="ws-card__head-left">
+        <span
+          v-if="milestoneColor"
+          class="ws-card__swatch"
+          :title="milestoneTitle"
+          :aria-label="milestoneTitle"
+        />
+        <span class="ws-card__id">#{{ shortId(node.id) }}</span>
+      </span>
       <StatusTag :status="node.status" />
     </div>
 
@@ -147,11 +162,28 @@ function onKey(event: KeyboardEvent) {
 .ws-card--compact {
   min-height: 0;
 }
+.ws-card--milestoned {
+  border-left: 4px solid var(--ws-milestone);
+  background: color-mix(in srgb, var(--ws-milestone) 7%, #fff);
+}
 .ws-card__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+}
+.ws-card__head-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.ws-card__swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--ws-milestone);
+  flex: none;
 }
 .ws-card__id {
   color: #94a3b8;

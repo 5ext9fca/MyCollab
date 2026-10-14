@@ -58,6 +58,10 @@ import {
   NODE_WIDTH,
 } from '../workspace/dto'
 import { collectRelated, directRelations } from '../workspace/dependencyTraversal'
+import {
+  milestoneColor,
+  UNASSIGNED_MILESTONE_COLOR,
+} from '../workspace/milestoneColor'
 
 function jsonResponse(data: unknown): Response {
   return new Response(JSON.stringify(data), {
@@ -242,7 +246,9 @@ describe('DTO adapter', () => {
     expect(flowEdges[0].markerEnd).toBe('arrowclosed')
     expect(flowEdges[0].class).toContain('ws-edge--satisfied')
     expect(flowEdges[1].class).toContain('ws-edge--pending')
-    expect(flowEdges[1].label).toBe('跨里程碑')
+    // Cross-milestone edges are no longer labelled; the milestone is shown by
+    // the node colour instead.
+    expect(flowEdges[1].label).toBeUndefined()
   })
 
   it('maps nodes with selected/dimmed flags and keeps isolated nodes', () => {
@@ -261,6 +267,17 @@ describe('DTO adapter', () => {
     expect(flowNodes[0].data?.selected).toBe(true)
     expect(flowNodes[0].data?.dimmed).toBe(false)
     expect(flowNodes[1].data?.dimmed).toBe(true)
+  })
+
+  it('derives a stable milestone colour per node', () => {
+    const first = buildMissionNodes([node('a', { milestone_id: 'm1' })], new Map(), null, null)
+    const second = buildMissionNodes([node('b', { milestone_id: 'm1' })], new Map(), null, null)
+    const other = buildMissionNodes([node('c', { milestone_id: 'm2' })], new Map(), null, null)
+    const none = buildMissionNodes([node('d')], new Map(), null, null)
+    expect(first[0].data?.color).toBe(milestoneColor('m1'))
+    expect(second[0].data?.color).toBe(first[0].data?.color)
+    expect(none[0].data?.color).toBe(UNASSIGNED_MILESTONE_COLOR)
+    expect(other[0].data?.color).not.toBe(first[0].data?.color)
   })
 })
 
@@ -282,6 +299,23 @@ describe('WorkspaceMissionCard', () => {
     })
     await wrapper.find('.ws-card').trigger('keydown', { key: 'Enter' })
     expect(wrapper.emitted('select')?.[0]).toEqual(['a'])
+  })
+
+  it('applies the milestone colour only when one is provided', () => {
+    const plain = mount(WorkspaceMissionCard, {
+      props: { node: node('a') },
+      global: { stubs },
+    })
+    expect(plain.find('.ws-card').classes()).not.toContain('ws-card--milestoned')
+    expect(plain.find('.ws-card__swatch').exists()).toBe(false)
+
+    const colored = mount(WorkspaceMissionCard, {
+      props: { node: node('a', { milestone_name: '基础移动' }), milestoneColor: '#2563eb', compact: true },
+      global: { stubs },
+    })
+    expect(colored.find('.ws-card').classes()).toContain('ws-card--milestoned')
+    expect(colored.find('.ws-card').attributes('style')).toContain('--ws-milestone: #2563eb')
+    expect(colored.find('.ws-card__swatch').attributes('title')).toContain('基础移动')
   })
 })
 

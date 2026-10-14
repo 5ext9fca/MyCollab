@@ -24,6 +24,7 @@ import type { User, WorkspaceEdge, WorkspaceGraph, WorkspaceOverview } from '../
 import type { QuickKey, WorkspaceFilters } from '../workspace/filters'
 import { emptyFilters, readParam } from '../workspace/filters'
 import { collectRelated, relatedHighlight } from '../workspace/dependencyTraversal'
+import { milestoneColor, milestoneLabel } from '../workspace/milestoneColor'
 import DependencyGraph from '../components/DependencyGraph.vue'
 import MilestoneBoard from '../components/MilestoneBoard.vue'
 import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
@@ -104,6 +105,31 @@ const selectedRelations = computed(() => {
   const titles = (ids: string[]) =>
     ids.map((id) => byId.get(id)?.title ?? id.slice(0, 8)).join('、') || '无'
   return { upstream: titles(upstream), downstream: titles(downstream) }
+})
+
+/** Distinct milestones in the loaded graph, for the card-colour legend. */
+const milestoneLegend = computed(() => {
+  const entries = new Map<string, { id: string; name: string; color: string; count: number }>()
+  for (const node of graphNodes.value) {
+    const key = node.milestone_id ?? ''
+    const entry = entries.get(key)
+    if (entry) {
+      entry.count += 1
+    } else {
+      entries.set(key, {
+        id: key,
+        name: milestoneLabel(node.milestone_name),
+        color: milestoneColor(node.milestone_id),
+        count: 1,
+      })
+    }
+  }
+  return [...entries.values()].sort((a, b) => {
+    if (a.id === b.id) return 0
+    if (a.id === '') return 1
+    if (b.id === '') return -1
+    return a.name.localeCompare(b.name, 'zh')
+  })
 })
 
 // --- requests ------------------------------------------------------------- //
@@ -579,6 +605,18 @@ onBeforeUnmount(() => {
             </el-tag>
             <el-tag v-else type="warning" size="small">关系不完整</el-tag>
           </div>
+
+          <div v-if="milestoneLegend.length" class="workspace__milestone-legend">
+            <span class="meta">卡片颜色（所属里程碑）：</span>
+            <span
+              v-for="item in milestoneLegend"
+              :key="item.id || 'none'"
+              class="workspace__milestone-item"
+            >
+              <span class="workspace__milestone-swatch" :style="{ background: item.color }" />
+              {{ item.name }}（{{ item.count }}）
+            </span>
+          </div>
         </template>
       </template>
     </div>
@@ -591,7 +629,7 @@ onBeforeUnmount(() => {
       <el-tag size="small" type="success">已完成</el-tag>
       <el-tag size="small" type="danger">已取消</el-tag>
       <span class="meta">
-        · 依赖箭头方向：前置 → 依赖它的任务；实线灰=已满足，橙色=等待；虚线=父子拆分关系
+        · 依赖箭头方向：前置 → 依赖它的任务；实线灰=已满足，橙色=等待；虚线=父子拆分关系；卡片颜色=所属里程碑
       </span>
       <span class="meta">· 上次刷新 {{ formatTime(lastRefreshed) }}</span>
     </div>
@@ -659,6 +697,26 @@ onBeforeUnmount(() => {
   gap: 12px;
   margin-top: 8px;
   flex-wrap: wrap;
+}
+.workspace__milestone-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+.workspace__milestone-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.workspace__milestone-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
 }
 .workspace__legend {
   display: flex;
