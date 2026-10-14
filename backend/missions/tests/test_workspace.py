@@ -269,8 +269,43 @@ class GraphTests(WorkspaceScenarioMixin, TestCase):
 
     def test_meta_reports_limits_and_snapshot(self):
         self._sample()
-        meta = self.client.get("/api/workspace/graph/").json()["meta"]
+        body = self.client.get("/api/workspace/graph/").json()
+        meta = body["meta"]
         self.assertEqual(meta["node_limit"], 200)
         self.assertEqual(meta["edge_limit"], 1000)
         self.assertFalse(meta["nodes_truncated"])
         self.assertFalse(meta["edges_truncated"])
+        self.assertFalse(meta["truncated"])
+        self.assertTrue(meta["relationships_complete"])
+        self.assertEqual(meta["truncation_reasons"], [])
+        self.assertTrue(body["revision"])
+
+    def test_revision_is_stable_and_reflects_writes(self):
+        data = self._sample()
+        first = self.client.get("/api/workspace/overview/").json()["revision"]
+        second = self.client.get("/api/workspace/overview/").json()["revision"]
+        # Same rows -> same revision; a random per-request id could not do this.
+        self.assertEqual(first, second)
+        utils.claim(self.bob, data["c"])
+        third = self.client.get("/api/workspace/overview/").json()["revision"]
+        self.assertNotEqual(first, third)
+
+    def test_graph_revision_changes_with_dependencies(self):
+        data = self._sample()
+        first = self.client.get("/api/workspace/graph/").json()["revision"]
+        extra = self._mission(title="新增下游")
+        services.add_dependency(
+            actor=self.alice,
+            mission_id=extra.id,
+            prerequisite_id=data["a"].id,
+            expected_version=Mission.objects.get(pk=extra.id).version,
+        )
+        second = self.client.get("/api/workspace/graph/").json()["revision"]
+        self.assertNotEqual(first, second)
+
+    def test_group_declares_count_scopes(self):
+        self._sample()
+        body = self.client.get("/api/workspace/overview/").json()
+        group = self._group(body, "基础移动")
+        self.assertEqual(group["full_counts_scope"], "milestone_all_visible")
+        self.assertEqual(group["matched_counts_scope"], "active_filters")

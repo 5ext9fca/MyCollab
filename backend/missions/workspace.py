@@ -15,7 +15,7 @@ complete dependency graph (see NEW_FUNCTION.md section 10.9).
 
 from __future__ import annotations
 
-import uuid
+import hashlib
 
 from django.utils import timezone
 from rest_framework.response import Response
@@ -193,6 +193,30 @@ def _counts(missions) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Read snapshot consistency
+# --------------------------------------------------------------------------- #
+def _mission_signature(mission: Mission) -> str:
+    """Stable per-mission fingerprint: any write bumps ``version``/``updated_at``."""
+    return f"{mission.id}:{mission.version}:{mission.status}:{mission.updated_at.isoformat()}"
+
+
+def _revision(parts) -> str:
+    """Deterministic revision id for the read snapshot.
+
+    A fresh random ``snapshot_id`` per request cannot tell whether data changed
+    (NEW_FUNCTION.md 11), so callers get a hash that only changes when the
+    underlying rows do. Clients may compare it before merging pages.
+    """
+    digest = hashlib.sha1("\n".join(sorted(parts)).encode("utf-8"))
+    return digest.hexdigest()[:16]
+
+
+def _missions_revision(missions) -> str:
+    return _revision(_mission_signature(mission) for mission in missions)
+
+
+
+# --------------------------------------------------------------------------- #
 # Overview
 # --------------------------------------------------------------------------- #
 class WorkspaceOverviewView(APIView):
@@ -273,7 +297,7 @@ class WorkspaceOverviewView(APIView):
         return Response(
             {
                 "generated_at": _iso(timezone.now()),
-                "snapshot_id": str(uuid.uuid4()),
+                "revision": _missions_revision(all_missions),
                 "filters_active": _filters_active(params),
                 "column_limit": column_limit,
                 "columns": STATUS_COLUMNS,
@@ -306,7 +330,9 @@ class WorkspaceOverviewView(APIView):
             "milestone": _milestone_brief(milestone),
             "is_unassigned": milestone is None,
             "full_counts": _counts(group_missions),
+            "full_counts_scope": "milestone_all_visible",
             "matched_counts": matched_counts,
+            "matched_counts_scope": "active_filters",
             "matched_total": sum(matched_counts.values()),
             "loaded": loaded,
             "columns": columns,
@@ -375,6 +401,8 @@ class WorkspaceGraphView(APIView):
 
         nodes: dict = {}
         context_ids: set = set()
+        nodes_truncated = False
+        context_truncated = False
 
         if scope == "mission" and focus is not None:
             nodes[focus.id] = focus
@@ -388,12 +416,17 @@ class WorkspaceGraphView(APIView):
             max_depth = depth if expand == "all" else 1
             frontier = {focus.id}
             for _ in range(max_depth):
-                if not frontier or len(nodes) >= GRAPH_NODE_LIMIT:
+                if not frontier:
                     break
                 neighbor_ids = _neighbor_ids(frontier, direction) - set(nodes.keys())
-                budget = GRAPH_NODE_LIMIT - len(nodes)
-                if budget <= 0 or not neighbor_ids:
+                if not neighbor_ids:
                     break
+                budget = GRAPH_NODE_LIMIT - len(nodes)
+                if budget <= 0:
+                    nodes_truncated = True
+                    break
+                if len(neighbor_ids) > budget:
+                    nodes_truncated = True
                 fetched = _fetch(list(neighbor_ids)[:budget])
                 for mid, mission in fetched.items():
                     nodes[mid] = mission
@@ -403,10 +436,16 @@ class WorkspaceGraphView(APIView):
 
         # Default one-hop context so a filter can never make a mission look
         # dependency-free when it is not.
-        if include_context and scope != "mission" and len(nodes) < GRAPH_NODE_LIMIT:
+        if include_context and scope != "mission":
             neighbor_ids = _neighbor_ids(set(nodes.keys()), "both") - set(nodes.keys())
-            budget = min(GRAPH_CONTEXT_LIMIT, GRAPH_NODE_LIMIT - len(nodes))
-            fetched = _fetch(sorted(neighbor_ids)[:budget]) if budget > 0 else {}
+            node_budget = GRAPH_NODE_LIMIT - len(nodes)
+            context_budget = min(GRAPH_CONTEXT_LIMIT, max(0, node_budget))
+            if neighbor_ids and len(neighbor_ids) > context_budget:
+                if context_budget == GRAPH_CONTEXT_LIMIT:
+                    context_truncated = True
+                else:
+                    nodes_truncated = True
+            fetched = _fetch(sorted(neighbor_ids)[:context_budget]) if context_budget > 0 else {}
             for mid, mission in fetched.items():
                 nodes[mid] = mission
                 if mid not in matched_ids:
@@ -459,10 +498,32 @@ class WorkspaceGraphView(APIView):
             for mission in sorted(missions, key=_board_sort_key)
         ]
 
+        truncation_reasons = []
+        if nodes_truncated:
+            truncation_reasons.append("node_limit")
+        if context_truncated:
+            truncation_reasons.append("context_limit")
+        if edges_truncated:
+            truncation_reasons.append("edge_limit")
+        truncated = bool(truncation_reasons)
+
+        revision = _revision(
+            [
+                *(_mission_signature(mission) for mission in missions),
+                *(
+                    f"e:{edge['id']}:{edge['prerequisite_id']}:{edge['mission_id']}"
+                    for edge in edges
+                ),
+                *(
+                    f"p:{edge['parent_id']}:{edge['child_id']}" for edge in parent_edges
+                ),
+            ]
+        )
+
         return Response(
             {
                 "generated_at": _iso(timezone.now()),
-                "snapshot_id": str(uuid.uuid4()),
+                "revision": revision,
                 "filters_active": _filters_active(params),
                 "nodes": node_payload,
                 "edges": edges,
@@ -482,8 +543,12 @@ class WorkspaceGraphView(APIView):
                     "node_limit": GRAPH_NODE_LIMIT,
                     "edge_limit": GRAPH_EDGE_LIMIT,
                     "context_limit": GRAPH_CONTEXT_LIMIT,
-                    "nodes_truncated": len(nodes) >= GRAPH_NODE_LIMIT,
+                    "nodes_truncated": nodes_truncated,
+                    "context_truncated": context_truncated,
                     "edges_truncated": edges_truncated,
+                    "truncated": truncated,
+                    "truncation_reasons": truncation_reasons,
+                    "relationships_complete": not truncated,
                 },
             }
         )
