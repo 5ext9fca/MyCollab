@@ -48,6 +48,7 @@ MyCollab 是一个**单团队 Mission 协作系统**：发布 Mission、认领�
 按 `README.md` 的顺序执行：后端 `makemigrations --check --dry-run` → `check` → `test`；前端 `type-check` → `test` → `build`。不得声称未运行的测试已通过；每次交付说明改动、验证结果与未完成事项。
 
 ## 文档同步（强制）
+- 编写或修改 `NEW_FUNCTION.md` 时，先核对仓库当前实现，并在文件中一并写入完成该功能所需的**项目当前结构信息**：相关目录与文件职责、已有数据模型与接口、前后端数据流、关键业务约束及现有测试入口。注明哪些是已实现的事实、哪些是待实现的需求；信息只需覆盖本次功能，路径和行为必须与当前代码一致，不能只引用 `PROJECT_STRUCTURE.md` 或 `TECH_STACK.md` 让编码 Agent 自行查找。
 - 每实现并通过验证一个新功能，必须把它的**数据模型、接口、权限、页面与业务规则**并入 `PROJECT_STRUCTURE.md`，与代码一起交付；不要只改代码而不同步该文档。
 - 若改动涉及技术栈或技术约束（`TECH_STACK.md` 中的 MUST/SHOULD），同步更新 `TECH_STACK.md`，并保证文档描述与实际代码一致。
 
