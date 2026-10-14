@@ -271,6 +271,58 @@ def derived_state(mission: Mission) -> dict:
     }
 
 
+def derived_state_bulk(missions: Iterable[Mission]) -> dict:
+    """Batch version of :func:`derived_state` keyed by mission id.
+
+    The workspace endpoints render whole boards and graphs; querying each node
+    separately would be a glaring N+1. Two aggregate queries cover every node.
+    """
+    missions = list(missions)
+    ids = [mission.id for mission in missions]
+    if not ids:
+        return {}
+
+    blocking: dict = {}
+    for mission_id, prerequisite_id, status in MissionDependency.objects.filter(
+        mission_id__in=ids
+    ).values_list("mission_id", "prerequisite_id", "prerequisite__status"):
+        if status != MissionStatus.DONE:
+            blocking.setdefault(mission_id, []).append(str(prerequisite_id))
+
+    unfinished_children: dict = {}
+    for parent_id, child_id in (
+        Mission.objects.filter(parent_id__in=ids)
+        .exclude(status__in=[MissionStatus.DONE, MissionStatus.CANCELLED])
+        .values_list("parent_id", "id")
+    ):
+        unfinished_children.setdefault(parent_id, []).append(str(child_id))
+
+    result: dict = {}
+    for mission in missions:
+        blocking_ids = blocking.get(mission.id, [])
+        has_unresolved = bool(blocking_ids)
+        is_blocked = has_unresolved and mission.status in (
+            MissionStatus.OPEN,
+            MissionStatus.IN_PROGRESS,
+            MissionStatus.SUBMITTED,
+        )
+        reviewer = mission.reviewer
+        result[mission.id] = {
+            "has_unresolved_prerequisites": has_unresolved,
+            "is_blocked": is_blocked,
+            "blocking_mission_ids": blocking_ids,
+            "unfinished_child_ids": unfinished_children.get(mission.id, []),
+            "needs_dependency_review": mission.status == MissionStatus.DONE and has_unresolved,
+            "reviewer_missing": reviewer is None or not reviewer.is_active,
+            "milestone_closed": bool(
+                mission.milestone_id
+                and mission.milestone.status
+                in (MilestoneStatus.COMPLETED, MilestoneStatus.CANCELLED)
+            ),
+        }
+    return result
+
+
 def _assert_prerequisites_done(mission: Mission) -> None:
     if unfinished_prerequisites(mission).exists():
         raise ConflictError(

@@ -1,6 +1,3 @@
-import uuid
-
-from django.db.models import Exists, OuterRef, Q
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.generics import ListAPIView
@@ -8,6 +5,7 @@ from rest_framework.response import Response
 
 from . import services
 from .exceptions import ValidationFailure
+from .filters import apply_mission_filters
 from .models import (
     Comment,
     Milestone,
@@ -15,7 +13,6 @@ from .models import (
     Mission,
     MissionDependency,
     MissionPriority,
-    MissionStatus,
     MissionType,
     Tag,
 )
@@ -46,22 +43,6 @@ from .serializers import (
     TransferReviewSerializer,
 )
 
-ORDERING_FIELDS = {"created_at", "updated_at", "title", "status", "priority", "type"}
-
-
-def _parse_uuid(value: str, field: str) -> uuid.UUID:
-    try:
-        return uuid.UUID(str(value))
-    except (ValueError, TypeError, AttributeError):
-        raise ValidationFailure(
-            f"无效的 {field} 参数。", field_errors={field: ["不是合法的 UUID。"]}
-        )
-
-
-def _parse_bool(value: str) -> bool:
-    return str(value).strip().lower() in {"1", "true", "yes", "on"}
-
-
 def _require_version(value, field: str = "expected_version") -> int:
     if value is None or value == "":
         raise ValidationFailure(f"缺少 {field}。", field_errors={field: ["必填。"]})
@@ -86,91 +67,7 @@ class MissionViewSet(
         qs = Mission.objects.select_related(
             "creator", "assignee", "reviewer", "parent", "milestone"
         ).prefetch_related("tags")
-        params = self.request.query_params
-
-        status = params.get("status")
-        if status:
-            if status not in MissionStatus.values:
-                raise ValidationFailure(
-                    "无效的 status 参数。", field_errors={"status": ["未知状态。"]}
-                )
-            qs = qs.filter(status=status)
-
-        type_filter = params.get("type")
-        if type_filter:
-            if type_filter not in MissionType.values:
-                raise ValidationFailure("无效的 type 参数。", field_errors={"type": ["未知类型。"]})
-            qs = qs.filter(type=type_filter)
-
-        priority = params.get("priority")
-        if priority:
-            if priority not in MissionPriority.values:
-                raise ValidationFailure(
-                    "无效的 priority 参数。", field_errors={"priority": ["未知优先级。"]}
-                )
-            qs = qs.filter(priority=priority)
-
-        milestone = params.get("milestone")
-        if milestone:
-            if milestone in {"none", "null"}:
-                qs = qs.filter(milestone__isnull=True)
-            else:
-                qs = qs.filter(milestone_id=_parse_uuid(milestone, "milestone"))
-
-        blocked = params.get("blocked")
-        if blocked is not None and blocked != "":
-            unresolved = MissionDependencySubquery().unresolved_for_outer()
-            qs = qs.annotate(_has_unresolved=Exists(unresolved))
-            open_states = Q(status__in=[MissionStatus.OPEN, MissionStatus.IN_PROGRESS, MissionStatus.SUBMITTED])
-            if _parse_bool(blocked):
-                qs = qs.filter(open_states, _has_unresolved=True)
-            else:
-                qs = qs.filter(~open_states | Q(_has_unresolved=False))
-
-        # Multi-tag filter: repeat the parameter (?tag=a&tag=b) or use commas
-        # (?tag=a,b). Multiple tags are ANDed, so a mission must carry every
-        # requested tag. Each name gets its own filter() to force a separate
-        # join on the M2M table; distinct() below removes the duplicated rows.
-        tag_names = [
-            name.strip()
-            for raw in params.getlist("tag")
-            for name in raw.split(",")
-        ]
-        for name in dict.fromkeys(name for name in tag_names if name):
-            qs = qs.filter(tags__name=name)
-
-        creator = params.get("creator")
-        if creator == "me":
-            qs = qs.filter(creator=self.request.user)
-        elif creator == "none":
-            qs = qs.filter(creator__isnull=True)
-        elif creator:
-            qs = qs.filter(creator_id=_parse_uuid(creator, "creator"))
-
-        assignee = params.get("assignee")
-        if assignee == "me":
-            qs = qs.filter(assignee=self.request.user)
-        elif assignee == "none":
-            qs = qs.filter(assignee__isnull=True)
-        elif assignee:
-            qs = qs.filter(assignee_id=_parse_uuid(assignee, "assignee"))
-
-        parent = params.get("parent")
-        if parent == "root":
-            qs = qs.filter(parent__isnull=True)
-        elif parent:
-            qs = qs.filter(parent_id=_parse_uuid(parent, "parent"))
-
-        search = params.get("search")
-        if search:
-            qs = qs.filter(Q(title__icontains=search) | Q(content__icontains=search))
-
-        ordering = params.get("ordering")
-        if ordering and ordering.lstrip("-") in ORDERING_FIELDS:
-            # Keep a stable order for equal priorities (creation time + id).
-            qs = qs.order_by(ordering, "-created_at", "-id")
-
-        return qs.distinct()
+        return apply_mission_filters(qs, self.request.query_params, self.request.user)
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -426,18 +323,6 @@ class MissionViewSet(
         page = self.paginate_queryset(qs)
         serializer = CommentSerializer(page, many=True, context=self.get_serializer_context())
         return self.get_paginated_response(serializer.data)
-
-
-class MissionDependencySubquery:
-    """Build the EXISTS used by the ``blocked`` filter."""
-
-    @staticmethod
-    def unresolved_for_outer():
-        from .models import MissionDependency
-
-        return MissionDependency.objects.filter(mission=OuterRef("pk")).exclude(
-            prerequisite__status=MissionStatus.DONE
-        )
 
 
 class CommentViewSet(
