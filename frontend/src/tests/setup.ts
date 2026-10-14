@@ -10,3 +10,12 @@ if (!('ResizeObserver' in globalThis)) {
     writable: true,
   })
 }
+
+// jsdom lacks the SVG geometry APIs Vue Flow's edge labels use.
+if (typeof SVGElement !== 'undefined' && !('getBBox' in SVGElement.prototype)) {
+  Object.defineProperty(SVGElement.prototype, 'getBBox', {
+    configurable: true,
+    writable: true,
+    value: () => ({ x: 0, y: 0, width: 0, height: 0 }),
+  })
+}

@@ -2,11 +2,62 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+// --- Vue Flow is stubbed: these tests cover our mapping/markup, not the lib. //
+const flowMock = vi.hoisted(() => {
+  const handlers: Record<string, ((arg: unknown) => void)[]> = {}
+  const register = (name: string) => (fn?: (arg: unknown) => void) => {
+    if (fn) (handlers[name] ||= []).push(fn)
+  }
+  return {
+    handlers,
+    register,
+    fitView: vi.fn().mockResolvedValue(true),
+    setCenter: vi.fn().mockResolvedValue(true),
+    findNode: vi.fn().mockReturnValue(undefined),
+  }
+})
+
+vi.mock('@vue-flow/core', () => ({
+  VueFlow: {
+    name: 'VueFlow',
+    props: {
+      nodes: { type: Array, default: () => [] },
+      edges: { type: Array, default: () => [] },
+    },
+    template: `
+      <div class="vf-stub">
+        <div v-for="n in nodes" :key="n.id" class="vf-node">
+          <slot name="node-mission" :data="n.data" />
+        </div>
+      </div>`,
+  },
+  Handle: { template: '<span class="vf-handle" />' },
+  Position: { Left: 'left', Right: 'right' },
+  MarkerType: { ArrowClosed: 'arrowclosed' },
+  useVueFlow: () => ({
+    fitView: flowMock.fitView,
+    setCenter: flowMock.setCenter,
+    findNode: flowMock.findNode,
+    onNodesInitialized: flowMock.register('nodesInitialized'),
+    onNodeClick: flowMock.register('nodeClick'),
+    onEdgeClick: flowMock.register('edgeClick'),
+  }),
+}))
+
+vi.mock('@vue-flow/controls', () => ({ Controls: { template: '<div class="vf-controls" />' } }))
+
 import { getWorkspaceGraph, getWorkspaceOverview } from '../api/workspace'
-import type { WorkspaceEdge, WorkspaceGroup, WorkspaceNode } from '../api/types'
+import type { MissionStatus, WorkspaceEdge, WorkspaceGroup, WorkspaceNode } from '../api/types'
+import { computeDagreLayout, graphStructureSignature, useDagreLayout } from '../composables/useDagreLayout'
 import DependencyGraph from '../components/DependencyGraph.vue'
-import WorkspaceMilestoneBoard from '../components/WorkspaceMilestoneBoard.vue'
-import { assignLayers, directRelations, layoutGraph } from '../workspaceLayout'
+import MilestoneBoard from '../components/MilestoneBoard.vue'
+import WorkspaceMissionCard from '../components/WorkspaceMissionCard.vue'
+import {
+  buildDependencyEdges,
+  buildMissionNodes,
+  NODE_WIDTH,
+} from '../workspace/dto'
+import { collectRelated, directRelations } from '../workspace/dependencyTraversal'
 
 function jsonResponse(data: unknown): Response {
   return new Response(JSON.stringify(data), {
@@ -45,12 +96,18 @@ function node(id: string, overrides: Partial<WorkspaceNode> = {}): WorkspaceNode
   }
 }
 
-const edge = (id: string, prerequisite: string, mission: string): WorkspaceEdge => ({
+const edge = (
+  id: string,
+  prerequisite: string,
+  mission: string,
+  overrides: Partial<WorkspaceEdge> = {},
+): WorkspaceEdge => ({
   id,
   prerequisite_id: prerequisite,
   mission_id: mission,
   is_satisfied: false,
   cross_milestone: false,
+  ...overrides,
 })
 
 const stubs = {
@@ -104,13 +161,238 @@ describe('workspace api', () => {
   })
 })
 
+describe('Dagre layout', () => {
+  it('lays prerequisite ranks to the left of their dependents', () => {
+    const nodes = [node('a'), node('b'), node('c'), node('d'), node('e')]
+    const edges = [edge('1', 'a', 'c'), edge('2', 'b', 'c'), edge('3', 'c', 'd')]
+    const { positions } = computeDagreLayout(nodes, edges)
+
+    const a = positions.get('a')!
+    const b = positions.get('b')!
+    const c = positions.get('c')!
+    const d = positions.get('d')!
+    // Same rank shares an x; each dependent sits a full column to the right.
+    expect(a.x).toBe(b.x)
+    expect(c.x).toBeGreaterThan(a.x)
+    expect(d.x).toBeGreaterThan(c.x)
+    expect(d.x - c.x).toBeGreaterThan(NODE_WIDTH)
+    // Isolated node still gets a position.
+    expect(positions.get('e')).toBeTruthy()
+  })
+
+  it('converts Dagre centres to Vue Flow top-left coordinates', () => {
+    const { positions, width } = computeDagreLayout([node('a')], [])
+    const a = positions.get('a')!
+    expect(Number.isFinite(a.x)).toBe(true)
+    expect(Number.isFinite(a.y)).toBe(true)
+    expect(width).toBeGreaterThanOrEqual(a.x + NODE_WIDTH)
+  })
+
+  it('only re-lays out when the structure changes, not on status refresh', () => {
+    const nodes = [node('a'), node('b')]
+    const edges = [edge('1', 'a', 'b')]
+    const layout = useDagreLayout()
+
+    expect(layout.update(nodes, edges)).toBe(true)
+    const first = new Map(layout.positions.value)
+
+    const refreshed = nodes.map((item) => ({ ...item, status: 'Done' as const, title: '新标题' }))
+    expect(layout.update(refreshed, edges)).toBe(false)
+    expect(layout.positions.value).toEqual(first)
+
+    const withExtra = [...nodes, node('c')]
+    expect(layout.update(withExtra, edges)).toBe(true)
+    expect(layout.positions.value.size).toBe(3)
+  })
+
+  it('signs only structure, not titles or status', () => {
+    const edges = [edge('1', 'a', 'b')]
+    expect(graphStructureSignature([node('a'), node('b')], edges)).toBe(
+      graphStructureSignature([node('a', { status: 'Done' }), node('b', { title: 'x' })], edges),
+    )
+  })
+})
+
+describe('dependency traversal', () => {
+  const edges = [edge('1', 'a', 'c'), edge('2', 'b', 'c'), edge('3', 'c', 'd')]
+
+  it('reports direct prerequisites and dependents', () => {
+    const relations = directRelations('c', edges)
+    expect([...relations.prerequisites].sort()).toEqual(['a', 'b'])
+    expect([...relations.dependents]).toEqual(['d'])
+  })
+
+  it('walks upstream, downstream and both directions without loops', () => {
+    expect(collectRelated('d', edges, 'upstream').sort()).toEqual(['a', 'b', 'c'])
+    expect(collectRelated('a', edges, 'downstream').sort()).toEqual(['c', 'd'])
+    expect(collectRelated('c', edges, 'both').sort()).toEqual(['a', 'b', 'd'])
+    expect(collectRelated('a', edges, 'upstream')).toEqual([])
+  })
+})
+
+describe('DTO adapter', () => {
+  it('maps dependency edges with arrow markers and state classes', () => {
+    const edges = [
+      edge('1', 'a', 'c', { is_satisfied: true }),
+      edge('2', 'b', 'c', { is_satisfied: false, cross_milestone: true }),
+    ]
+    const flowEdges = buildDependencyEdges(edges, null)
+    expect(flowEdges[0].source).toBe('a')
+    expect(flowEdges[0].target).toBe('c')
+    expect(flowEdges[0].markerEnd).toBe('arrowclosed')
+    expect(flowEdges[0].class).toContain('ws-edge--satisfied')
+    expect(flowEdges[1].class).toContain('ws-edge--pending')
+    expect(flowEdges[1].label).toBe('跨里程碑')
+  })
+
+  it('maps nodes with selected/dimmed flags and keeps isolated nodes', () => {
+    const positions = new Map([
+      ['a', { x: 0, y: 0 }],
+      ['e', { x: 0, y: 200 }],
+    ])
+    const flowNodes = buildMissionNodes(
+      [node('a'), node('e')],
+      positions,
+      new Set(['a']),
+      'a',
+    )
+    expect(flowNodes).toHaveLength(2)
+    expect(flowNodes[0].draggable).toBe(false)
+    expect(flowNodes[0].data?.selected).toBe(true)
+    expect(flowNodes[0].data?.dimmed).toBe(false)
+    expect(flowNodes[1].data?.dimmed).toBe(true)
+  })
+})
+
+describe('WorkspaceMissionCard', () => {
+  it('shows unfinished prerequisites and children separately', () => {
+    const wrapper = mount(WorkspaceMissionCard, {
+      props: { node: node('a', { blocking_count: 2, unfinished_child_count: 1 }) },
+      global: { stubs },
+    })
+    const text = wrapper.text()
+    expect(text).toContain('前置未完成 2')
+    expect(text).toContain('子任务未完成 1')
+  })
+
+  it('opens on Enter and emits select', async () => {
+    const wrapper = mount(WorkspaceMissionCard, {
+      props: { node: node('a') },
+      global: { stubs },
+    })
+    await wrapper.find('.ws-card').trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('select')?.[0]).toEqual(['a'])
+  })
+})
+
+describe('MilestoneBoard', () => {
+  function groupFixture(): WorkspaceGroup {
+    return {
+      milestone: { id: 'm2', name: '首个可玩版本', status: 'Active', due_date: '2026-12-01' },
+      is_unassigned: false,
+      full_counts: { total: 3, effective_total: 2, done: 1, progress: 0.5 },
+      full_counts_scope: 'milestone_all_visible',
+      matched_counts: { Open: 2, InProgress: 0, Submitted: 0, Done: 0, Cancelled: 0 },
+      matched_counts_scope: 'active_filters',
+      matched_total: 2,
+      loaded: { Open: 1, InProgress: 0, Submitted: 0, Done: 0, Cancelled: 0 },
+      columns: {
+        Open: [node('c', { title: '动画接入', status: 'Open', is_blocked: true })],
+        InProgress: [],
+        Submitted: [],
+        Done: [],
+        Cancelled: [],
+      },
+    }
+  }
+
+  const columns: MissionStatus[] = [
+    'Open',
+    'InProgress',
+    'Submitted',
+    'Done',
+    'Cancelled',
+  ]
+  const columnLabels: Record<MissionStatus, string> = {
+    Open: '待认领',
+    InProgress: '进行中',
+    Submitted: '待验收',
+    Done: '已完成',
+    Cancelled: '已取消',
+  }
+
+  it('renders milestone totals, matched counts and a load-more hint', () => {
+    const wrapper = mount(MilestoneBoard, {
+      props: {
+        groups: [groupFixture()],
+        columns,
+        columnLabels,
+        filtersActive: true,
+        selectedId: null,
+      },
+      global: { stubs },
+    })
+    const text = wrapper.text()
+    expect(text).toContain('首个可玩版本')
+    expect(text).toContain('里程碑总计 1 / 2')
+    expect(text).toContain('当前筛选 2 个')
+    expect(text).toContain('动画接入')
+    expect(text).toContain('已显示 1 / 2')
+  })
+
+  it('emits loadMore when a column is truncated', async () => {
+    const wrapper = mount(MilestoneBoard, {
+      props: {
+        groups: [groupFixture()],
+        columns,
+        columnLabels,
+        filtersActive: true,
+        selectedId: null,
+      },
+      global: { stubs },
+    })
+    const button = wrapper.findAll('button').find((item) => item.text().includes('加载更多'))
+    expect(button).toBeTruthy()
+    await button!.trigger('click')
+    expect(wrapper.emitted('loadMore')).toBeTruthy()
+  })
+})
+
+describe('DependencyGraph', () => {
+  it('renders every node, including isolated ones, and emits select', async () => {
+    const wrapper = mount(DependencyGraph, {
+      props: {
+        nodes: [node('a'), node('b'), node('e', { title: '孤立任务' })],
+        edges: [edge('1', 'a', 'b')],
+      },
+    })
+    expect(wrapper.findAll('.vf-node')).toHaveLength(3)
+    expect(wrapper.text()).toContain('孤立任务')
+
+    await wrapper.findAll('.ws-card')[0].trigger('click')
+    expect(wrapper.emitted('select')?.[0]).toEqual(['a'])
+  })
+
+  it('forwards edge clicks with the original edge', async () => {
+    const dependency = edge('1', 'a', 'b')
+    const wrapper = mount(DependencyGraph, {
+      props: { nodes: [node('a'), node('b')], edges: [dependency] },
+    })
+    const handler = flowMock.handlers.edgeClick?.at(-1)
+    expect(handler).toBeTruthy()
+    handler?.({ edge: { data: { edge: dependency } } })
+    await flushPromises()
+    expect(wrapper.emitted('edgeSelect')?.[0]).toEqual([dependency])
+  })
+})
+
 describe('WorkspaceView', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   it('renders the page summary from the overview API', async () => {
     const overviewPayload = {
       generated_at: '2026-10-14T10:00:00Z',
-      snapshot_id: 's1',
+      revision: 'r1',
       filters_active: false,
       column_limit: 20,
       columns: ['Open', 'Done'],
@@ -158,7 +440,7 @@ describe('WorkspaceView', () => {
         plugins: [router],
         stubs: {
           ...stubs,
-          WorkspaceMilestoneBoard: true,
+          MilestoneBoard: true,
           DependencyGraph: true,
           MissionDetailDrawer: true,
         },
@@ -171,124 +453,6 @@ describe('WorkspaceView', () => {
     expect(text).toContain('有效完成 2 / 4')
     expect(text).toContain('需复核 1')
     expect(text).toContain('上次刷新')
-  })
-})
-
-describe('workspace layout', () => {
-  it('assigns dependency layers from prerequisite to dependent', () => {
-    const nodes = [node('a'), node('b'), node('c'), node('d'), node('e')]
-    const edges = [edge('1', 'a', 'c'), edge('2', 'b', 'c'), edge('3', 'c', 'd')]
-    const layers = assignLayers(nodes, edges)
-    expect(layers.get('a')).toBe(0)
-    expect(layers.get('b')).toBe(0)
-    expect(layers.get('c')).toBe(1)
-    expect(layers.get('d')).toBe(2)
-    expect(layers.get('e')).toBe(0)
-  })
-
-  it('keeps isolated nodes visible and builds edge paths', () => {
-    const nodes = [node('a'), node('b'), node('c')]
-    const edges = [edge('1', 'a', 'b')]
-    const layout = layoutGraph(nodes, edges)
-    expect(layout.nodes).toHaveLength(3)
-    const c = layout.positions.get('c')
-    expect(c).toBeTruthy()
-    expect(layout.dependencyEdges[0].path).toMatch(/^M /)
-    expect(layout.width).toBeGreaterThan(0)
-    expect(layout.height).toBeGreaterThan(0)
-  })
-
-  it('reports direct prerequisites and dependents', () => {
-    const edges = [edge('1', 'a', 'c'), edge('2', 'b', 'c'), edge('3', 'c', 'd')]
-    const relations = directRelations('c', edges)
-    expect([...relations.prerequisites].sort()).toEqual(['a', 'b'])
-    expect([...relations.dependents]).toEqual(['d'])
-  })
-})
-
-function groupFixture(): WorkspaceGroup {
-  return {
-    milestone: { id: 'm2', name: '首个可玩版本', status: 'Active', due_date: '2026-12-01' },
-    is_unassigned: false,
-    full_counts: { total: 3, effective_total: 2, done: 1, progress: 0.5 },
-    matched_counts: { Open: 2, InProgress: 0, Submitted: 0, Done: 0, Cancelled: 0 },
-    matched_total: 2,
-    loaded: { Open: 1, InProgress: 0, Submitted: 0, Done: 0, Cancelled: 0 },
-    columns: {
-      Open: [node('c', { title: '动画接入', status: 'Open', is_blocked: true })],
-      InProgress: [],
-      Submitted: [],
-      Done: [],
-      Cancelled: [],
-    },
-  }
-}
-
-describe('DependencyGraph', () => {
-  it('renders every node, including isolated ones, and moves a node on click', async () => {
-    const wrapper = mount(DependencyGraph, {
-      props: {
-        nodes: [node('a'), node('b'), node('e', { title: '孤立任务' })],
-        edges: [edge('1', 'a', 'b')],
-      },
-      global: { stubs },
-    })
-    expect(wrapper.findAll('.graph__node')).toHaveLength(3)
-    expect(wrapper.text()).toContain('孤立任务')
-    expect(wrapper.find('.graph-edge').exists()).toBe(true)
-
-    await wrapper.findAll('.ws-card')[0].trigger('click')
-    expect(wrapper.emitted('select')?.[0]).toEqual(['a'])
-  })
-})
-
-describe('WorkspaceMilestoneBoard', () => {
-  it('renders milestone totals, matched counts and a load-more hint', () => {
-    const wrapper = mount(WorkspaceMilestoneBoard, {
-      props: {
-        groups: [groupFixture()],
-        columns: ['Open', 'InProgress', 'Submitted', 'Done', 'Cancelled'],
-        columnLabels: {
-          Open: '待认领',
-          InProgress: '进行中',
-          Submitted: '待验收',
-          Done: '已完成',
-          Cancelled: '已取消',
-        },
-        filtersActive: true,
-        selectedId: null,
-      },
-      global: { stubs },
-    })
-    const text = wrapper.text()
-    expect(text).toContain('首个可玩版本')
-    expect(text).toContain('里程碑总计 1 / 2')
-    expect(text).toContain('动画接入')
-    expect(text).toContain('已显示 1 / 2')
-  })
-
-  it('emits loadMore when a column is truncated', async () => {
-    const wrapper = mount(WorkspaceMilestoneBoard, {
-      props: {
-        groups: [groupFixture()],
-        columns: ['Open', 'InProgress', 'Submitted', 'Done', 'Cancelled'],
-        columnLabels: {
-          Open: '待认领',
-          InProgress: '进行中',
-          Submitted: '待验收',
-          Done: '已完成',
-          Cancelled: '已取消',
-        },
-        filtersActive: true,
-        selectedId: null,
-      },
-      global: { stubs },
-    })
-    const button = wrapper
-      .findAll('button')
-      .find((item) => item.text().includes('加载更多'))
-    expect(button).toBeTruthy()
-    await button!.trigger('click')
-    expect(wrapper.emitted('loadMore')).toBeTruthy()
+    wrapper.unmount()
   })
 })

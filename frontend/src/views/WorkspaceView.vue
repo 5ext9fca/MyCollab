@@ -1,13 +1,17 @@
 <script setup lang="ts">
 /**
- * F5 workspace: a milestone x status board and a dependency graph over the
- * same filtered task data, plus a detail drawer.
+ * F5 workspace page (WorkspacePage).
  *
- * The page only reads and filters; every write is a controlled action that
- * carries `expected_version` (see MissionDetailDrawer). Filters, the active
- * view and the selected mission live in the URL so a link reproduces a view.
+ * Owns the view switch, the URL state and the request sequence; it renders the
+ * milestone board or the Vue Flow dependency graph, plus the shared detail
+ * drawer. It only reads and filters — every write is a controlled action that
+ * carries `expected_version` (see MissionDetailDrawer).
+ *
+ * A monotonic request sequence makes the newest filter win: a slow response can
+ * never overwrite a newer one, and the Dagre layout is derived from the applied
+ * response only.
  */
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
@@ -16,18 +20,14 @@ import type { QueryParams } from '../api/client'
 import { listTeamMembers } from '../api/auth'
 import { listMilestones } from '../api/milestones'
 import { getWorkspaceGraph, getWorkspaceOverview } from '../api/workspace'
-import type {
-  MissionPriority,
-  MissionStatus,
-  MissionType,
-  User,
-  WorkspaceGraph,
-  WorkspaceOverview,
-} from '../api/types'
-import { PRIORITY_OPTIONS, STATUS_OPTIONS, TYPE_OPTIONS } from '../missionMeta'
+import type { User, WorkspaceEdge, WorkspaceGraph, WorkspaceOverview } from '../api/types'
+import type { QuickKey, WorkspaceFilters } from '../workspace/filters'
+import { emptyFilters, readParam } from '../workspace/filters'
+import { collectRelated, relatedHighlight } from '../workspace/dependencyTraversal'
 import DependencyGraph from '../components/DependencyGraph.vue'
+import MilestoneBoard from '../components/MilestoneBoard.vue'
 import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
-import WorkspaceMilestoneBoard from '../components/WorkspaceMilestoneBoard.vue'
+import WorkspaceFilterBar from '../components/WorkspaceFilterBar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -49,37 +49,42 @@ const direction = ref<'both' | 'upstream' | 'downstream'>('both')
 const relatedOnly = ref(false)
 const showParentEdges = ref(false)
 const relationListMode = ref(false)
+const selectedEdge = ref<WorkspaceEdge | null>(null)
 
+const filters = ref<WorkspaceFilters>(emptyFilters())
 const graphRef = ref<InstanceType<typeof DependencyGraph> | null>(null)
 
-const filters = reactive<{
-  q: string
-  milestone: string
-  status: MissionStatus | ''
-  type: MissionType | ''
-  priority: MissionPriority | ''
-  assignee: string
-  reviewer: string
-  blocked: '' | 'true' | 'false'
-  revalidation: '' | 'true'
-}>({
-  q: '',
-  milestone: '',
-  status: '',
-  type: '',
-  priority: '',
-  assignee: '',
-  reviewer: '',
-  blocked: '',
-  revalidation: '',
-})
-
-const onlyMine = computed(() => filters.assignee === 'me')
-const onlyBlocked = computed(() => filters.blocked === 'true')
-const onlyReview = computed(() => filters.reviewer === 'me' && filters.status === 'Submitted')
-const onlyRevalidation = computed(() => filters.revalidation === 'true')
+const onlyMine = computed(() => filters.value.assignee === 'me')
+const onlyBlocked = computed(() => filters.value.blocked === 'true')
+const onlyReview = computed(
+  () => filters.value.reviewer === 'me' && filters.value.status === 'Submitted',
+)
+const onlyRevalidation = computed(() => filters.value.revalidation === 'true')
 
 const summary = computed(() => overview.value?.summary ?? null)
+const graphMeta = computed(() => graph.value?.meta ?? null)
+const graphNodes = computed(() => graph.value?.nodes ?? [])
+const graphEdges = computed(() => graph.value?.edges ?? [])
+
+/**
+ * Highlight beyond the default direct relations: "only related" keeps the
+ * whole loaded neighbourhood, and an explicit "all upstream/downstream" keeps
+ * the walk in that direction. Null means "direct relations only".
+ */
+const emphasisIds = computed<Set<string> | null>(() => {
+  if (!selectedId.value) return null
+  if (relatedOnly.value) return relatedHighlight(selectedId.value, graphEdges.value, 'both')
+  if (expandMode.value === 'all' && direction.value !== 'both') {
+    return relatedHighlight(selectedId.value, graphEdges.value, direction.value)
+  }
+  return null
+})
+
+const truncationLabels: Record<string, string> = {
+  node_limit: '节点达到上限',
+  context_limit: '上下文节点达到上限',
+  edge_limit: '依赖边达到上限',
+}
 
 const relationRows = computed(() => {
   if (!graph.value) return []
@@ -91,17 +96,31 @@ const relationRows = computed(() => {
   }))
 })
 
+const selectedRelations = computed(() => {
+  if (!selectedId.value || !graph.value) return null
+  const upstream = collectRelated(selectedId.value, graph.value.edges, 'upstream')
+  const downstream = collectRelated(selectedId.value, graph.value.edges, 'downstream')
+  const byId = new Map(graph.value.nodes.map((node) => [node.id, node]))
+  const titles = (ids: string[]) =>
+    ids.map((id) => byId.get(id)?.title ?? id.slice(0, 8)).join('、') || '无'
+  return { upstream: titles(upstream), downstream: titles(downstream) }
+})
+
+// --- requests ------------------------------------------------------------- //
+let requestSeq = 0
+
 function baseParams(): QueryParams {
+  const current = filters.value
   return {
-    q: filters.q || undefined,
-    milestone: filters.milestone || undefined,
-    status: filters.status || undefined,
-    type: filters.type || undefined,
-    priority: filters.priority || undefined,
-    assignee: filters.assignee || undefined,
-    reviewer: filters.reviewer || undefined,
-    blocked: filters.blocked || undefined,
-    revalidation: filters.revalidation || undefined,
+    q: current.q || undefined,
+    milestone: current.milestone || undefined,
+    status: current.status || undefined,
+    type: current.type || undefined,
+    priority: current.priority || undefined,
+    assignee: current.assignee || undefined,
+    reviewer: current.reviewer || undefined,
+    blocked: current.blocked || undefined,
+    revalidation: current.revalidation || undefined,
   }
 }
 
@@ -115,62 +134,52 @@ async function loadOverview() {
 }
 
 async function loadGraph() {
+  const focus = selectedId.value
+  const scoped = relatedOnly.value && !!focus
   const data = await getWorkspaceGraph({
     ...baseParams(),
-    scope: relatedOnly.value && selectedId.value ? 'mission' : 'team',
-    focus: selectedId.value || undefined,
-    expand: relatedOnly.value ? 'all' : expandMode.value,
+    scope: scoped ? 'mission' : 'team',
+    focus: focus || undefined,
+    expand: scoped ? 'all' : focus ? expandMode.value : 'none',
     direction: direction.value,
     include_parent: showParentEdges.value ? 'true' : undefined,
-    context: relatedOnly.value ? 'false' : 'true',
+    context: scoped ? 'false' : 'true',
     depth: 5,
   })
   graph.value = data
+  selectedEdge.value = null
   lastRefreshed.value = data.generated_at
 }
 
 async function reload(options: { fitGraph?: boolean } = {}) {
+  const seq = ++requestSeq
   loading.value = true
   error.value = ''
   try {
     if (view.value === 'overview') {
       await loadOverview()
+      if (seq !== requestSeq) return
     } else {
       await loadGraph()
-      if (options.fitGraph || selectedId.value) {
-        await nextTick()
-        if (options.fitGraph) graphRef.value?.fit()
-        else if (selectedId.value) graphRef.value?.locate(selectedId.value)
-      }
+      if (seq !== requestSeq) return
+      await nextTick()
+      if (seq !== requestSeq) return
+      if (selectedId.value) graphRef.value?.locate(selectedId.value)
+      else if (options.fitGraph) graphRef.value?.fit()
     }
   } catch (err) {
+    if (seq !== requestSeq) return
     error.value = err instanceof ApiException ? err.message : '加载失败，请重试'
     ElMessage.error(error.value)
   } finally {
-    loading.value = false
+    if (seq === requestSeq) loading.value = false
   }
 }
 
 // --- URL <-> state -------------------------------------------------------- //
-function readParam(value: unknown): string {
-  if (Array.isArray(value)) return value.length ? String(value[0]) : ''
-  return value == null ? '' : String(value)
-}
-
 function applyQuery() {
   const query = route.query
   view.value = readParam(query.view) === 'graph' ? 'graph' : 'overview'
-  filters.q = readParam(query.q)
-  filters.milestone = readParam(query.milestone)
-  filters.status = (readParam(query.status) as MissionStatus) || ''
-  filters.type = (readParam(query.type) as MissionType) || ''
-  filters.priority = (readParam(query.priority) as MissionPriority) || ''
-  filters.assignee = readParam(query.assignee)
-  filters.reviewer = readParam(query.reviewer)
-  const blocked = readParam(query.blocked)
-  filters.blocked = blocked === 'true' || blocked === 'false' ? blocked : ''
-  const revalidation = readParam(query.revalidation)
-  filters.revalidation = revalidation === 'true' ? 'true' : ''
   selectedId.value = readParam(query.selected) || null
   const limit = Number(readParam(query.limit))
   columnLimit.value = Number.isFinite(limit) && limit > 0 ? limit : 20
@@ -180,6 +189,19 @@ function applyQuery() {
   expandMode.value = readParam(query.expand) === 'all' ? 'all' : 'one'
   const dir = readParam(query.direction)
   direction.value = dir === 'upstream' || dir === 'downstream' ? dir : 'both'
+
+  const next = emptyFilters()
+  next.q = readParam(query.q)
+  next.milestone = readParam(query.milestone)
+  next.status = (readParam(query.status) as WorkspaceFilters['status']) || ''
+  next.type = (readParam(query.type) as WorkspaceFilters['type']) || ''
+  next.priority = (readParam(query.priority) as WorkspaceFilters['priority']) || ''
+  next.assignee = readParam(query.assignee)
+  next.reviewer = readParam(query.reviewer)
+  const blocked = readParam(query.blocked)
+  next.blocked = blocked === 'true' || blocked === 'false' ? blocked : ''
+  next.revalidation = readParam(query.revalidation) === 'true' ? 'true' : ''
+  filters.value = next
 }
 
 function queryFromState(): Record<string, string> {
@@ -188,15 +210,16 @@ function queryFromState(): Record<string, string> {
     if (value) out[key] = value
   }
   if (view.value === 'graph') out.view = 'graph'
-  set('q', filters.q)
-  set('milestone', filters.milestone)
-  set('status', filters.status)
-  set('type', filters.type)
-  set('priority', filters.priority)
-  set('assignee', filters.assignee)
-  set('reviewer', filters.reviewer)
-  set('blocked', filters.blocked)
-  set('revalidation', filters.revalidation)
+  const current = filters.value
+  set('q', current.q)
+  set('milestone', current.milestone)
+  set('status', current.status)
+  set('type', current.type)
+  set('priority', current.priority)
+  set('assignee', current.assignee)
+  set('reviewer', current.reviewer)
+  set('blocked', current.blocked)
+  set('revalidation', current.revalidation)
   set('selected', selectedId.value ?? '')
   if (columnLimit.value !== 20) set('limit', String(columnLimit.value))
   if (relatedOnly.value) set('related', 'true')
@@ -225,37 +248,31 @@ function onFilterChange() {
   void reload({ fitGraph: view.value === 'graph' })
 }
 
+function onQuickToggle(key: QuickKey) {
+  const current = filters.value
+  if (key === 'mine') {
+    current.assignee = current.assignee === 'me' ? '' : 'me'
+  } else if (key === 'blocked') {
+    current.blocked = current.blocked === 'true' ? '' : 'true'
+  } else if (key === 'review') {
+    if (onlyReview.value) {
+      current.reviewer = ''
+      current.status = ''
+    } else {
+      current.reviewer = 'me'
+      current.status = 'Submitted'
+    }
+  } else if (key === 'revalidation') {
+    current.revalidation = current.revalidation === 'true' ? '' : 'true'
+  }
+  onFilterChange()
+}
+
 function switchView(next: 'overview' | 'graph') {
   if (view.value === next) return
   view.value = next
   syncUrl()
   void reload({ fitGraph: next === 'graph' })
-}
-
-function toggleMine() {
-  filters.assignee = filters.assignee === 'me' ? '' : 'me'
-  onFilterChange()
-}
-
-function toggleBlocked() {
-  filters.blocked = filters.blocked === 'true' ? '' : 'true'
-  onFilterChange()
-}
-
-function toggleReview() {
-  if (onlyReview.value) {
-    filters.reviewer = ''
-    filters.status = ''
-  } else {
-    filters.reviewer = 'me'
-    filters.status = 'Submitted'
-  }
-  onFilterChange()
-}
-
-function toggleRevalidation() {
-  filters.revalidation = filters.revalidation === 'true' ? '' : 'true'
-  onFilterChange()
 }
 
 function onSelect(id: string) {
@@ -266,6 +283,7 @@ function onSelect(id: string) {
 
 function onFocus(id: string) {
   selectedId.value = id
+  drawerOpen.value = false
   if (view.value !== 'graph') {
     view.value = 'graph'
     syncUrl()
@@ -281,6 +299,23 @@ function onGraphOptionChange() {
   void reload()
 }
 
+function onAllUpstream() {
+  direction.value = 'upstream'
+  expandMode.value = 'all'
+  onGraphOptionChange()
+}
+
+function onAllDownstream() {
+  direction.value = 'downstream'
+  expandMode.value = 'all'
+  onGraphOptionChange()
+}
+
+function onToggleRelated() {
+  relatedOnly.value = !relatedOnly.value
+  onGraphOptionChange()
+}
+
 function onLoadMore() {
   columnLimit.value += 20
   syncUrl()
@@ -288,7 +323,7 @@ function onLoadMore() {
 }
 
 function onDrawerChanged() {
-  void reload({ fitGraph: false })
+  void reload()
 }
 
 function onDrawerClose() {
@@ -300,6 +335,14 @@ function refresh() {
 }
 
 const formatTime = (value: string) => (value ? new Date(value).toLocaleTimeString() : '')
+
+// --- low-frequency polling ------------------------------------------------ //
+const POLL_MS = 30_000
+let pollTimer: ReturnType<typeof setInterval> | undefined
+
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible') void reload()
+}
 
 onMounted(async () => {
   applyQuery()
@@ -315,6 +358,16 @@ onMounted(async () => {
     }))
   }
   await reload({ fitGraph: view.value === 'graph' })
+  pollTimer = setInterval(() => {
+    if (document.visibilityState === 'visible') void reload()
+  }, POLL_MS)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+  requestSeq += 1
+  if (pollTimer) clearInterval(pollTimer)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 </script>
 
@@ -338,112 +391,17 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div class="toolbar">
-      <el-input
-        v-model="filters.q"
-        placeholder="搜索标题或内容"
-        style="width: 200px"
-        clearable
-        @keyup.enter="onFilterChange"
-        @clear="onFilterChange"
-      />
-      <el-select
-        v-model="filters.milestone"
-        placeholder="里程碑"
-        clearable
-        filterable
-        style="width: 170px"
-        @change="onFilterChange"
-      >
-        <el-option
-          v-for="item in milestoneOptions"
-          :key="item.id"
-          :label="item.name"
-          :value="item.id"
-        />
-        <el-option label="未归属里程碑" value="none" />
-      </el-select>
-      <el-select
-        v-model="filters.status"
-        placeholder="状态"
-        clearable
-        style="width: 130px"
-        @change="onFilterChange"
-      >
-        <el-option
-          v-for="item in STATUS_OPTIONS"
-          :key="item.value"
-          :label="item.label"
-          :value="item.value"
-        />
-      </el-select>
-      <el-select
-        v-model="filters.assignee"
-        placeholder="认领者"
-        clearable
-        filterable
-        style="width: 150px"
-        @change="onFilterChange"
-      >
-        <el-option label="我" value="me" />
-        <el-option label="未认领" value="none" />
-        <el-option
-          v-for="member in members"
-          :key="member.id"
-          :label="member.display_name"
-          :value="String(member.id)"
-        />
-      </el-select>
-      <el-select
-        v-model="filters.type"
-        placeholder="类型"
-        clearable
-        style="width: 120px"
-        @change="onFilterChange"
-      >
-        <el-option
-          v-for="item in TYPE_OPTIONS"
-          :key="item.value"
-          :label="item.label"
-          :value="item.value"
-        />
-      </el-select>
-      <el-select
-        v-model="filters.priority"
-        placeholder="优先级"
-        clearable
-        style="width: 130px"
-        @change="onFilterChange"
-      >
-        <el-option
-          v-for="item in PRIORITY_OPTIONS"
-          :key="item.value"
-          :label="item.label"
-          :value="item.value"
-        />
-      </el-select>
-      <el-tooltip placement="top" content="按受阻状态筛选：存在未完成前置任务的任务即为受阻">
-        <el-select
-          v-model="filters.blocked"
-          placeholder="受阻"
-          clearable
-          style="width: 120px"
-          @change="onFilterChange"
-        >
-          <el-option label="仅受阻" value="true" />
-          <el-option label="不受阻" value="false" />
-        </el-select>
-      </el-tooltip>
-    </div>
-
-    <div class="workspace__quick">
-      <el-checkbox-button :model-value="onlyMine" @change="toggleMine">只看我的</el-checkbox-button>
-      <el-checkbox-button :model-value="onlyBlocked" @change="toggleBlocked">只看阻塞</el-checkbox-button>
-      <el-checkbox-button :model-value="onlyReview" @change="toggleReview">待我验收</el-checkbox-button>
-      <el-checkbox-button :model-value="onlyRevalidation" @change="toggleRevalidation">
-        需复核
-      </el-checkbox-button>
-    </div>
+    <WorkspaceFilterBar
+      :filters="filters"
+      :members="members"
+      :milestone-options="milestoneOptions"
+      :only-mine="onlyMine"
+      :only-blocked="onlyBlocked"
+      :only-review="onlyReview"
+      :only-revalidation="onlyRevalidation"
+      @change="onFilterChange"
+      @toggle="onQuickToggle"
+    />
 
     <div v-if="summary" class="workspace__summary">
       <span class="workspace__summary-item">任务总数 {{ summary.matched_total }}</span>
@@ -457,10 +415,11 @@ onMounted(async () => {
       <span class="workspace__summary-item workspace__summary-item--danger">
         需复核 {{ summary.requires_revalidation }}
       </span>
+      <span class="meta">（仅统计当前筛选命中的任务，不含依赖上下文）</span>
     </div>
 
     <div v-if="view === 'graph'" class="workspace__graph-options">
-      <span class="meta">展开选中任务的依赖</span>
+      <span class="meta">选中任务：{{ selectedId ? `#${selectedId.slice(0, 8)}` : '未选择' }}</span>
       <el-radio-group
         v-model="expandMode"
         size="small"
@@ -481,9 +440,18 @@ onMounted(async () => {
         <el-option label="仅上游" value="upstream" />
         <el-option label="仅下游" value="downstream" />
       </el-select>
-      <el-checkbox v-model="relatedOnly" :disabled="!selectedId" @change="onGraphOptionChange">
+      <el-button size="small" :disabled="!selectedId" @click="onAllUpstream">全部上游</el-button>
+      <el-button size="small" :disabled="!selectedId" @click="onAllDownstream">全部下游</el-button>
+      <el-checkbox
+        :model-value="relatedOnly"
+        :disabled="!selectedId"
+        @change="onToggleRelated"
+      >
         只看相关
       </el-checkbox>
+      <el-button v-if="relatedOnly" link type="primary" size="small" @click="onToggleRelated">
+        返回完整范围
+      </el-button>
       <el-checkbox v-model="showParentEdges" @change="onGraphOptionChange">显示拆分关系</el-checkbox>
       <el-checkbox v-model="relationListMode" @change="syncUrl">关系列表</el-checkbox>
       <span class="meta">画布横轴是依赖层级，不是时间或状态</span>
@@ -494,9 +462,20 @@ onMounted(async () => {
       <el-button link type="primary" @click="refresh">重试</el-button>
     </el-alert>
 
+    <el-alert
+      v-if="view === 'graph' && graphMeta && !graphMeta.relationships_complete"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="workspace__error"
+    >
+      关系加载不完整（{{ graphMeta.truncation_reasons.map((r) => truncationLabels[r] ?? r).join('、') }}），
+      请缩小筛选或聚焦某个任务后再查看上下游。
+    </el-alert>
+
     <div v-loading="loading" class="workspace__main">
       <template v-if="view === 'overview'">
-        <WorkspaceMilestoneBoard
+        <MilestoneBoard
           v-if="overview"
           :groups="overview.groups"
           :columns="overview.columns"
@@ -508,6 +487,7 @@ onMounted(async () => {
           @load-more="onLoadMore"
         />
       </template>
+
       <template v-else>
         <el-table
           v-if="relationListMode && graph"
@@ -543,16 +523,46 @@ onMounted(async () => {
         </el-table>
 
         <template v-else-if="graph">
+          <el-alert
+            v-if="selectedRelations"
+            type="info"
+            :closable="false"
+            class="workspace__relations-text"
+          >
+            <div>选中任务的全部上游：{{ selectedRelations.upstream }}</div>
+            <div>选中任务的全部下游：{{ selectedRelations.downstream }}</div>
+          </el-alert>
+
+          <el-alert
+            v-if="selectedEdge"
+            type="info"
+            :closable="true"
+            class="workspace__edge-info"
+            @close="selectedEdge = null"
+          >
+            <div>
+              依赖关系：前置 → 依赖任务 ·
+              {{ selectedEdge.is_satisfied ? '已满足' : '尚未满足' }}
+              <template v-if="selectedEdge.cross_milestone"> · 跨里程碑</template>
+            </div>
+            <el-button link type="primary" size="small" @click="onFocus(selectedEdge.mission_id)">
+              打开依赖任务
+            </el-button>
+          </el-alert>
+
           <DependencyGraph
             ref="graphRef"
-            :nodes="graph.nodes"
-            :edges="graph.edges"
+            :nodes="graphNodes"
+            :edges="graphEdges"
             :parent-edges="graph.parent_edges"
             :selected-id="selectedId"
             :show-parent-edges="showParentEdges"
+            :emphasis-ids="emphasisIds"
             @select="onSelect"
             @focus="onFocus"
+            @edge-select="selectedEdge = $event"
           />
+
           <div class="workspace__graph-meta">
             <span class="meta">
               节点 {{ graph.meta.node_count }}（匹配 {{ graph.meta.matched_included }}，上下文
@@ -564,6 +574,10 @@ onMounted(async () => {
             <el-tag v-if="graph.meta.edges_truncated" type="warning" size="small">
               依赖边达到上限，未展示全部
             </el-tag>
+            <el-tag v-if="graph.meta.relationships_complete" type="success" size="small">
+              关系完整
+            </el-tag>
+            <el-tag v-else type="warning" size="small">关系不完整</el-tag>
           </div>
         </template>
       </template>
@@ -603,11 +617,6 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
 }
-.workspace__quick {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
 .workspace__summary {
   display: flex;
   flex-wrap: wrap;
@@ -635,6 +644,12 @@ onMounted(async () => {
 .workspace__error {
   margin-bottom: 12px;
 }
+.workspace__relations-text {
+  margin-bottom: 8px;
+}
+.workspace__edge-info {
+  margin-bottom: 8px;
+}
 .workspace__main {
   min-height: 200px;
 }
@@ -643,6 +658,7 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   margin-top: 8px;
+  flex-wrap: wrap;
 }
 .workspace__legend {
   display: flex;

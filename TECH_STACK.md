@@ -20,6 +20,8 @@
 | 前端路由 | Vue Router | 页面导航与路由参数 |
 | 后端 | Python、Django | 业务逻辑、用户体系、ORM、迁移、事务 |
 | API | Django REST Framework（DRF） | JSON REST API、输入校验、权限检查 |
+| 依赖图渲染 | Vue Flow（`@vue-flow/core` + `@vue-flow/controls`） | 只读依赖图的节点/边、平移与缩放控制 |
+| 依赖图布局 | `@dagrejs/dagre` | 从左到右的有向图自动布局 |
 | 数据库 | PostgreSQL | 业务数据、约束、索引、并发控制 |
 | 身份认证 | Django Session、Cookie、CSRF | 同域浏览器登录与请求认证 |
 | 管理界面 | Django Admin + SPA 自建管理后台 | 数据检查、注册审批、成员与标签管理 |
@@ -160,8 +162,8 @@ cancel_mission(...)
 | `GET /api/library/files/` | 分页查看自己的素材 |
 | `GET /api/library/files/{id}/` | 经授权下载素材 |
 | `DELETE /api/library/files/{id}/` | 删除自己的素材 |
-| `GET /api/workspace/overview/` | 只读聚合：工作台「里程碑 × 状态」看板与摘要 |
-| `GET /api/workspace/graph/` | 只读聚合：工作台依赖图节点与有向边（含截断元数据） |
+| `GET /api/workspace/overview/` | 只读聚合：工作台「里程碑 × 状态」看板与摘要（含稳定数据修订标识与统计范围） |
+| `GET /api/workspace/graph/` | 只读聚合：工作台依赖图节点与有向边（含截断原因与关系完整性标记） |
 
 - 写入 API MUST 校验输入，发起者取自当前用户，不能信任客户端提供的身份字段。
 - MUST 实现对象与操作级权限，例如只有发起者能验收、只有认领者能提交。
@@ -183,7 +185,7 @@ cancel_mission(...)
 - 默认使用浏览器 fetch；统一处理 CSRF、错误响应、加载状态与会话失效。
 - 共享状态确有需求时再添加 Pinia；组件内状态优先保持局部。
 - 主要页面：任务广场、工作台（里程碑 × 状态概览与依赖图）、我认领的、我发布的、里程碑、素材库、Mission 详情（含评论/讨论区）与任务树；另有注册页与仅管理员可见的管理后台。
-- 工作台为只读聚合视图，复用既有写接口；图布局与画布交互由前端自实现，不引入第三方节点图/DAG 库，且不在画布上写入任务状态。
+- 工作台为只读聚合视图，复用既有写接口；依赖图使用 Vue Flow 渲染、`@dagrejs/dagre` 计算从左到右的布局，画布关闭拖线连边、端点重接、节点拖动与删除快捷键，且不在画布上写入任务状态。
 - 根据后端提供的状态或操作能力显示按钮，后端仍执行最终权限检查。
 - 认领等操作应展示服务器确认后的结果，并明确处理 `409`。
 - Markdown 和成果内容的渲染必须处理不可信 HTML，不能直接注入用户输入。
@@ -236,6 +238,8 @@ Redis、后台任务队列、WebSocket、独立搜索服务与 Kubernetes 不属
 - DRF 认证：https://www.django-rest-framework.org/api-guide/authentication/
 - DRF 权限：https://www.django-rest-framework.org/api-guide/permissions/
 - Vue：https://vuejs.org/guide/quick-start.html
+- Vue Flow：https://vueflow.dev/guide/
+- Dagre：https://github.com/dagrejs/dagre
 - PostgreSQL 行锁：https://www.postgresql.org/docs/current/explicit-locking.html
 - Caddy：https://caddyserver.com/docs/
 - Docker Compose 生产部署：https://docs.docker.com/compose/how-tos/production/

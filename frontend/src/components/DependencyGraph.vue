@@ -1,16 +1,33 @@
 <script setup lang="ts">
 /**
- * F5 dependency graph.
+ * F5 dependency graph, rendered with Vue Flow.
  *
- * Renders a layered DAG (prerequisite -> dependent) with an accessible
- * pan/zoom/fit canvas. It only shows and navigates; every business rule and
- * permission is still enforced by the backend.
+ * Read-only by construction: node dragging, connecting, edge re-linking and the
+ * delete shortcut are all disabled, and no Vue Flow event ever writes to the
+ * business API. Positions come from Dagre (`useDagreLayout`); a pure status
+ * refresh keeps the same coordinates. Only direct relations are emphasised by
+ * default — "all upstream/downstream" is an explicit action in the page.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, watch } from 'vue'
+import { VueFlow, useVueFlow } from '@vue-flow/core'
+import type { Edge, Node } from '@vue-flow/core'
+import { Controls } from '@vue-flow/controls'
+import '@vue-flow/core/dist/style.css'
+import '@vue-flow/core/dist/theme-default.css'
+import '@vue-flow/controls/dist/style.css'
 
 import type { WorkspaceEdge, WorkspaceNode, WorkspaceParentEdge } from '../api/types'
-import { NODE_HEIGHT, NODE_WIDTH, directRelations, layoutGraph } from '../workspaceLayout'
-import WorkspaceMissionCard from './WorkspaceMissionCard.vue'
+import { useDagreLayout } from '../composables/useDagreLayout'
+import {
+  buildDependencyEdges,
+  buildMissionNodes,
+  buildParentEdges,
+  NODE_HEIGHT,
+  NODE_WIDTH,
+} from '../workspace/dto'
+import type { MissionNodeData } from '../workspace/dto'
+import { directRelations } from '../workspace/dependencyTraversal'
+import MissionGraphNode from './MissionGraphNode.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -19,242 +36,107 @@ const props = withDefaults(
     parentEdges?: WorkspaceParentEdge[]
     selectedId?: string | null
     showParentEdges?: boolean
+    /** Extra ids to emphasise (e.g. "all upstream"): null keeps direct-only. */
+    emphasisIds?: Set<string> | null
   }>(),
-  { parentEdges: () => [], selectedId: null, showParentEdges: false },
+  { parentEdges: () => [], selectedId: null, showParentEdges: false, emphasisIds: null },
 )
 
 const emit = defineEmits<{
   (event: 'select', id: string): void
   (event: 'focus', id: string): void
+  (event: 'edgeSelect', edge: WorkspaceEdge): void
 }>()
 
-const viewport = ref<HTMLElement | null>(null)
-const scale = ref(1)
-const tx = ref(40)
-const ty = ref(40)
+const { positions, update } = useDagreLayout()
+const { fitView, setCenter, findNode, onNodesInitialized, onNodeClick, onEdgeClick } = useVueFlow()
 
-const layout = computed(() =>
-  layoutGraph(props.nodes, props.edges, props.showParentEdges ? props.parentEdges : []),
-)
+let fitted = false
 
 const emphasis = computed(() => {
+  if (props.emphasisIds) return props.emphasisIds
   if (!props.selectedId) return null
   const { prerequisites, dependents } = directRelations(props.selectedId, props.edges)
-  const set = new Set<string>([props.selectedId, ...prerequisites, ...dependents])
-  return set
+  return new Set<string>([props.selectedId, ...prerequisites, ...dependents])
 })
 
-function isDimmed(id: string): boolean {
-  if (!emphasis.value) return false
-  return !emphasis.value.has(id)
+const flowNodes = computed<Node<MissionNodeData>[]>(() =>
+  buildMissionNodes(props.nodes, positions.value, emphasis.value, props.selectedId),
+)
+
+const flowEdges = computed<Edge[]>(() => {
+  const dependencyEdges = buildDependencyEdges(props.edges, props.selectedId)
+  const parentEdges = props.showParentEdges ? buildParentEdges(props.parentEdges) : []
+  return [...parentEdges, ...dependencyEdges]
+})
+
+/** Recompute Dagre coordinates only when the structure changed. */
+function applyLayout() {
+  update(props.nodes, props.edges)
 }
 
-function edgeClass(edge: WorkspaceEdge): Record<string, boolean> {
-  const touchesSelected =
-    !!props.selectedId &&
-    (edge.mission_id === props.selectedId || edge.prerequisite_id === props.selectedId)
-  return {
-    'graph-edge--satisfied': edge.is_satisfied,
-    'graph-edge--pending': !edge.is_satisfied,
-    'graph-edge--highlight': touchesSelected,
-    'graph-edge--dim': !!props.selectedId && !touchesSelected,
-  }
-}
+applyLayout()
+watch(() => [props.nodes, props.edges], applyLayout)
 
-function clampScale(value: number): number {
-  return Math.min(2.5, Math.max(0.3, value))
-}
+onNodesInitialized(() => {
+  if (fitted || !props.nodes.length) return
+  fitted = true
+  void nextTick(() => fitView({ padding: 0.15 }))
+})
+
+onNodeClick(({ node }) => emit('select', node.id))
+onEdgeClick(({ edge }) => {
+  const data = edge.data as { edge?: WorkspaceEdge } | undefined
+  if (data?.edge) emit('edgeSelect', data.edge)
+})
 
 function fit() {
-  const element = viewport.value
-  if (!element) return
-  const vw = element.clientWidth || 800
-  const vh = element.clientHeight || 520
-  const width = layout.value.width || 1
-  const height = layout.value.height || 1
-  const next = clampScale(Math.min((vw - 60) / width, (vh - 60) / height, 1))
-  scale.value = next
-  tx.value = (vw - width * next) / 2
-  ty.value = (vh - height * next) / 2
+  fitted = true
+  void fitView({ padding: 0.15 })
 }
 
 function reset() {
-  scale.value = 1
-  tx.value = 40
-  ty.value = 40
-}
-
-function zoom(factor: number) {
-  const element = viewport.value
-  const vw = element?.clientWidth ?? 800
-  const vh = element?.clientHeight ?? 520
-  const cx = vw / 2
-  const cy = vh / 2
-  const next = clampScale(scale.value * factor)
-  tx.value = cx - (cx - tx.value) * (next / scale.value)
-  ty.value = cy - (cy - ty.value) * (next / scale.value)
-  scale.value = next
+  void fitView({ padding: 0.15 })
 }
 
 function locate(id: string) {
-  const element = viewport.value
-  const target = layout.value.positions.get(id)
-  if (!element || !target) return
-  const vw = element.clientWidth || 800
-  const vh = element.clientHeight || 520
-  scale.value = Math.max(scale.value, 0.8)
-  tx.value = vw / 2 - (target.x + NODE_WIDTH / 2) * scale.value
-  ty.value = vh / 2 - (target.y + NODE_HEIGHT / 2) * scale.value
+  const node = findNode(id)
+  if (!node) return
+  void setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + NODE_HEIGHT / 2, {
+    zoom: 1,
+    duration: 300,
+  })
 }
 
-let panning = false
-let startX = 0
-let startY = 0
-let startTx = 0
-let startTy = 0
-
-function onPointerDown(event: PointerEvent) {
-  const target = event.target as HTMLElement
-  if (target.closest('.ws-card') || target.closest('.graph__toolbar')) return
-  panning = true
-  startX = event.clientX
-  startY = event.clientY
-  startTx = tx.value
-  startTy = ty.value
-  ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
-}
-
-function onPointerMove(event: PointerEvent) {
-  if (!panning) return
-  tx.value = startTx + (event.clientX - startX)
-  ty.value = startTy + (event.clientY - startY)
-}
-
-function onPointerUp(event: PointerEvent) {
-  panning = false
-  ;(event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId)
-}
-
-function onWheel(event: WheelEvent) {
-  const element = viewport.value
-  if (!element) return
-  const rect = element.getBoundingClientRect()
-  const cx = event.clientX - rect.left
-  const cy = event.clientY - rect.top
-  const next = clampScale(scale.value * (event.deltaY < 0 ? 1.1 : 1 / 1.1))
-  tx.value = cx - (cx - tx.value) * (next / scale.value)
-  ty.value = cy - (cy - ty.value) * (next / scale.value)
-  scale.value = next
-}
-
-watch(
-  () => props.selectedId,
-  (id) => {
-    if (id) locate(id)
-  },
-)
-
-onMounted(fit)
-
-defineExpose({ fit, reset, locate, zoom })
+defineExpose({ fit, reset, locate })
 </script>
 
 <template>
   <div class="graph">
-    <div class="graph__toolbar">
-      <el-button size="small" @click="zoom(1 / 1.2)">缩小</el-button>
-      <el-button size="small" @click="zoom(1.2)">放大</el-button>
-      <el-button size="small" @click="fit">适应全部</el-button>
-      <el-button size="small" @click="reset">重置布局</el-button>
-      <el-button
-        size="small"
-        :disabled="!selectedId"
-        @click="selectedId && locate(selectedId)"
+    <div class="graph__host">
+      <VueFlow
+        :nodes="flowNodes"
+        :edges="flowEdges"
+        :min-zoom="0.2"
+        :max-zoom="2.5"
+        :nodes-draggable="false"
+        :nodes-connectable="false"
+        :edges-updatable="false"
+        :delete-key-code="null"
+        :zoom-on-double-click="false"
+        :elevate-edges-on-select="true"
+        :default-viewport="{ x: 0, y: 0, zoom: 0.9 }"
       >
-        定位选中
-      </el-button>
-    </div>
-
-    <div
-      ref="viewport"
-      class="graph__viewport"
-      @pointerdown="onPointerDown"
-      @pointermove="onPointerMove"
-      @pointerup="onPointerUp"
-      @pointercancel="onPointerUp"
-      @wheel.prevent="onWheel"
-    >
-      <div
-        class="graph__canvas"
-        :style="{
-          width: `${layout.width}px`,
-          height: `${layout.height}px`,
-          transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
-        }"
-      >
-        <svg class="graph__svg" :width="layout.width || 1" :height="layout.height || 1">
-          <defs>
-            <marker
-              id="ws-arrow-satisfied"
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              marker-width="7"
-              marker-height="7"
-              orient="auto-start-reverse"
-            >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
-            </marker>
-            <marker
-              id="ws-arrow-pending"
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              marker-width="7"
-              marker-height="7"
-              orient="auto-start-reverse"
-            >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b" />
-            </marker>
-          </defs>
-
-          <path
-            v-for="item in layout.parentEdges"
-            :key="`parent-${item.edge.parent_id}-${item.edge.child_id}`"
-            class="graph-edge graph-edge--parent"
-            :d="item.path"
-          />
-          <path
-            v-for="item in layout.dependencyEdges"
-            :key="item.edge.id"
-            class="graph-edge"
-            :class="edgeClass(item.edge)"
-            :d="item.path"
-            :marker-end="
-              item.edge.is_satisfied
-                ? 'url(#ws-arrow-satisfied)'
-                : 'url(#ws-arrow-pending)'
-            "
-          />
-        </svg>
-
-        <div
-          v-for="item in layout.nodes"
-          :key="item.node.id"
-          class="graph__node"
-          :style="{ left: `${item.x}px`, top: `${item.y}px` }"
-        >
-          <WorkspaceMissionCard
-            :node="item.node"
-            :selected="item.node.id === selectedId"
-            :dimmed="isDimmed(item.node.id)"
+        <template #node-mission="nodeProps">
+          <MissionGraphNode
+            v-bind="nodeProps"
             @select="emit('select', $event)"
             @focus="emit('focus', $event)"
           />
-        </div>
-      </div>
-
-      <el-empty v-if="!nodes.length" description="没有可展示的任务" />
+        </template>
+        <Controls :show-interactive="false" position="top-right" />
+      </VueFlow>
+      <el-empty v-if="!nodes.length" class="graph__empty" description="没有可展示的任务" />
     </div>
   </div>
 </template>
@@ -264,57 +146,46 @@ defineExpose({ fit, reset, locate, zoom })
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #f8fafc;
+  overflow: hidden;
 }
-.graph__toolbar {
-  display: flex;
-  gap: 8px;
-  padding: 8px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fff;
-  border-radius: 8px 8px 0 0;
-}
-.graph__viewport {
+.graph__host {
   position: relative;
   height: 560px;
-  overflow: hidden;
-  touch-action: none;
-  cursor: grab;
+  width: 100%;
 }
-.graph__canvas {
+.graph__empty {
   position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: 0 0;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
 }
-.graph__svg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  overflow: visible;
-}
-.graph__node {
-  position: absolute;
-  width: 220px;
-}
-.graph-edge {
-  fill: none;
+.graph :deep(.ws-edge--satisfied) .vue-flow__edge-path,
+.graph :deep(.ws-edge--satisfied) path {
+  stroke: #94a3b8;
   stroke-width: 2;
 }
-.graph-edge--satisfied {
-  stroke: #94a3b8;
-}
-.graph-edge--pending {
+.graph :deep(.ws-edge--pending) .vue-flow__edge-path,
+.graph :deep(.ws-edge--pending) path {
   stroke: #f59e0b;
+  stroke-width: 2;
 }
-.graph-edge--parent {
+.graph :deep(.ws-edge--parent) .vue-flow__edge-path,
+.graph :deep(.ws-edge--parent) path {
   stroke: #cbd5e1;
   stroke-dasharray: 6 4;
   stroke-width: 1.5;
 }
-.graph-edge--highlight {
+.graph :deep(.ws-edge--highlight) .vue-flow__edge-path,
+.graph :deep(.ws-edge--highlight) path {
   stroke-width: 3;
 }
-.graph-edge--dim {
+.graph :deep(.ws-edge--dim) {
   opacity: 0.25;
+}
+.graph :deep(.vue-flow__edge-text) {
+  font-size: 11px;
+  fill: #b45309;
 }
 </style>

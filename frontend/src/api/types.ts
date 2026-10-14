@@ -356,8 +356,12 @@ export interface WorkspaceGroup {
   is_unassigned: boolean
   /** Full visible scope of the milestone (ignores task filters). */
   full_counts: MilestoneCounts
+  /** Declares that `full_counts` covers every visible mission of the milestone. */
+  full_counts_scope: 'milestone_all_visible'
   /** Matched counts per status under the active filters. */
   matched_counts: Record<MissionStatus, number>
+  /** Declares that `matched_counts` is narrowed by the active filters. */
+  matched_counts_scope: 'active_filters'
   matched_total: number
   loaded: Record<MissionStatus, number>
   columns: Record<MissionStatus, WorkspaceNode[]>
@@ -374,7 +378,8 @@ export interface WorkspaceSummary {
 
 export interface WorkspaceOverview {
   generated_at: string
-  snapshot_id: string
+  /** Stable read-snapshot id (not a per-request random value). */
+  revision: string
   filters_active: boolean
   column_limit: number
   columns: MissionStatus[]
@@ -399,12 +404,19 @@ export interface WorkspaceGraphMeta {
   edge_limit: number
   context_limit: number
   nodes_truncated: boolean
+  context_truncated: boolean
   edges_truncated: boolean
+  /** Any relation was dropped for hitting a server-side budget. */
+  truncated: boolean
+  truncation_reasons: string[]
+  /** False when any node/context/edge budget cut the response short. */
+  relationships_complete: boolean
 }
 
 export interface WorkspaceGraph {
   generated_at: string
-  snapshot_id: string
+  /** Stable read-snapshot id shared with the overview when rows are unchanged. */
+  revision: string
   filters_active: boolean
   nodes: WorkspaceNode[]
   edges: WorkspaceEdge[]
