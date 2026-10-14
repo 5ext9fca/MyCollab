@@ -11,7 +11,7 @@
 | 层 | 技术 |
 | --- | --- |
 | 前端 | Vue 3 + TypeScript + Vite + Element Plus + Pinia + Vue Router |
-| 依赖图 | Vue Flow（`@vue-flow/core` + `@vue-flow/controls`）+ `@dagrejs/dagre` |
+| 依赖图 | Vue Flow（`@vue-flow/core` + `@vue-flow/controls`）+ 自研分层布局（`src/composables/useGraphLayout.ts`） |
 | 后端 | Python + Django + Django REST Framework |
 | 数据库 | PostgreSQL 16 |
 | 认证 | Django Session + Cookie + CSRF |

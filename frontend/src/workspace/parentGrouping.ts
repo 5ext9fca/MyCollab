@@ -1,18 +1,20 @@
 /**
  * Parent/child grouping for the F5 dependency graph.
  *
- * The graph option "显示父子任务关系" mounts every child card directly under its
- * parent card (one vertical stack per family root) and lets a parent collapse
- * its subtree. Collapsing must not lose information: a hidden child's
- * dependencies are re-pointed to the collapsed ancestor, and edges that end up
- * inside the same collapsed subtree are dropped.
+ * The graph option "显示父子任务关系" places a parent left of its children, which
+ * expand to the right, and lets a parent collapse its subtree. Grouping only
+ * feeds the layout and the collapse control: it never adds a dependency edge and
+ * never changes the business dependency direction.
+ *
+ * Collapsing must not lose information: a hidden child's dependencies are
+ * re-pointed to the collapsed ancestor, and edges that end up inside the same
+ * collapsed subtree are dropped.
  *
  * Everything here is pure and derived from the read-only API payload
  * (`parent_edges` drives the structure). It never writes to the business API
  * and never invents relations the backend did not return.
  */
 import type { WorkspaceEdge, WorkspaceNode, WorkspaceParentEdge } from '../api/types'
-import type { LayoutGroup } from './dto'
 
 export interface MissionForest {
   /** child id -> parent id, only when the parent is loaded. */
@@ -32,8 +34,8 @@ export interface GroupedGraph {
   nodes: WorkspaceNode[]
   /** Dependency edges after hidden children were merged onto their ancestor. */
   edges: WorkspaceEdge[]
-  /** Dagre blocks: one per family root, members stacked vertically. */
-  groups: LayoutGroup[]
+  /** Visible parent -> visible children, in display order (drives the layout). */
+  childrenOf: Map<string, string[]>
   /** Visible child -> visible parent, for revealing a collapsed node. */
   parentOf: Map<string, string>
   /** Visible direct children per node. */
@@ -135,7 +137,6 @@ export function groupByParent(
   const collapsedIds = new Set<string>()
   const representative = new Map<string, string>()
   const depth = new Map<string, number>()
-  const membersOfRoot = new Map<string, string[]>()
 
   const markHidden = (id: string, root: string) => {
     for (const child of forest.childrenOf.get(id) ?? []) {
@@ -146,15 +147,12 @@ export function groupByParent(
     }
   }
 
-  const visit = (id: string, level: number, root: string) => {
+  const visit = (id: string, level: number) => {
     if (visibleSet.has(id)) return
     visibleSet.add(id)
     visible.push(id)
     representative.set(id, id)
     depth.set(id, level)
-    const members = membersOfRoot.get(root) ?? []
-    members.push(id)
-    membersOfRoot.set(root, members)
 
     const children = forest.childrenOf.get(id) ?? []
     if (children.length && collapsed.has(id)) {
@@ -162,9 +160,9 @@ export function groupByParent(
       markHidden(id, id)
       return
     }
-    for (const child of children) visit(child, level + 1, root)
+    for (const child of children) visit(child, level + 1)
   }
-  for (const root of forest.roots) visit(root, 0, root)
+  for (const root of forest.roots) visit(root, 0)
 
   // Edges: re-point hidden endpoints to the collapsed ancestor, drop internal
   // ones, and fold duplicates that now share the same visible pair.
@@ -198,25 +196,15 @@ export function groupByParent(
   // a folded parent can still say how many subtasks it hides).
   const childCount = new Map<string, number>()
   const descendantCount = new Map<string, number>()
+  const childrenOf = new Map<string, string[]>()
   for (const id of visible) {
-    let count = 0
-    for (const child of forest.childrenOf.get(id) ?? []) {
-      if (!hidden.has(child)) count += 1
-    }
-    childCount.set(id, count)
+    const visibleChildren = (forest.childrenOf.get(id) ?? []).filter(
+      (child) => !hidden.has(child),
+    )
+    childCount.set(id, visibleChildren.length)
+    childrenOf.set(id, visibleChildren)
     descendantCount.set(id, forest.descendantCount.get(id) ?? 0)
   }
-
-  const groups: LayoutGroup[] = forest.roots
-    .filter((root) => visibleSet.has(root))
-    .map((root) => {
-      const memberIds = (membersOfRoot.get(root) ?? [root]).filter((id) => visibleSet.has(id))
-      return {
-        id: root,
-        memberIds,
-        depths: memberIds.map((id) => depth.get(id) ?? 0),
-      }
-    })
 
   const parentOf = new Map<string, string>()
   for (const id of visible) {
@@ -227,7 +215,7 @@ export function groupByParent(
   return {
     nodes: visible.map((id) => byId.get(id) as WorkspaceNode),
     edges: merged,
-    groups,
+    childrenOf,
     parentOf,
     childCount,
     descendantCount,

@@ -32,7 +32,7 @@ vi.mock('@vue-flow/core', () => ({
       </div>`,
   },
   Handle: { template: '<span class="vf-handle" />' },
-  Position: { Left: 'left', Right: 'right' },
+  Position: { Left: 'left', Right: 'right', Top: 'top', Bottom: 'bottom' },
   MarkerType: { ArrowClosed: 'arrowclosed' },
   useVueFlow: () => ({
     fitView: flowMock.fitView,
@@ -48,18 +48,19 @@ vi.mock('@vue-flow/controls', () => ({ Controls: { template: '<div class="vf-con
 
 import { getWorkspaceGraph, getWorkspaceOverview } from '../api/workspace'
 import type { MissionStatus, WorkspaceEdge, WorkspaceGroup, WorkspaceNode } from '../api/types'
-import { computeDagreLayout, graphStructureSignature, useDagreLayout } from '../composables/useDagreLayout'
+import {
+  computeGraphLayout,
+  dependencyLevels,
+  graphStructureSignature,
+  useGraphLayout,
+  GRAPH_H_GAP,
+  GRAPH_V_GAP,
+} from '../composables/useGraphLayout'
 import DependencyGraph from '../components/DependencyGraph.vue'
 import MilestoneBoard from '../components/MilestoneBoard.vue'
 import WorkspaceMissionCard from '../components/WorkspaceMissionCard.vue'
-import {
-  buildDependencyEdges,
-  buildMissionNodes,
-  GROUP_GAP,
-  GROUP_INDENT,
-  NODE_HEIGHT,
-  NODE_WIDTH,
-} from '../workspace/dto'
+import { buildDependencyEdges, buildMissionNodes, NODE_HEIGHT, NODE_WIDTH } from '../workspace/dto'
+import { DEPENDENCY_SOURCE_HANDLE, DEPENDENCY_TARGET_HANDLE } from '../workspace/dto'
 import { collectRelated, directRelations } from '../workspace/dependencyTraversal'
 import { buildForest, groupByParent, revealPath } from '../workspace/parentGrouping'
 import {
@@ -169,48 +170,152 @@ describe('workspace api', () => {
   })
 })
 
-describe('Dagre layout', () => {
-  it('lays prerequisite ranks to the left of their dependents', () => {
+describe('layered graph layout', () => {
+  it('places every dependent fully below all of its prerequisites', () => {
     const nodes = [node('a'), node('b'), node('c'), node('d'), node('e')]
-    const edges = [edge('1', 'a', 'c'), edge('2', 'b', 'c'), edge('3', 'c', 'd')]
-    const { positions } = computeDagreLayout(nodes, edges)
+    const edges = [edge('3', 'c', 'd'), edge('1', 'a', 'c'), edge('2', 'b', 'c')]
+    const { positions, levels } = computeGraphLayout(nodes, edges)
 
     const a = positions.get('a')!
     const b = positions.get('b')!
     const c = positions.get('c')!
     const d = positions.get('d')!
-    // Same rank shares an x; each dependent sits a full column to the right.
-    expect(a.x).toBe(b.x)
-    expect(c.x).toBeGreaterThan(a.x)
-    expect(d.x).toBeGreaterThan(c.x)
-    expect(d.x - c.x).toBeGreaterThan(NODE_WIDTH)
+    expect(levels.get('a')).toBe(0)
+    expect(levels.get('b')).toBe(0)
+    expect(levels.get('c')).toBe(1)
+    expect(levels.get('d')).toBe(2)
+    expect(a.y).toBe(b.y)
+    // The whole card, not just its centre, sits below the prerequisites.
+    expect(c.y).toBeGreaterThanOrEqual(a.y + NODE_HEIGHT)
+    expect(c.y).toBeGreaterThanOrEqual(b.y + NODE_HEIGHT)
+    expect(d.y).toBeGreaterThanOrEqual(c.y + NODE_HEIGHT)
     // Isolated node still gets a position.
     expect(positions.get('e')).toBeTruthy()
   })
 
-  it('converts Dagre centres to Vue Flow top-left coordinates', () => {
-    const { positions, width } = computeDagreLayout([node('a')], [])
-    const a = positions.get('a')!
-    expect(Number.isFinite(a.x)).toBe(true)
-    expect(Number.isFinite(a.y)).toBe(true)
-    expect(width).toBeGreaterThanOrEqual(a.x + NODE_WIDTH)
+  it('lays out top to bottom with a fixed row pitch', () => {
+    const nodes = [node('a'), node('b')]
+    const { positions } = computeGraphLayout(nodes, [edge('1', 'a', 'b')])
+    expect(positions.get('b')!.y - positions.get('a')!.y).toBe(NODE_HEIGHT + GRAPH_V_GAP)
   })
 
-  it('only re-lays out when the structure changes, not on status refresh', () => {
-    const nodes = [node('a'), node('b')]
-    const edges = [edge('1', 'a', 'b')]
-    const layout = useDagreLayout()
+  it('does not depend on the edge array order', () => {
+    const nodes = [node('a'), node('b'), node('c')]
+    const first = computeGraphLayout(nodes, [edge('1', 'a', 'c'), edge('2', 'b', 'c')])
+    const second = computeGraphLayout(nodes, [edge('2', 'b', 'c'), edge('1', 'a', 'c')])
+    expect(second.positions).toEqual(first.positions)
+  })
 
-    expect(layout.update(nodes, edges)).toBe(true)
+  it('puts a child one column right of its parent on the same row', () => {
+    const nodes = [node('p'), node('a'), node('b')]
+    const childrenOf = new Map([['p', ['a', 'b']]])
+    const { positions } = computeGraphLayout(nodes, [], { childrenOf })
+    const p = positions.get('p')!
+    const a = positions.get('a')!
+    const b = positions.get('b')!
+    expect(a.y).toBe(p.y)
+    expect(b.y).toBe(p.y)
+    expect(a.x).toBe(p.x + NODE_WIDTH + GRAPH_H_GAP)
+    expect(b.x).toBeGreaterThan(a.x)
+  })
+
+  it('lets dependency levels win over parent/child alignment', () => {
+    const nodes = [node('p'), node('a'), node('b'), node('c')]
+    const edges = [edge('1', 'a', 'b'), edge('2', 'b', 'c')]
+    const childrenOf = new Map([['p', ['a']], ['a', ['b']], ['b', ['c']]])
+    const { positions } = computeGraphLayout(nodes, edges, { childrenOf })
+    const p = positions.get('p')!
+    const a = positions.get('a')!
+    const b = positions.get('b')!
+    const c = positions.get('c')!
+    expect(a.x).toBeGreaterThan(p.x)
+    expect(a.y).toBe(p.y)
+    expect(b.y).toBeGreaterThanOrEqual(a.y + NODE_HEIGHT)
+    expect(c.y).toBeGreaterThanOrEqual(b.y + NODE_HEIGHT)
+    expect(b.x).toBeGreaterThan(a.x)
+    expect(c.x).toBeGreaterThan(b.x)
+  })
+
+  it('keeps a child inside its parent band and below external prerequisites', () => {
+    const nodes = [node('p'), node('a'), node('x'), node('y')]
+    const edges = [edge('1', 'x', 'a'), edge('2', 'y', 'a'), edge('3', 'x', 'y')]
+    const childrenOf = new Map([['p', ['a']]])
+    const { positions } = computeGraphLayout(nodes, edges, { childrenOf })
+    const p = positions.get('p')!
+    const a = positions.get('a')!
+    const x = positions.get('x')!
+    const y = positions.get('y')!
+    expect(a.y).toBeGreaterThanOrEqual(x.y + NODE_HEIGHT)
+    expect(a.y).toBeGreaterThanOrEqual(y.y + NODE_HEIGHT)
+    // The direct child stays one column right of its parent, however deep it is.
+    expect(a.x).toBe(p.x + NODE_WIDTH + GRAPH_H_GAP)
+  })
+
+  it('never overlaps cards of different families on the same row', () => {
+    const nodes = [node('p'), node('a'), node('q'), node('r')]
+    const childrenOf = new Map([['p', ['a']]])
+    const { positions } = computeGraphLayout(nodes, [], { childrenOf })
+    for (const [id, pos] of positions) {
+      for (const [other, otherPos] of positions) {
+        if (id === other || pos.y !== otherPos.y) continue
+        expect(Math.abs(pos.x - otherPos.x)).toBeGreaterThanOrEqual(NODE_WIDTH + GRAPH_H_GAP)
+      }
+    }
+  })
+
+  it('reserves a family region so other cards cannot intrude', () => {
+    const nodes = [node('p'), node('a'), node('z'), node('x'), node('y')]
+    const edges = [edge('1', 'z', 'a'), edge('2', 'x', 'y')]
+    const childrenOf = new Map([['p', ['a']]])
+    const { positions } = computeGraphLayout(nodes, edges, { childrenOf })
+    const p = positions.get('p')!
+    const a = positions.get('a')!
+    expect(a.y).toBeGreaterThan(p.y)
+    // p's region spans every row and column its visible descendants use.
+    const box = {
+      left: Math.min(p.x, a.x),
+      right: Math.max(p.x, a.x) + NODE_WIDTH,
+      top: p.y,
+      bottom: a.y + NODE_HEIGHT,
+    }
+    for (const [id, pos] of positions) {
+      if (id === 'p' || id === 'a') continue
+      const intrudes =
+        pos.x < box.right &&
+        pos.x + NODE_WIDTH > box.left &&
+        pos.y < box.bottom &&
+        pos.y + NODE_HEIGHT > box.top
+      expect(intrudes, `${id} must stay outside p's family region`).toBe(false)
+    }
+  })
+
+  it('reports a dependency cycle instead of drawing reversed edges', () => {
+    const nodes = [node('a'), node('b')]
+    const { hasCycle, positions } = computeGraphLayout(nodes, [
+      edge('1', 'a', 'b'),
+      edge('2', 'b', 'a'),
+    ])
+    expect(hasCycle).toBe(true)
+    expect(Number.isFinite(positions.get('a')!.x)).toBe(true)
+    expect(Number.isFinite(positions.get('b')!.y)).toBe(true)
+    expect(dependencyLevels(['a', 'b'], []).hasCycle).toBe(false)
+  })
+
+  it('only re-lays out when the structure changes, not on a status refresh', () => {
+    const nodes = [node('p'), node('c')]
+    const childrenOf = new Map([['p', ['c']]])
+    const layout = useGraphLayout()
+
+    expect(layout.update(nodes, [], { childrenOf })).toBe(true)
     const first = new Map(layout.positions.value)
 
     const refreshed = nodes.map((item) => ({ ...item, status: 'Done' as const, title: '新标题' }))
-    expect(layout.update(refreshed, edges)).toBe(false)
+    expect(layout.update(refreshed, [], { childrenOf })).toBe(false)
     expect(layout.positions.value).toEqual(first)
 
-    const withExtra = [...nodes, node('c')]
-    expect(layout.update(withExtra, edges)).toBe(true)
-    expect(layout.positions.value.size).toBe(3)
+    // Collapsing the family is a structure change and moves the canvas.
+    expect(layout.update([node('p')], [], { childrenOf: new Map([['p', []]]) })).toBe(true)
+    expect(layout.positions.value.size).toBe(1)
   })
 
   it('signs only structure, not titles or status', () => {
@@ -218,37 +323,6 @@ describe('Dagre layout', () => {
     expect(graphStructureSignature([node('a'), node('b')], edges)).toBe(
       graphStructureSignature([node('a', { status: 'Done' }), node('b', { title: 'x' })], edges),
     )
-  })
-
-  it('stacks a grouped child directly below its parent', () => {
-    const nodes = [node('p'), node('c1'), node('c2')]
-    const groups = [{ id: 'p', memberIds: ['p', 'c1', 'c2'], depths: [0, 1, 1] }]
-    const { positions } = computeDagreLayout(nodes, [], { groups })
-
-    const p = positions.get('p')!
-    const c1 = positions.get('c1')!
-    const c2 = positions.get('c2')!
-    // Children share the parent's column, indented by their depth.
-    expect(c1.x - p.x).toBe(GROUP_INDENT)
-    expect(c1.y - p.y).toBe(NODE_HEIGHT + GROUP_GAP)
-    expect(c2.x).toBe(c1.x)
-    expect(c2.y - c1.y).toBe(NODE_HEIGHT + GROUP_GAP)
-  })
-
-  it('treats grouping as structure: the signature and layout change', () => {
-    const nodes = [node('p'), node('c1')]
-    const groups = [{ id: 'p', memberIds: ['p', 'c1'], depths: [0, 1] }]
-    expect(graphStructureSignature(nodes, [], null)).not.toBe(
-      graphStructureSignature(nodes, [], groups),
-    )
-
-    const layout = useDagreLayout()
-    expect(layout.update(nodes, [], { groups: null })).toBe(true)
-    expect(layout.update(nodes, [], { groups: null })).toBe(false)
-    expect(layout.update(nodes, [], { groups })).toBe(true)
-    const p = layout.positions.value.get('p')!
-    const c = layout.positions.value.get('c1')!
-    expect(c.y - p.y).toBe(NODE_HEIGHT + GROUP_GAP)
   })
 })
 
@@ -278,6 +352,9 @@ describe('DTO adapter', () => {
     const flowEdges = buildDependencyEdges(edges, null)
     expect(flowEdges[0].source).toBe('a')
     expect(flowEdges[0].target).toBe('c')
+    // The graph reads top to bottom, so edges leave the bottom and enter the top.
+    expect(flowEdges[0].sourceHandle).toBe(DEPENDENCY_SOURCE_HANDLE)
+    expect(flowEdges[0].targetHandle).toBe(DEPENDENCY_TARGET_HANDLE)
     expect(flowEdges[0].markerEnd).toBe('arrowclosed')
     expect(flowEdges[0].class).toContain('ws-edge--satisfied')
     expect(flowEdges[1].class).toContain('ws-edge--pending')
@@ -381,6 +458,21 @@ describe('WorkspaceMissionCard', () => {
     })
     expect(wrapper.find('.ws-card__toggle').exists()).toBe(false)
   })
+
+  it('marks a nested subtask card in the graph', () => {
+    const nested = mount(WorkspaceMissionCard, {
+      props: { node: node('a'), compact: true, depth: 1 },
+      global: { stubs },
+    })
+    expect(nested.find('.ws-card__depth').exists()).toBe(true)
+    expect(nested.find('.ws-card').attributes('aria-label')).toContain('子任务')
+
+    const root = mount(WorkspaceMissionCard, {
+      props: { node: node('a'), compact: true, depth: 0 },
+      global: { stubs },
+    })
+    expect(root.find('.ws-card__depth').exists()).toBe(false)
+  })
 })
 
 describe('parent/child grouping', () => {
@@ -408,7 +500,7 @@ describe('parent/child grouping', () => {
     expect(forest.roots).toEqual(['a'])
   })
 
-  it('mounts children under the parent and keeps their dependencies', () => {
+  it('keeps the visible parent/child structure and the children dependencies', () => {
     const nodes = [node('p'), node('c1'), node('c2'), node('x')]
     const edges = [
       edge('1', 'x', 'c1'),
@@ -420,10 +512,9 @@ describe('parent/child grouping', () => {
     expect(view.nodes.map((item) => item.id)).toEqual(['p', 'c1', 'c2', 'x'])
     expect(view.childCount.get('p')).toBe(2)
     expect(view.descendantCount.get('p')).toBe(2)
-    expect(view.groups).toEqual([
-      { id: 'p', memberIds: ['p', 'c1', 'c2'], depths: [0, 1, 1] },
-      { id: 'x', memberIds: ['x'], depths: [0] },
-    ])
+    expect(view.childrenOf.get('p')).toEqual(['c1', 'c2'])
+    expect(view.childrenOf.get('c1')).toEqual([])
+    expect(view.childrenOf.get('x')).toEqual([])
     expect(view.edges.map((item) => `${item.prerequisite_id}>${item.mission_id}`)).toEqual([
       'x>c1',
       'x>c2',
@@ -449,10 +540,8 @@ describe('parent/child grouping', () => {
     // The count still describes the merged subtree.
     expect(view.descendantCount.get('p')).toBe(2)
     expect(view.collapsed.has('p')).toBe(true)
-    expect(view.groups).toEqual([
-      { id: 'p', memberIds: ['p'], depths: [0] },
-      { id: 'x', memberIds: ['x'], depths: [0] },
-    ])
+    // Hidden children no longer take part in the layout structure.
+    expect(view.childrenOf.get('p')).toEqual([])
   })
 
   it('only marks a merged dependency satisfied when all folded ones are', () => {
@@ -619,7 +708,7 @@ describe('DependencyGraph', () => {
         ['p', 0],
         ['c', 1],
       ]),
-      groups: [{ id: 'p', memberIds: ['p', 'c'], depths: [0, 1] }],
+      childrenOf: new Map([['p', ['c']]]),
     }
     const wrapper = mount(DependencyGraph, {
       props: { nodes: [node('p'), node('c')], edges: [], grouping },

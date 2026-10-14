@@ -2,13 +2,15 @@
 /**
  * Vue Flow custom node (`type: mission`).
  *
- * Reuses MissionCard for display and adds the left/right handles that only act
- * as connection anchors — the graph is read-only, so connecting is disabled on
- * the handles and on the canvas.
+ * Reuses MissionCard for display and adds the top/bottom handles that only act
+ * as connection anchors — the graph reads top to bottom, so a prerequisite
+ * leaves from the bottom and a dependent enters from the top. The graph is
+ * read-only, so connecting is disabled on the handles and on the canvas.
  */
 import { Handle, Position } from '@vue-flow/core'
 
 import type { MissionNodeData } from '../workspace/dto'
+import { DEPENDENCY_SOURCE_HANDLE, DEPENDENCY_TARGET_HANDLE } from '../workspace/dto'
 import WorkspaceMissionCard from './WorkspaceMissionCard.vue'
 
 defineOptions({ inheritAttrs: false })
@@ -24,7 +26,12 @@ const emit = defineEmits<{
 
 <template>
   <div class="ws-graph-node">
-    <Handle type="target" :position="Position.Left" :connectable="false" />
+    <Handle
+      :id="DEPENDENCY_TARGET_HANDLE"
+      type="target"
+      :position="Position.Top"
+      :connectable="false"
+    />
     <WorkspaceMissionCard
       :node="data.node"
       :selected="data.selected"
@@ -38,7 +45,12 @@ const emit = defineEmits<{
       @focus="emit('focus', $event)"
       @toggle-children="emit('toggleChildren', $event)"
     />
-    <Handle type="source" :position="Position.Right" :connectable="false" />
+    <Handle
+      :id="DEPENDENCY_SOURCE_HANDLE"
+      type="source"
+      :position="Position.Bottom"
+      :connectable="false"
+    />
   </div>
 </template>
 

@@ -8,7 +8,7 @@
  * carries `expected_version` (see MissionDetailDrawer).
  *
  * A monotonic request sequence makes the newest filter win: a slow response can
- * never overwrite a newer one, and the Dagre layout is derived from the applied
+ * never overwrite a newer one, and the graph layout is derived from the applied
  * response only.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -26,6 +26,7 @@ import { emptyFilters, readParam } from '../workspace/filters'
 import { collectRelated, relatedHighlight } from '../workspace/dependencyTraversal'
 import { milestoneColor, milestoneLabel } from '../workspace/milestoneColor'
 import { groupByParent, revealPath } from '../workspace/parentGrouping'
+import { dependencyLevels } from '../composables/useGraphLayout'
 import DependencyGraph from '../components/DependencyGraph.vue'
 import MilestoneBoard from '../components/MilestoneBoard.vue'
 import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
@@ -86,6 +87,19 @@ const grouped = computed(() => {
 })
 const visibleNodes = computed(() => grouped.value?.nodes ?? graphNodes.value)
 const visibleEdges = computed(() => grouped.value?.edges ?? graphEdges.value)
+
+/**
+ * A collapsed merge can re-point two children onto their parents and produce a
+ * cycle the layering has to break. The layout stays usable, but the page must
+ * say so instead of implying the edge direction is complete.
+ */
+const graphHasCycle = computed(() => {
+  if (view.value !== 'graph' || !graph.value) return false
+  return dependencyLevels(
+    visibleNodes.value.map((node) => node.id),
+    visibleEdges.value,
+  ).hasCycle
+})
 
 /**
  * Highlight beyond the default direct relations: "only related" keeps the
@@ -555,7 +569,7 @@ onBeforeUnmount(() => {
         显示父子任务关系
       </el-checkbox>
       <el-checkbox v-model="relationListMode" @change="syncUrl">关系列表</el-checkbox>
-      <span class="meta">画布横轴是依赖层级，不是时间或状态</span>
+      <span class="meta">画布纵轴是依赖层级（上→下），不是时间或状态</span>
     </div>
 
     <el-alert v-if="error" type="error" :closable="false" show-icon class="workspace__error">
@@ -572,6 +586,17 @@ onBeforeUnmount(() => {
     >
       关系加载不完整（{{ graphMeta.truncation_reasons.map((r) => truncationLabels[r] ?? r).join('、') }}），
       请缩小筛选或聚焦某个任务后再查看上下游。
+    </el-alert>
+
+    <el-alert
+      v-if="graphHasCycle"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="workspace__error"
+      data-test="graph-cycle"
+    >
+      依赖关系存在环（可能由折叠合并产生），已按可用层级展示；请展开相关子任务核对关系。
     </el-alert>
 
     <div v-loading="loading" class="workspace__main">
@@ -707,7 +732,7 @@ onBeforeUnmount(() => {
       <el-tag size="small" type="success">已完成</el-tag>
       <el-tag size="small" type="danger">已取消</el-tag>
       <span class="meta">
-        · 依赖箭头方向：前置 → 依赖它的任务；实线灰=已满足，橙色=等待；卡片颜色=所属里程碑；勾选「显示父子任务关系」时子任务垂直挂在父任务下，折叠后其依赖合并到父任务
+        · 依赖箭头方向：前置 → 依赖它的任务（由上至下）；实线灰=已满足，橙色=等待；卡片颜色=所属里程碑；勾选「显示父子任务关系」时子任务横向排列在父任务右侧，折叠后其依赖合并到父任务
       </span>
       <span class="meta">· 上次刷新 {{ formatTime(lastRefreshed) }}</span>
     </div>

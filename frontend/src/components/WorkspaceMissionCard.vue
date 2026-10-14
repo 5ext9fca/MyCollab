@@ -44,7 +44,7 @@ const shortId = (id: string) => id.slice(0, 8)
 /** Tooltip for the milestone swatch, so colour is never the only cue. */
 const milestoneTitle = computed(() => `所属里程碑：${props.node.milestone_name ?? '未归属里程碑'}`)
 
-/** Subtask depth is conveyed by indentation; keep it in the label too. */
+/** Subtask depth is shown by the hierarchy marker and the layout position. */
 const cardLabel = computed(
   () => `${props.depth > 0 ? '子任务，' : ''}任务 ${props.node.title}`,
 )
@@ -90,6 +90,7 @@ function onKey(event: KeyboardEvent) {
   >
     <div class="ws-card__head">
       <span class="ws-card__head-left">
+        <span v-if="compact && depth > 0" class="ws-card__depth" aria-hidden="true">↳</span>
         <span
           v-if="milestoneColor"
           class="ws-card__swatch"
@@ -193,7 +194,7 @@ function onKey(event: KeyboardEvent) {
   color: #6b7280;
 }
 .ws-card--compact {
-  /* Fixed height: the parent/child stack places cards by NODE_HEIGHT. */
+  /* Fixed height: the layered layout places cards by NODE_HEIGHT. */
   height: 120px;
   overflow: hidden;
 }
@@ -249,6 +250,12 @@ function onKey(event: KeyboardEvent) {
   height: 8px;
   border-radius: 2px;
   background: var(--ws-milestone);
+  flex: none;
+}
+.ws-card__depth {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1;
   flex: none;
 }
 .ws-card__id {

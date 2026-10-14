@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 
 import type { WorkspaceEdge, WorkspaceNode } from '../api/types'
 import DependencyGraph from '../components/DependencyGraph.vue'
-import { GROUP_GAP, GROUP_INDENT, NODE_HEIGHT } from '../workspace/dto'
+import { GRAPH_H_GAP, GRAPH_V_GAP } from '../composables/useGraphLayout'
+import { NODE_HEIGHT, NODE_WIDTH } from '../workspace/dto'
 
 function node(id: string, title: string): WorkspaceNode {
   return {
@@ -61,7 +62,39 @@ describe('DependencyGraph (real Vue Flow)', () => {
     wrapper.unmount()
   })
 
-  it('mounts a grouped subtask directly below its parent', async () => {
+  it('renders a dependent strictly below its prerequisite', async () => {
+    const wrapper = mount(DependencyGraph, {
+      props: {
+        nodes: [node('a', '前置任务AAA'), node('b', '依赖任务BBB')],
+        edges: [
+          { id: '1', prerequisite_id: 'a', mission_id: 'b', is_satisfied: false, cross_milestone: false },
+        ],
+      },
+      attachTo: document.body,
+    })
+    await flushPromises()
+
+    const parse = (style: string) => {
+      const match = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(style)
+      return match ? { x: Number(match[1]), y: Number(match[2]) } : null
+    }
+    const wrappers = wrapper.findAll('.vue-flow__node')
+    const prerequisite = wrappers.find((element) => element.text().includes('AAA'))
+    const dependent = wrappers.find((element) => element.text().includes('BBB'))
+    expect(prerequisite).toBeTruthy()
+    expect(dependent).toBeTruthy()
+
+    const a = parse(prerequisite!.attributes('style') ?? '')
+    const b = parse(dependent!.attributes('style') ?? '')
+    expect(a).toBeTruthy()
+    expect(b).toBeTruthy()
+    expect(b!.x).toBe(a!.x)
+    expect(b!.y - a!.y).toBe(NODE_HEIGHT + GRAPH_V_GAP)
+
+    wrapper.unmount()
+  })
+
+  it('places a grouped subtask right of its parent on the same row', async () => {
     const grouping = {
       descendantCount: new Map([['p', 1]]),
       collapsed: new Set<string>(),
@@ -69,7 +102,7 @@ describe('DependencyGraph (real Vue Flow)', () => {
         ['p', 0],
         ['c', 1],
       ]),
-      groups: [{ id: 'p', memberIds: ['p', 'c'], depths: [0, 1] }],
+      childrenOf: new Map([['p', ['c']]]),
     }
     const wrapper = mount(DependencyGraph, {
       props: {
@@ -95,8 +128,8 @@ describe('DependencyGraph (real Vue Flow)', () => {
     const c = parse(child!.attributes('style') ?? '')
     expect(p).toBeTruthy()
     expect(c).toBeTruthy()
-    expect(c!.y - p!.y).toBe(NODE_HEIGHT + GROUP_GAP)
-    expect(c!.x - p!.x).toBe(GROUP_INDENT)
+    expect(c!.y).toBe(p!.y)
+    expect(c!.x - p!.x).toBe(NODE_WIDTH + GRAPH_H_GAP)
 
     wrapper.unmount()
   })

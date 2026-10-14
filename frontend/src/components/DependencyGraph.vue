@@ -2,15 +2,18 @@
 /**
  * F5 dependency graph, rendered with Vue Flow.
  *
- * Read-only by construction: node dragging, connecting, edge re-linking and the
- * delete shortcut are all disabled, and no Vue Flow event ever writes to the
- * business API. Positions come from Dagre (`useDagreLayout`); a pure status
- * refresh keeps the same coordinates. Only direct relations are emphasised by
- * default — "all upstream/downstream" is an explicit action in the page.
+ * The canvas reads top to bottom: every card sits below all of its visible
+ * prerequisites (see `useGraphLayout`). Read-only by construction: node
+ * dragging, connecting, edge re-linking and the delete shortcut are all
+ * disabled, and no Vue Flow event ever writes to the business API. A pure
+ * status refresh keeps the same coordinates. Only direct relations are
+ * emphasised by default — "all upstream/downstream" is an explicit action in
+ * the page.
  *
  * Parent/child grouping arrives fully resolved (`grouping`): the page already
- * stacked the visible family and merged collapsed children onto their parent,
- * so the canvas only renders what it is handed and never mutates the graph.
+ * merged collapsed children onto their parent and hands over the visible
+ * parent/child structure, so the canvas only renders what it is given and
+ * never mutates the graph.
  */
 import { computed, nextTick, watch } from 'vue'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
@@ -21,7 +24,7 @@ import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 
 import type { WorkspaceEdge, WorkspaceNode } from '../api/types'
-import { useDagreLayout } from '../composables/useDagreLayout'
+import { useGraphLayout } from '../composables/useGraphLayout'
 import { buildDependencyEdges, buildMissionNodes, NODE_HEIGHT, NODE_WIDTH } from '../workspace/dto'
 import type { GroupInfo, MissionNodeData } from '../workspace/dto'
 import { directRelations } from '../workspace/dependencyTraversal'
@@ -47,7 +50,7 @@ const emit = defineEmits<{
   (event: 'toggleCollapse', id: string): void
 }>()
 
-const { positions, update } = useDagreLayout()
+const { positions, update } = useGraphLayout()
 const { fitView, setCenter, findNode, onNodesInitialized, onNodeClick, onEdgeClick } = useVueFlow()
 
 let fitted = false
@@ -65,9 +68,9 @@ const flowNodes = computed<Node<MissionNodeData>[]>(() =>
 
 const flowEdges = computed<Edge[]>(() => buildDependencyEdges(props.edges, props.selectedId))
 
-/** Recompute Dagre coordinates only when the structure changed. */
+/** Recompute the layered coordinates only when the structure changed. */
 function applyLayout() {
-  update(props.nodes, props.edges, { groups: props.grouping?.groups })
+  update(props.nodes, props.edges, { childrenOf: props.grouping?.childrenOf ?? null })
 }
 
 applyLayout()

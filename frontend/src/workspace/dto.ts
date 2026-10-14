@@ -13,39 +13,29 @@ import type { WorkspaceEdge, WorkspaceNode } from '../api/types'
 import { milestoneColor } from './milestoneColor'
 
 export const MISSION_NODE_TYPE = 'mission'
+/** Card width in CSS pixels; the layout uses it as the column pitch unit. */
 export const NODE_WIDTH = 220
+/** Card height in CSS pixels; the graph card is fixed to this height. */
 export const NODE_HEIGHT = 120
-/** Vertical gap between the stacked cards of one parent/child family. */
-export const GROUP_GAP = 12
-/** Horizontal indent applied per nesting level inside a family. */
-export const GROUP_INDENT = 16
 
 /**
- * One vertical stack laid out by Dagre as a single node.
- *
- * When "显示父子任务关系" is off every node is its own group of one member; when
- * it is on, a family root plus its visible descendants form one group and the
- * cards are stacked in `memberIds` order.
+ * Handle ids. The graph now reads top to bottom, so a prerequisite leaves its
+ * card from the bottom and a dependent enters from the top. The page never
+ * creates connections, so these are only routing anchors.
  */
-export interface LayoutGroup {
-  /** Dagre node id: the family root (or the node itself when ungrouped). */
-  id: string
-  /** Visible members in vertical order, root first. */
-  memberIds: string[]
-  /** Nesting depth per member (0 = root). */
-  depths: number[]
-}
+export const DEPENDENCY_SOURCE_HANDLE = 'dep-source'
+export const DEPENDENCY_TARGET_HANDLE = 'dep-target'
 
 /** Parent/child presentation flags shared by the graph node components. */
 export interface GroupInfo {
-  /** Total descendants (whole subtree, including collapsed ones) per node. */
+  /** Total descendants (whole subtree, collapsed ones included) per node. */
   descendantCount: Map<string, number>
   /** Nodes whose subtree is collapsed. */
   collapsed: Set<string>
   /** Nesting depth per visible node (0 = family root / ungrouped). */
   depth: Map<string, number>
-  /** Dagre blocks, one per family root. */
-  groups: LayoutGroup[]
+  /** Visible parent -> visible children, in display order. */
+  childrenOf: Map<string, string[]>
 }
 
 export interface MissionNodeData {
@@ -72,7 +62,7 @@ export interface MissionEdgeData {
 export type PositionLookup = Map<string, XYPosition>
 
 /**
- * Build the Vue Flow nodes; positions come from the Dagre layout and the
+ * Build the Vue Flow nodes; positions come from the layered layout and the
  * optional grouping only adds presentation flags.
  */
 export function buildMissionNodes(
@@ -115,6 +105,8 @@ export function buildDependencyEdges(
       id: edge.id,
       source: edge.prerequisite_id,
       target: edge.mission_id,
+      sourceHandle: DEPENDENCY_SOURCE_HANDLE,
+      targetHandle: DEPENDENCY_TARGET_HANDLE,
       type: 'smoothstep',
       markerEnd: MarkerType.ArrowClosed,
       class: classes.join(' '),
