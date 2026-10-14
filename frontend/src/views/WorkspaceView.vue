@@ -24,6 +24,7 @@ import type { User, WorkspaceEdge, WorkspaceGraph, WorkspaceOverview } from '../
 import type { QuickKey, WorkspaceFilters } from '../workspace/filters'
 import { emptyFilters, readParam } from '../workspace/filters'
 import { collectRelated, relatedHighlight } from '../workspace/dependencyTraversal'
+import { edgeStrokeColor } from '../workspace/dto'
 import { milestoneColor, milestoneLabel } from '../workspace/milestoneColor'
 import { groupByParent, revealPath } from '../workspace/parentGrouping'
 import { dependencyLevels } from '../composables/useGraphLayout'
@@ -140,6 +141,28 @@ const selectedRelations = computed(() => {
   return { upstream: titles(upstream), downstream: titles(downstream) }
 })
 
+/**
+ * The selected edge is coloured by its visible source mission, exactly like the
+ * canvas. The banner names both endpoints so the source mission is readable in
+ * words, not only by colour.
+ */
+const selectedEdgeInfo = computed(() => {
+  const current = selectedEdge.value
+  if (!current) return null
+  const byId = new Map(visibleNodes.value.map((node) => [node.id, node]))
+  const source = byId.get(current.prerequisite_id)
+  const target = byId.get(current.mission_id)
+  const visibleIds = new Set(visibleNodes.value.map((node) => node.id))
+  return {
+    sourceTitle: source?.title ?? `#${current.prerequisite_id.slice(0, 8)}`,
+    targetTitle: target?.title ?? `#${current.mission_id.slice(0, 8)}`,
+    targetId: current.mission_id,
+    color: edgeStrokeColor(current, visibleIds),
+    satisfied: current.is_satisfied,
+    crossMilestone: current.cross_milestone,
+  }
+})
+
 /** Distinct milestones in the visible graph, for the card-colour legend. */
 const milestoneLegend = computed(() => {
   const entries = new Map<string, { id: string; name: string; color: string; count: number }>()
@@ -183,16 +206,19 @@ function baseParams(): QueryParams {
   }
 }
 
-async function loadOverview() {
+async function loadOverview(seq: number) {
   const data = await getWorkspaceOverview({
     ...baseParams(),
     column_limit: columnLimit.value,
   })
+  // A newer request (e.g. the close that clears the focus and its scope) owns
+  // the state: a slow response must never write back an older view.
+  if (seq !== requestSeq) return
   overview.value = data
   lastRefreshed.value = data.generated_at
 }
 
-async function loadGraph() {
+async function loadGraph(seq: number) {
   const focus = selectedId.value
   const scoped = relatedOnly.value && !!focus
   const data = await getWorkspaceGraph({
@@ -205,6 +231,7 @@ async function loadGraph() {
     context: scoped ? 'false' : 'true',
     depth: 5,
   })
+  if (seq !== requestSeq) return
   graph.value = data
   selectedEdge.value = null
   lastRefreshed.value = data.generated_at
@@ -234,10 +261,10 @@ async function reload(options: { fitGraph?: boolean } = {}) {
   error.value = ''
   try {
     if (view.value === 'overview') {
-      await loadOverview()
+      await loadOverview(seq)
       if (seq !== requestSeq) return
     } else {
-      await loadGraph()
+      await loadGraph(seq)
       if (seq !== requestSeq) return
       await nextTick()
       if (seq !== requestSeq) return
@@ -439,8 +466,29 @@ function onDrawerChanged() {
   void reload()
 }
 
+/**
+ * Closing the drawer clears the mission focus: `selectedId`, the selected edge,
+ * the highlight/dimming and the upstream/downstream summary all go away, and the
+ * `selected` URL parameter is dropped. Filter, view mode, parent display/collapse
+ * state and the canvas viewport are untouched.
+ *
+ * "只看相关" is a focus-scoped view, so it exits too and the team-wide graph is
+ * fetched again — otherwise the canvas would stay cropped to the mission that was
+ * just closed. The request generation makes sure an in-flight focused request
+ * cannot write the old focus/scope back.
+ *
+ * A *programmatic* close (opening another mission from the drawer via `focus`)
+ * flips `drawerOpen` without emitting `close`, so this handler never clears the
+ * newly chosen focus.
+ */
 function onDrawerClose() {
+  const wasScoped = relatedOnly.value
   drawerOpen.value = false
+  selectedId.value = null
+  selectedEdge.value = null
+  relatedOnly.value = false
+  syncUrl()
+  if (wasScoped && view.value === 'graph') void reload()
 }
 
 function refresh() {
@@ -660,18 +708,24 @@ onBeforeUnmount(() => {
           </el-alert>
 
           <el-alert
-            v-if="selectedEdge"
+            v-if="selectedEdgeInfo"
             type="info"
             :closable="true"
             class="workspace__edge-info"
             @close="selectedEdge = null"
           >
-            <div>
-              依赖关系：前置 → 依赖任务 ·
-              {{ selectedEdge.is_satisfied ? '已满足' : '尚未满足' }}
-              <template v-if="selectedEdge.cross_milestone"> · 跨里程碑</template>
+            <div class="workspace__edge-line">
+              <span
+                class="workspace__edge-swatch"
+                :style="{ background: selectedEdgeInfo.color }"
+              />
+              来源前置任务：{{ selectedEdgeInfo.sourceTitle }} → 依赖任务：{{
+                selectedEdgeInfo.targetTitle
+              }}
+              · {{ selectedEdgeInfo.satisfied ? '已满足' : '尚未满足' }}
+              <template v-if="selectedEdgeInfo.crossMilestone"> · 跨里程碑</template>
             </div>
-            <el-button link type="primary" size="small" @click="onFocus(selectedEdge.mission_id)">
+            <el-button link type="primary" size="small" @click="onFocus(selectedEdgeInfo.targetId)">
               打开依赖任务
             </el-button>
           </el-alert>
@@ -709,6 +763,12 @@ onBeforeUnmount(() => {
             </el-tag>
           </div>
 
+          <div class="workspace__edge-legend">
+            <span class="meta">
+              依赖线颜色对应前置 Mission（同一前置的线同色，与卡片里程碑颜色是两套含义）；实线=已满足，虚线=尚未满足
+            </span>
+          </div>
+
           <div v-if="milestoneLegend.length" class="workspace__milestone-legend">
             <span class="meta">卡片颜色（所属里程碑）：</span>
             <span
@@ -732,7 +792,7 @@ onBeforeUnmount(() => {
       <el-tag size="small" type="success">已完成</el-tag>
       <el-tag size="small" type="danger">已取消</el-tag>
       <span class="meta">
-        · 依赖箭头方向：前置 → 依赖它的任务（由上至下）；实线灰=已满足，橙色=等待；卡片颜色=所属里程碑；勾选「显示父子任务关系」时子任务横向排列在父任务右侧，折叠后其依赖合并到父任务
+        · 依赖箭头方向：前置 → 依赖它的任务（由上至下）；线色对应前置 Mission（同一前置的线同色），实线=已满足，虚线=等待；卡片颜色=所属里程碑（与线色是两套含义）；勾选「显示父子任务关系」时子任务横向排列在父任务右侧，折叠后其依赖合并到父任务
       </span>
       <span class="meta">· 上次刷新 {{ formatTime(lastRefreshed) }}</span>
     </div>
@@ -790,6 +850,21 @@ onBeforeUnmount(() => {
 }
 .workspace__edge-info {
   margin-bottom: 8px;
+}
+.workspace__edge-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.workspace__edge-swatch {
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  flex: none;
+}
+.workspace__edge-legend {
+  margin-top: 8px;
 }
 .workspace__main {
   min-height: 200px;

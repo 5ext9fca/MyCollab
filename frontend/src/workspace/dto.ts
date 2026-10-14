@@ -10,6 +10,7 @@ import { MarkerType } from '@vue-flow/core'
 import type { Edge, Node, XYPosition } from '@vue-flow/core'
 
 import type { WorkspaceEdge, WorkspaceNode } from '../api/types'
+import { NEUTRAL_EDGE_COLOR, sourceEdgeColor } from './edgeColor'
 import { milestoneColor } from './milestoneColor'
 
 export const MISSION_NODE_TYPE = 'mission'
@@ -57,6 +58,10 @@ export interface MissionEdgeData {
   highlighted: boolean
   dimmed: boolean
   satisfied: boolean
+  /** Stable stroke colour of the visible source mission. */
+  color: string
+  /** False when the visible source endpoint is not loaded (neutral fallback). */
+  hasSource: boolean
 }
 
 export type PositionLookup = Map<string, XYPosition>
@@ -90,10 +95,36 @@ export function buildMissionNodes(
   }))
 }
 
-/** Build the dependency edges (prerequisite -> mission) with arrow + state. */
+/**
+ * Stroke colour for one edge given the visible card set. Shared by the canvas
+ * and the page (the selected-edge banner) so both always agree.
+ */
+export function edgeStrokeColor(
+  edge: WorkspaceEdge,
+  visibleNodeIds: Set<string> | null,
+): string {
+  if (visibleNodeIds && !visibleNodeIds.has(edge.prerequisite_id)) return NEUTRAL_EDGE_COLOR
+  return sourceEdgeColor(edge.prerequisite_id)
+}
+
+/**
+ * Build the dependency edges (prerequisite -> mission) with arrow + state.
+ *
+ * The stroke and the arrow head take a stable colour from the **visible source**
+ * mission, so every line leaving one prerequisite shares a colour and a folded
+ * merge follows the representative source card the layout actually shows.
+ * `visibleNodeIds` is the set of cards currently on the canvas: an edge whose
+ * source is not among them falls back to a neutral colour instead of borrowing
+ * the target's colour.
+ *
+ * Satisfied/pending is deliberately no longer encoded by the stroke colour — it
+ * would fight the source colour. Pending edges are dashed, satisfied edges are
+ * solid, and the page spells the difference out in words.
+ */
 export function buildDependencyEdges(
   edges: WorkspaceEdge[],
   selectedId: string | null,
+  visibleNodeIds: Set<string> | null = null,
 ): Edge<MissionEdgeData>[] {
   return edges.map((edge) => {
     const highlighted =
@@ -101,6 +132,9 @@ export function buildDependencyEdges(
     const classes = ['ws-edge', edge.is_satisfied ? 'ws-edge--satisfied' : 'ws-edge--pending']
     if (highlighted) classes.push('ws-edge--highlight')
     else if (selectedId) classes.push('ws-edge--dim')
+
+    const hasSource = !visibleNodeIds || visibleNodeIds.has(edge.prerequisite_id)
+    const color = edgeStrokeColor(edge, visibleNodeIds)
     return {
       id: edge.id,
       source: edge.prerequisite_id,
@@ -108,13 +142,16 @@ export function buildDependencyEdges(
       sourceHandle: DEPENDENCY_SOURCE_HANDLE,
       targetHandle: DEPENDENCY_TARGET_HANDLE,
       type: 'smoothstep',
-      markerEnd: MarkerType.ArrowClosed,
+      markerEnd: { type: MarkerType.ArrowClosed, color },
+      style: { stroke: color },
       class: classes.join(' '),
       data: {
         edge,
         highlighted,
         dimmed: !!selectedId && !highlighted,
         satisfied: edge.is_satisfied,
+        color,
+        hasSource,
       },
     }
   })

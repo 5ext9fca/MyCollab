@@ -62,6 +62,7 @@ import WorkspaceMissionCard from '../components/WorkspaceMissionCard.vue'
 import { buildDependencyEdges, buildMissionNodes, NODE_HEIGHT, NODE_WIDTH } from '../workspace/dto'
 import { DEPENDENCY_SOURCE_HANDLE, DEPENDENCY_TARGET_HANDLE } from '../workspace/dto'
 import { collectRelated, directRelations } from '../workspace/dependencyTraversal'
+import { NEUTRAL_EDGE_COLOR, sourceEdgeColor } from '../workspace/edgeColor'
 import { buildForest, groupByParent, revealPath } from '../workspace/parentGrouping'
 import {
   milestoneColor,
@@ -355,12 +356,41 @@ describe('DTO adapter', () => {
     // The graph reads top to bottom, so edges leave the bottom and enter the top.
     expect(flowEdges[0].sourceHandle).toBe(DEPENDENCY_SOURCE_HANDLE)
     expect(flowEdges[0].targetHandle).toBe(DEPENDENCY_TARGET_HANDLE)
-    expect(flowEdges[0].markerEnd).toBe('arrowclosed')
+    expect(flowEdges[0].markerEnd).toMatchObject({ type: 'arrowclosed' })
     expect(flowEdges[0].class).toContain('ws-edge--satisfied')
     expect(flowEdges[1].class).toContain('ws-edge--pending')
     // Cross-milestone edges are no longer labelled; the milestone is shown by
     // the node colour instead.
     expect(flowEdges[1].label).toBeUndefined()
+  })
+
+  it('colours edges by their visible source mission and falls back to neutral', () => {
+    const visible = new Set(['a', 'b', 'c', 'd'])
+    const edges = [
+      edge('1', 'a', 'c', { is_satisfied: true }),
+      edge('2', 'a', 'd', { is_satisfied: false }),
+      edge('3', 'b', 'c'),
+    ]
+    const flowEdges = buildDependencyEdges(edges, null, visible)
+
+    // Same source -> same colour, whatever the satisfied state.
+    expect(flowEdges[0].data?.color).toBe(sourceEdgeColor('a'))
+    expect(flowEdges[1].data?.color).toBe(sourceEdgeColor('a'))
+    expect(flowEdges[0].data?.color).toBe(flowEdges[1].data?.color)
+    // A different source is easy to tell apart.
+    expect(flowEdges[2].data?.color).toBe(sourceEdgeColor('b'))
+    expect(sourceEdgeColor('a')).not.toBe(sourceEdgeColor('b'))
+    // The arrow head is painted with the same source colour.
+    expect(flowEdges[0].markerEnd).toMatchObject({ color: sourceEdgeColor('a') })
+    // The colour is stable across calls, so a refresh never recolours a line.
+    expect(buildDependencyEdges(edges, null, visible)[0].data?.color).toBe(sourceEdgeColor('a'))
+
+    // An edge whose source card is not on the canvas keeps the neutral fallback
+    // and never borrows the target's colour.
+    const orphan = buildDependencyEdges([edge('9', 'ghost', 'c')], null, visible)
+    expect(orphan[0].data?.color).toBe(NEUTRAL_EDGE_COLOR)
+    expect(orphan[0].data?.hasSource).toBe(false)
+    expect(orphan[0].data?.color).not.toBe(sourceEdgeColor('c'))
   })
 
   it('maps nodes with selected/dimmed flags and keeps isolated nodes', () => {
@@ -787,6 +817,146 @@ describe('WorkspaceView', () => {
     expect(text).toContain('有效完成 2 / 4')
     expect(text).toContain('需复核 1')
     expect(text).toContain('上次刷新')
+    wrapper.unmount()
+  })
+})
+
+describe('WorkspaceView focus lifecycle', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const graphStub = {
+    name: 'DependencyGraph',
+    template: '<div class="graph-stub" />',
+    methods: { fit() {}, reset() {}, locate() {} },
+  }
+  const drawerStub = {
+    name: 'MissionDetailDrawer',
+    props: ['missionId', 'open'],
+    emits: ['close', 'focus', 'changed'],
+    template: `
+      <div class="drawer-stub">
+        <button class="drawer-close" @click="$emit('close')">关闭</button>
+        <button class="drawer-focus-b" @click="$emit('focus', 'b')">定位 b</button>
+      </div>`,
+  }
+
+  function graphPayload() {
+    return {
+      generated_at: '2026-10-14T10:00:00Z',
+      revision: 'r1',
+      filters_active: false,
+      nodes: [node('a'), node('b', { milestone_id: 'm1', milestone_name: '里程碑一' })],
+      edges: [edge('1', 'a', 'b')],
+      parent_edges: [],
+      meta: {
+        scope: 'team',
+        focus: null,
+        expand: 'none',
+        direction: 'both',
+        depth: 5,
+        matched_count: 2,
+        matched_included: 2,
+        context_count: 0,
+        node_count: 2,
+        edge_count: 1,
+        parent_edge_count: 0,
+        node_limit: 200,
+        edge_limit: 1000,
+        context_limit: 50,
+        nodes_truncated: false,
+        context_truncated: false,
+        edges_truncated: false,
+        truncated: false,
+        truncation_reasons: [],
+        relationships_complete: true,
+      },
+    }
+  }
+
+  async function mountWorkspace(url: string) {
+    const fetchMock = vi.fn((input: unknown) => {
+      const target = String(input)
+      if (target.startsWith('/api/members')) return Promise.resolve(jsonResponse([]))
+      if (target.startsWith('/api/milestones')) {
+        return Promise.resolve(
+          jsonResponse({ count: 0, next: null, previous: null, results: [] }),
+        )
+      }
+      if (target.startsWith('/api/workspace/graph')) {
+        return Promise.resolve(jsonResponse(graphPayload()))
+      }
+      return Promise.resolve(jsonResponse({}))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: { template: '<div />' } },
+        { path: '/workspace', name: 'workspace', component: { template: '<div />' } },
+        { path: '/missions/new', name: 'mission-create', component: { template: '<div />' } },
+        { path: '/missions/:id', name: 'mission-detail', component: { template: '<div />' } },
+      ],
+    })
+    router.push(url)
+    await router.isReady()
+
+    const WorkspaceView = (await import('../views/WorkspaceView.vue')).default
+    const wrapper = mount(WorkspaceView, {
+      global: {
+        plugins: [router],
+        stubs: {
+          ...stubs,
+          MilestoneBoard: true,
+          DependencyGraph: graphStub,
+          MissionDetailDrawer: drawerStub,
+        },
+      },
+    })
+    await flushPromises()
+    return { wrapper, router, fetchMock }
+  }
+
+  const urls = (fetchMock: ReturnType<typeof vi.fn>) =>
+    fetchMock.mock.calls.map(([input]) => String(input))
+
+  it('clears the focus, the relation scope and the URL when the drawer closes', async () => {
+    const { wrapper, router, fetchMock } = await mountWorkspace(
+      '/workspace?view=graph&selected=a&related=true',
+    )
+    // The focused request is scoped to the selected mission.
+    expect(
+      urls(fetchMock).some((url) => url.includes('scope=mission') && url.includes('focus=a')),
+    ).toBe(true)
+
+    await wrapper.find('.drawer-close').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.selected).toBeUndefined()
+    // "只看相关" is a focus-scoped view: it exits and the full team graph returns.
+    expect(router.currentRoute.value.query.related).toBeUndefined()
+    // The view mode and filters survive the close.
+    expect(router.currentRoute.value.query.view).toBe('graph')
+    expect(urls(fetchMock).some((url) => url.includes('scope=team'))).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('keeps the newly focused mission when the drawer closes programmatically', async () => {
+    const { wrapper, router } = await mountWorkspace('/workspace?view=graph&selected=a')
+    // `focus` sets a new focus and flips `open` off without emitting `close`.
+    await wrapper.find('.drawer-focus-b').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query.selected).toBe('b')
+    wrapper.unmount()
+  })
+
+  it('does not refetch or fit the canvas when a plain focus is closed', async () => {
+    const { wrapper, router, fetchMock } = await mountWorkspace('/workspace?view=graph&selected=a')
+    const before = fetchMock.mock.calls.length
+    await wrapper.find('.drawer-close').trigger('click')
+    await flushPromises()
+    expect(fetchMock.mock.calls.length).toBe(before)
+    expect(router.currentRoute.value.query.selected).toBeUndefined()
     wrapper.unmount()
   })
 })

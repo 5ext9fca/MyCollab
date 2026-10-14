@@ -62,11 +62,20 @@ const emphasis = computed(() => {
   return new Set<string>([props.selectedId, ...prerequisites, ...dependents])
 })
 
+/**
+ * The cards actually on the canvas, after collapsed subtrees were merged. An
+ * edge is coloured by its *visible* source endpoint; an edge whose source is not
+ * here (an abnormal relation the backend flagged) stays neutral.
+ */
+const visibleNodeIds = computed(() => new Set(props.nodes.map((node) => node.id)))
+
 const flowNodes = computed<Node<MissionNodeData>[]>(() =>
   buildMissionNodes(props.nodes, positions.value, emphasis.value, props.selectedId, props.grouping),
 )
 
-const flowEdges = computed<Edge[]>(() => buildDependencyEdges(props.edges, props.selectedId))
+const flowEdges = computed<Edge[]>(() =>
+  buildDependencyEdges(props.edges, props.selectedId, visibleNodeIds.value),
+)
 
 /** Recompute the layered coordinates only when the structure changed. */
 function applyLayout() {
@@ -160,15 +169,15 @@ defineExpose({ fit, reset, locate })
   justify-content: center;
   background: #f8fafc;
 }
-.graph :deep(.ws-edge--satisfied) .vue-flow__edge-path,
-.graph :deep(.ws-edge--satisfied) path {
-  stroke: #94a3b8;
+.graph :deep(.ws-edge) .vue-flow__edge-path,
+.graph :deep(.ws-edge) path {
   stroke-width: 2;
 }
+/* Satisfied vs pending is a line-style cue, never a stroke colour: the stroke
+ * colour belongs to the source mission. */
 .graph :deep(.ws-edge--pending) .vue-flow__edge-path,
 .graph :deep(.ws-edge--pending) path {
-  stroke: #f59e0b;
-  stroke-width: 2;
+  stroke-dasharray: 6 4;
 }
 .graph :deep(.ws-edge--highlight) .vue-flow__edge-path,
 .graph :deep(.ws-edge--highlight) path {

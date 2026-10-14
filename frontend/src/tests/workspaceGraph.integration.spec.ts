@@ -5,6 +5,7 @@ import type { WorkspaceEdge, WorkspaceNode } from '../api/types'
 import DependencyGraph from '../components/DependencyGraph.vue'
 import { GRAPH_H_GAP, GRAPH_V_GAP } from '../composables/useGraphLayout'
 import { NODE_HEIGHT, NODE_WIDTH } from '../workspace/dto'
+import { sourceEdgeColor } from '../workspace/edgeColor'
 
 function node(id: string, title: string): WorkspaceNode {
   return {
@@ -130,6 +131,35 @@ describe('DependencyGraph (real Vue Flow)', () => {
     expect(c).toBeTruthy()
     expect(c!.y).toBe(p!.y)
     expect(c!.x - p!.x).toBe(NODE_WIDTH + GRAPH_H_GAP)
+
+    wrapper.unmount()
+  })
+
+  it('paints every edge from one source with the same colour', async () => {
+    const wrapper = mount(DependencyGraph, {
+      props: {
+        nodes: [node('a', '前置任务AAA'), node('b', '依赖任务BBB'), node('c', '依赖任务CCC')],
+        edges: [
+          { id: '1', prerequisite_id: 'a', mission_id: 'b', is_satisfied: true, cross_milestone: false },
+          { id: '2', prerequisite_id: 'a', mission_id: 'c', is_satisfied: false, cross_milestone: false },
+          { id: '3', prerequisite_id: 'b', mission_id: 'c', is_satisfied: false, cross_milestone: false },
+        ],
+      },
+      attachTo: document.body,
+    })
+    await flushPromises()
+
+    const strokeOf = (id: string) =>
+      (wrapper.find(`[data-id="${id}"] .vue-flow__edge-path`).element as SVGElement).style.stroke
+    // jsdom normalises the inline colour to `rgb(...)`.
+    const rgb = (hex: string) =>
+      `rgb(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)})`
+    // Both lines from `a` share one colour, whether satisfied or pending.
+    expect(strokeOf('1')).toBe(strokeOf('2'))
+    expect(strokeOf('1')).not.toBe('')
+    // A line from another source is painted differently.
+    expect(strokeOf('3')).not.toBe(strokeOf('1'))
+    expect(strokeOf('1')).toBe(rgb(sourceEdgeColor('a')))
 
     wrapper.unmount()
   })
