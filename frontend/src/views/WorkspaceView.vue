@@ -61,6 +61,7 @@ const filters = reactive<{
   assignee: string
   reviewer: string
   blocked: '' | 'true' | 'false'
+  revalidation: '' | 'true'
 }>({
   q: '',
   milestone: '',
@@ -70,11 +71,13 @@ const filters = reactive<{
   assignee: '',
   reviewer: '',
   blocked: '',
+  revalidation: '',
 })
 
 const onlyMine = computed(() => filters.assignee === 'me')
 const onlyBlocked = computed(() => filters.blocked === 'true')
 const onlyReview = computed(() => filters.reviewer === 'me' && filters.status === 'Submitted')
+const onlyRevalidation = computed(() => filters.revalidation === 'true')
 
 const summary = computed(() => overview.value?.summary ?? null)
 
@@ -98,6 +101,7 @@ function baseParams(): QueryParams {
     assignee: filters.assignee || undefined,
     reviewer: filters.reviewer || undefined,
     blocked: filters.blocked || undefined,
+    revalidation: filters.revalidation || undefined,
   }
 }
 
@@ -165,6 +169,8 @@ function applyQuery() {
   filters.reviewer = readParam(query.reviewer)
   const blocked = readParam(query.blocked)
   filters.blocked = blocked === 'true' || blocked === 'false' ? blocked : ''
+  const revalidation = readParam(query.revalidation)
+  filters.revalidation = revalidation === 'true' ? 'true' : ''
   selectedId.value = readParam(query.selected) || null
   const limit = Number(readParam(query.limit))
   columnLimit.value = Number.isFinite(limit) && limit > 0 ? limit : 20
@@ -190,6 +196,7 @@ function queryFromState(): Record<string, string> {
   set('assignee', filters.assignee)
   set('reviewer', filters.reviewer)
   set('blocked', filters.blocked)
+  set('revalidation', filters.revalidation)
   set('selected', selectedId.value ?? '')
   if (columnLimit.value !== 20) set('limit', String(columnLimit.value))
   if (relatedOnly.value) set('related', 'true')
@@ -243,6 +250,11 @@ function toggleReview() {
     filters.reviewer = 'me'
     filters.status = 'Submitted'
   }
+  onFilterChange()
+}
+
+function toggleRevalidation() {
+  filters.revalidation = filters.revalidation === 'true' ? '' : 'true'
   onFilterChange()
 }
 
@@ -428,6 +440,9 @@ onMounted(async () => {
       <el-checkbox-button :model-value="onlyMine" @change="toggleMine">只看我的</el-checkbox-button>
       <el-checkbox-button :model-value="onlyBlocked" @change="toggleBlocked">只看阻塞</el-checkbox-button>
       <el-checkbox-button :model-value="onlyReview" @change="toggleReview">待我验收</el-checkbox-button>
+      <el-checkbox-button :model-value="onlyRevalidation" @change="toggleRevalidation">
+        需复核
+      </el-checkbox-button>
     </div>
 
     <div v-if="summary" class="workspace__summary">

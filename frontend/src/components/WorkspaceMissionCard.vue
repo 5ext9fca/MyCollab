@@ -92,6 +92,7 @@ function onKey(event: KeyboardEvent) {
       <span v-if="node.assignee">认领者：{{ node.assignee.display_name }}</span>
       <span v-else class="ws-card__unassigned">未认领</span>
       <span v-if="node.milestone_name"> · {{ node.milestone_name }}</span>
+      <span v-if="node.parent_id"> · 父 #{{ shortId(node.parent_id) }}</span>
     </div>
 
     <div v-if="!compact" class="ws-card__foot">
