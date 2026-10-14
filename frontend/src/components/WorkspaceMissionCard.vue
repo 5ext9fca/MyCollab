@@ -15,19 +15,39 @@ const props = withDefaults(
     compact?: boolean
     /** Milestone swatch; empty keeps the neutral board card look. */
     milestoneColor?: string
+    /** Nesting depth inside a parent/child family (0 = root/ungrouped). */
+    depth?: number
+    /** Visible descendants (whole subtree) used by the collapse control. */
+    descendantCount?: number
+    /** True when this node's subtree is collapsed in the graph. */
+    collapsed?: boolean
   }>(),
-  { selected: false, dimmed: false, compact: false, milestoneColor: '' },
+  {
+    selected: false,
+    dimmed: false,
+    compact: false,
+    milestoneColor: '',
+    depth: 0,
+    descendantCount: 0,
+    collapsed: false,
+  },
 )
 
 const emit = defineEmits<{
   (event: 'select', id: string): void
   (event: 'focus', id: string): void
+  (event: 'toggleChildren', id: string): void
 }>()
 
 const shortId = (id: string) => id.slice(0, 8)
 
 /** Tooltip for the milestone swatch, so colour is never the only cue. */
 const milestoneTitle = computed(() => `所属里程碑：${props.node.milestone_name ?? '未归属里程碑'}`)
+
+/** Subtask depth is conveyed by indentation; keep it in the label too. */
+const cardLabel = computed(
+  () => `${props.depth > 0 ? '子任务，' : ''}任务 ${props.node.title}`,
+)
 
 /** Unfinished prerequisites and unfinished children never collapse into one. */
 const unfinishedPrerequisites = computed(() => props.node.blocking_count)
@@ -63,7 +83,7 @@ function onKey(event: KeyboardEvent) {
     role="button"
     tabindex="0"
     :aria-pressed="selected"
-    :aria-label="`任务 ${node.title}`"
+    :aria-label="cardLabel"
     :title="node.title"
     @click.stop="onSelect"
     @keydown="onKey"
@@ -99,6 +119,19 @@ function onKey(event: KeyboardEvent) {
       <el-tag v-if="node.is_context" type="info" size="small" disable-transitions>
         上下文
       </el-tag>
+    </div>
+
+    <div v-if="compact && descendantCount" class="ws-card__children">
+      <button
+        type="button"
+        class="ws-card__toggle"
+        :aria-expanded="!collapsed"
+        :aria-label="collapsed ? '展开子任务' : '折叠子任务'"
+        @click.stop="emit('toggleChildren', node.id)"
+      >
+        <span class="ws-card__toggle-icon" aria-hidden="true">{{ collapsed ? '▸' : '▾' }}</span>
+        子任务 {{ descendantCount }}<template v-if="collapsed">（依赖已合并）</template>
+      </button>
     </div>
 
     <div v-if="!compact" class="ws-card__meta">
@@ -160,7 +193,40 @@ function onKey(event: KeyboardEvent) {
   color: #6b7280;
 }
 .ws-card--compact {
-  min-height: 0;
+  /* Fixed height: the parent/child stack places cards by NODE_HEIGHT. */
+  height: 120px;
+  overflow: hidden;
+}
+.ws-card--compact .ws-card__title {
+  -webkit-line-clamp: 1;
+}
+.ws-card--compact .ws-card__badges {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.ws-card__children {
+  display: flex;
+}
+.ws-card__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 12px;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ws-card__toggle:hover {
+  background: #e2e8f0;
+}
+.ws-card__toggle-icon {
+  font-size: 10px;
+  line-height: 1;
 }
 .ws-card--milestoned {
   border-left: 4px solid var(--ws-milestone);

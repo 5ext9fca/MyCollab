@@ -18,6 +18,7 @@ defineProps<{ data: MissionNodeData }>()
 const emit = defineEmits<{
   (event: 'select', id: string): void
   (event: 'focus', id: string): void
+  (event: 'toggleChildren', id: string): void
 }>()
 </script>
 
@@ -29,9 +30,13 @@ const emit = defineEmits<{
       :selected="data.selected"
       :dimmed="data.dimmed"
       :milestone-color="data.color"
+      :depth="data.depth"
+      :descendant-count="data.descendantCount"
+      :collapsed="data.collapsed"
       compact
       @select="emit('select', $event)"
       @focus="emit('focus', $event)"
+      @toggle-children="emit('toggleChildren', $event)"
     />
     <Handle type="source" :position="Position.Right" :connectable="false" />
   </div>

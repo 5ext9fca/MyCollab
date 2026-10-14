@@ -55,9 +55,13 @@ import WorkspaceMissionCard from '../components/WorkspaceMissionCard.vue'
 import {
   buildDependencyEdges,
   buildMissionNodes,
+  GROUP_GAP,
+  GROUP_INDENT,
+  NODE_HEIGHT,
   NODE_WIDTH,
 } from '../workspace/dto'
 import { collectRelated, directRelations } from '../workspace/dependencyTraversal'
+import { buildForest, groupByParent, revealPath } from '../workspace/parentGrouping'
 import {
   milestoneColor,
   UNASSIGNED_MILESTONE_COLOR,
@@ -215,6 +219,37 @@ describe('Dagre layout', () => {
       graphStructureSignature([node('a', { status: 'Done' }), node('b', { title: 'x' })], edges),
     )
   })
+
+  it('stacks a grouped child directly below its parent', () => {
+    const nodes = [node('p'), node('c1'), node('c2')]
+    const groups = [{ id: 'p', memberIds: ['p', 'c1', 'c2'], depths: [0, 1, 1] }]
+    const { positions } = computeDagreLayout(nodes, [], { groups })
+
+    const p = positions.get('p')!
+    const c1 = positions.get('c1')!
+    const c2 = positions.get('c2')!
+    // Children share the parent's column, indented by their depth.
+    expect(c1.x - p.x).toBe(GROUP_INDENT)
+    expect(c1.y - p.y).toBe(NODE_HEIGHT + GROUP_GAP)
+    expect(c2.x).toBe(c1.x)
+    expect(c2.y - c1.y).toBe(NODE_HEIGHT + GROUP_GAP)
+  })
+
+  it('treats grouping as structure: the signature and layout change', () => {
+    const nodes = [node('p'), node('c1')]
+    const groups = [{ id: 'p', memberIds: ['p', 'c1'], depths: [0, 1] }]
+    expect(graphStructureSignature(nodes, [], null)).not.toBe(
+      graphStructureSignature(nodes, [], groups),
+    )
+
+    const layout = useDagreLayout()
+    expect(layout.update(nodes, [], { groups: null })).toBe(true)
+    expect(layout.update(nodes, [], { groups: null })).toBe(false)
+    expect(layout.update(nodes, [], { groups })).toBe(true)
+    const p = layout.positions.value.get('p')!
+    const c = layout.positions.value.get('c1')!
+    expect(c.y - p.y).toBe(NODE_HEIGHT + GROUP_GAP)
+  })
 })
 
 describe('dependency traversal', () => {
@@ -317,6 +352,163 @@ describe('WorkspaceMissionCard', () => {
     expect(colored.find('.ws-card').attributes('style')).toContain('--ws-milestone: #2563eb')
     expect(colored.find('.ws-card__swatch').attributes('title')).toContain('基础移动')
   })
+
+  it('collapses subtasks through the toggle without selecting the card', async () => {
+    const wrapper = mount(WorkspaceMissionCard, {
+      props: { node: node('p'), compact: true, descendantCount: 3, collapsed: false },
+      global: { stubs },
+    })
+    const toggle = wrapper.find('.ws-card__toggle')
+    expect(toggle.exists()).toBe(true)
+    expect(toggle.text()).toContain('子任务 3')
+    await toggle.trigger('click')
+    expect(wrapper.emitted('toggleChildren')?.[0]).toEqual(['p'])
+    expect(wrapper.emitted('select')).toBeUndefined()
+  })
+
+  it('hints that a collapsed parent merged its dependencies', () => {
+    const wrapper = mount(WorkspaceMissionCard, {
+      props: { node: node('p'), compact: true, descendantCount: 2, collapsed: true },
+      global: { stubs },
+    })
+    expect(wrapper.text()).toContain('依赖已合并')
+  })
+
+  it('shows no subtask toggle in board mode', () => {
+    const wrapper = mount(WorkspaceMissionCard, {
+      props: { node: node('p'), descendantCount: 3 },
+      global: { stubs },
+    })
+    expect(wrapper.find('.ws-card__toggle').exists()).toBe(false)
+  })
+})
+
+describe('parent/child grouping', () => {
+  const parentEdges = [
+    { parent_id: 'p', child_id: 'c1' },
+    { parent_id: 'p', child_id: 'c2' },
+  ]
+
+  it('ignores parents outside the loaded set and self references', () => {
+    const forest = buildForest([node('a'), node('b')], [
+      { parent_id: 'ghost', child_id: 'a' },
+      { parent_id: 'a', child_id: 'a' },
+    ])
+    expect(forest.parentOf.size).toBe(0)
+    expect(forest.roots).toEqual(['a', 'b'])
+  })
+
+  it('refuses an edge that would close a parent/child cycle', () => {
+    const forest = buildForest([node('a'), node('b')], [
+      { parent_id: 'a', child_id: 'b' },
+      { parent_id: 'b', child_id: 'a' },
+    ])
+    expect(forest.parentOf.get('b')).toBe('a')
+    expect(forest.parentOf.has('a')).toBe(false)
+    expect(forest.roots).toEqual(['a'])
+  })
+
+  it('mounts children under the parent and keeps their dependencies', () => {
+    const nodes = [node('p'), node('c1'), node('c2'), node('x')]
+    const edges = [
+      edge('1', 'x', 'c1'),
+      edge('2', 'x', 'c2'),
+      edge('3', 'c1', 'c2'),
+    ]
+    const view = groupByParent(nodes, edges, parentEdges, new Set())
+
+    expect(view.nodes.map((item) => item.id)).toEqual(['p', 'c1', 'c2', 'x'])
+    expect(view.childCount.get('p')).toBe(2)
+    expect(view.descendantCount.get('p')).toBe(2)
+    expect(view.groups).toEqual([
+      { id: 'p', memberIds: ['p', 'c1', 'c2'], depths: [0, 1, 1] },
+      { id: 'x', memberIds: ['x'], depths: [0] },
+    ])
+    expect(view.edges.map((item) => `${item.prerequisite_id}>${item.mission_id}`)).toEqual([
+      'x>c1',
+      'x>c2',
+      'c1>c2',
+    ])
+  })
+
+  it('folds a collapsed subtree onto the parent and drops internal edges', () => {
+    const nodes = [node('p'), node('c1'), node('c2'), node('x')]
+    const edges = [
+      edge('1', 'x', 'c1'),
+      edge('2', 'x', 'c2'),
+      edge('3', 'c1', 'c2'),
+    ]
+    const view = groupByParent(nodes, edges, parentEdges, new Set(['p']))
+
+    expect(view.nodes.map((item) => item.id)).toEqual(['p', 'x'])
+    expect([...view.hidden].sort()).toEqual(['c1', 'c2'])
+    // x -> c1 and x -> c2 collapse into one edge to the parent; c1 -> c2 is internal.
+    expect(view.edges.map((item) => `${item.prerequisite_id}>${item.mission_id}`)).toEqual([
+      'x>p',
+    ])
+    // The count still describes the merged subtree.
+    expect(view.descendantCount.get('p')).toBe(2)
+    expect(view.collapsed.has('p')).toBe(true)
+    expect(view.groups).toEqual([
+      { id: 'p', memberIds: ['p'], depths: [0] },
+      { id: 'x', memberIds: ['x'], depths: [0] },
+    ])
+  })
+
+  it('only marks a merged dependency satisfied when all folded ones are', () => {
+    const nodes = [node('p'), node('c1'), node('c2'), node('x')]
+    const both = groupByParent(
+      nodes,
+      [
+        edge('1', 'x', 'c1', { is_satisfied: true }),
+        edge('2', 'x', 'c2', { is_satisfied: true }),
+      ],
+      parentEdges,
+      new Set(['p']),
+    )
+    expect(both.edges).toHaveLength(1)
+    expect(both.edges[0]).toMatchObject({
+      prerequisite_id: 'x',
+      mission_id: 'p',
+      is_satisfied: true,
+    })
+
+    const partial = groupByParent(
+      nodes,
+      [
+        edge('1', 'x', 'c1', { is_satisfied: true }),
+        edge('2', 'x', 'c2', { is_satisfied: false }),
+      ],
+      parentEdges,
+      new Set(['p']),
+    )
+    expect(partial.edges[0].is_satisfied).toBe(false)
+  })
+
+  it('recomputes cross-milestone for the visible endpoints', () => {
+    const nodes = [
+      node('p', { milestone_id: 'm1' }),
+      node('c1', { milestone_id: 'm2' }),
+      node('x', { milestone_id: 'm2' }),
+    ]
+    const view = groupByParent(
+      nodes,
+      [edge('1', 'x', 'c1')],
+      [{ parent_id: 'p', child_id: 'c1' }],
+      new Set(['p']),
+    )
+    // x (m2) -> p (m1): still cross-milestone after the merge.
+    expect(view.edges[0]).toMatchObject({ prerequisite_id: 'x', mission_id: 'p' })
+    expect(view.edges[0].cross_milestone).toBe(true)
+  })
+
+  it('reveals the ancestors of a hidden node', () => {
+    const nodes = [node('p'), node('c1'), node('c2')]
+    expect([...revealPath(nodes, parentEdges, new Set(['p']), 'c2')]).toEqual([])
+    expect([
+      ...revealPath(nodes, parentEdges, new Set(['p']), 'p'),
+    ]).toEqual(['p'])
+  })
 })
 
 describe('MilestoneBoard', () => {
@@ -417,6 +609,25 @@ describe('DependencyGraph', () => {
     handler?.({ edge: { data: { edge: dependency } } })
     await flushPromises()
     expect(wrapper.emitted('edgeSelect')?.[0]).toEqual([dependency])
+  })
+
+  it('emits toggleCollapse when a parent card folds its subtasks', async () => {
+    const grouping = {
+      descendantCount: new Map([['p', 1]]),
+      collapsed: new Set<string>(),
+      depth: new Map([
+        ['p', 0],
+        ['c', 1],
+      ]),
+      groups: [{ id: 'p', memberIds: ['p', 'c'], depths: [0, 1] }],
+    }
+    const wrapper = mount(DependencyGraph, {
+      props: { nodes: [node('p'), node('c')], edges: [], grouping },
+    })
+    const toggle = wrapper.find('.ws-card__toggle')
+    expect(toggle.exists()).toBe(true)
+    await toggle.trigger('click')
+    expect(wrapper.emitted('toggleCollapse')?.[0]).toEqual(['p'])
   })
 })
 

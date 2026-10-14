@@ -7,6 +7,10 @@
  * business API. Positions come from Dagre (`useDagreLayout`); a pure status
  * refresh keeps the same coordinates. Only direct relations are emphasised by
  * default — "all upstream/downstream" is an explicit action in the page.
+ *
+ * Parent/child grouping arrives fully resolved (`grouping`): the page already
+ * stacked the visible family and merged collapsed children onto their parent,
+ * so the canvas only renders what it is handed and never mutates the graph.
  */
 import { computed, nextTick, watch } from 'vue'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
@@ -16,16 +20,10 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 
-import type { WorkspaceEdge, WorkspaceNode, WorkspaceParentEdge } from '../api/types'
+import type { WorkspaceEdge, WorkspaceNode } from '../api/types'
 import { useDagreLayout } from '../composables/useDagreLayout'
-import {
-  buildDependencyEdges,
-  buildMissionNodes,
-  buildParentEdges,
-  NODE_HEIGHT,
-  NODE_WIDTH,
-} from '../workspace/dto'
-import type { MissionNodeData } from '../workspace/dto'
+import { buildDependencyEdges, buildMissionNodes, NODE_HEIGHT, NODE_WIDTH } from '../workspace/dto'
+import type { GroupInfo, MissionNodeData } from '../workspace/dto'
 import { directRelations } from '../workspace/dependencyTraversal'
 import MissionGraphNode from './MissionGraphNode.vue'
 
@@ -33,19 +31,20 @@ const props = withDefaults(
   defineProps<{
     nodes: WorkspaceNode[]
     edges: WorkspaceEdge[]
-    parentEdges?: WorkspaceParentEdge[]
     selectedId?: string | null
-    showParentEdges?: boolean
+    /** Parent/child grouping; null leaves every node independent. */
+    grouping?: GroupInfo | null
     /** Extra ids to emphasise (e.g. "all upstream"): null keeps direct-only. */
     emphasisIds?: Set<string> | null
   }>(),
-  { parentEdges: () => [], selectedId: null, showParentEdges: false, emphasisIds: null },
+  { selectedId: null, grouping: null, emphasisIds: null },
 )
 
 const emit = defineEmits<{
   (event: 'select', id: string): void
   (event: 'focus', id: string): void
   (event: 'edgeSelect', edge: WorkspaceEdge): void
+  (event: 'toggleCollapse', id: string): void
 }>()
 
 const { positions, update } = useDagreLayout()
@@ -61,22 +60,18 @@ const emphasis = computed(() => {
 })
 
 const flowNodes = computed<Node<MissionNodeData>[]>(() =>
-  buildMissionNodes(props.nodes, positions.value, emphasis.value, props.selectedId),
+  buildMissionNodes(props.nodes, positions.value, emphasis.value, props.selectedId, props.grouping),
 )
 
-const flowEdges = computed<Edge[]>(() => {
-  const dependencyEdges = buildDependencyEdges(props.edges, props.selectedId)
-  const parentEdges = props.showParentEdges ? buildParentEdges(props.parentEdges) : []
-  return [...parentEdges, ...dependencyEdges]
-})
+const flowEdges = computed<Edge[]>(() => buildDependencyEdges(props.edges, props.selectedId))
 
 /** Recompute Dagre coordinates only when the structure changed. */
 function applyLayout() {
-  update(props.nodes, props.edges)
+  update(props.nodes, props.edges, { groups: props.grouping?.groups })
 }
 
 applyLayout()
-watch(() => [props.nodes, props.edges], applyLayout)
+watch(() => [props.nodes, props.edges, props.grouping], applyLayout)
 
 onNodesInitialized(() => {
   if (fitted || !props.nodes.length) return
@@ -132,6 +127,7 @@ defineExpose({ fit, reset, locate })
             v-bind="nodeProps"
             @select="emit('select', $event)"
             @focus="emit('focus', $event)"
+            @toggle-children="emit('toggleCollapse', $event)"
           />
         </template>
         <Controls :show-interactive="false" position="top-right" />
@@ -170,12 +166,6 @@ defineExpose({ fit, reset, locate })
 .graph :deep(.ws-edge--pending) path {
   stroke: #f59e0b;
   stroke-width: 2;
-}
-.graph :deep(.ws-edge--parent) .vue-flow__edge-path,
-.graph :deep(.ws-edge--parent) path {
-  stroke: #cbd5e1;
-  stroke-dasharray: 6 4;
-  stroke-width: 1.5;
 }
 .graph :deep(.ws-edge--highlight) .vue-flow__edge-path,
 .graph :deep(.ws-edge--highlight) path {

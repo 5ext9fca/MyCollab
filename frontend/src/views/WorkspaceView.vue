@@ -25,6 +25,7 @@ import type { QuickKey, WorkspaceFilters } from '../workspace/filters'
 import { emptyFilters, readParam } from '../workspace/filters'
 import { collectRelated, relatedHighlight } from '../workspace/dependencyTraversal'
 import { milestoneColor, milestoneLabel } from '../workspace/milestoneColor'
+import { groupByParent, revealPath } from '../workspace/parentGrouping'
 import DependencyGraph from '../components/DependencyGraph.vue'
 import MilestoneBoard from '../components/MilestoneBoard.vue'
 import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
@@ -48,7 +49,8 @@ const columnLimit = ref(20)
 const expandMode = ref<'one' | 'all'>('one')
 const direction = ref<'both' | 'upstream' | 'downstream'>('both')
 const relatedOnly = ref(false)
-const showParentEdges = ref(false)
+const showParentRelations = ref(true)
+const collapsedParents = ref<Set<string>>(new Set())
 const relationListMode = ref(false)
 const selectedEdge = ref<WorkspaceEdge | null>(null)
 
@@ -68,15 +70,33 @@ const graphNodes = computed(() => graph.value?.nodes ?? [])
 const graphEdges = computed(() => graph.value?.edges ?? [])
 
 /**
+ * Parent/child grouping. When enabled, children are mounted under their parent
+ * and every collapsed subtree is folded onto its parent. The page owns this
+ * state so the canvas, the milestone legend and the relation list all describe
+ * exactly the same visible view.
+ */
+const grouped = computed(() => {
+  if (!showParentRelations.value || !graph.value) return null
+  return groupByParent(
+    graphNodes.value,
+    graphEdges.value,
+    graph.value.parent_edges,
+    collapsedParents.value,
+  )
+})
+const visibleNodes = computed(() => grouped.value?.nodes ?? graphNodes.value)
+const visibleEdges = computed(() => grouped.value?.edges ?? graphEdges.value)
+
+/**
  * Highlight beyond the default direct relations: "only related" keeps the
  * whole loaded neighbourhood, and an explicit "all upstream/downstream" keeps
  * the walk in that direction. Null means "direct relations only".
  */
 const emphasisIds = computed<Set<string> | null>(() => {
   if (!selectedId.value) return null
-  if (relatedOnly.value) return relatedHighlight(selectedId.value, graphEdges.value, 'both')
+  if (relatedOnly.value) return relatedHighlight(selectedId.value, visibleEdges.value, 'both')
   if (expandMode.value === 'all' && direction.value !== 'both') {
-    return relatedHighlight(selectedId.value, graphEdges.value, direction.value)
+    return relatedHighlight(selectedId.value, visibleEdges.value, direction.value)
   }
   return null
 })
@@ -88,9 +108,8 @@ const truncationLabels: Record<string, string> = {
 }
 
 const relationRows = computed(() => {
-  if (!graph.value) return []
-  const byId = new Map(graph.value.nodes.map((node) => [node.id, node]))
-  return graph.value.edges.map((edge) => ({
+  const byId = new Map(visibleNodes.value.map((node) => [node.id, node]))
+  return visibleEdges.value.map((edge) => ({
     edge,
     prerequisite: byId.get(edge.prerequisite_id),
     dependent: byId.get(edge.mission_id),
@@ -99,18 +118,18 @@ const relationRows = computed(() => {
 
 const selectedRelations = computed(() => {
   if (!selectedId.value || !graph.value) return null
-  const upstream = collectRelated(selectedId.value, graph.value.edges, 'upstream')
-  const downstream = collectRelated(selectedId.value, graph.value.edges, 'downstream')
-  const byId = new Map(graph.value.nodes.map((node) => [node.id, node]))
+  const upstream = collectRelated(selectedId.value, visibleEdges.value, 'upstream')
+  const downstream = collectRelated(selectedId.value, visibleEdges.value, 'downstream')
+  const byId = new Map(visibleNodes.value.map((node) => [node.id, node]))
   const titles = (ids: string[]) =>
     ids.map((id) => byId.get(id)?.title ?? id.slice(0, 8)).join('、') || '无'
   return { upstream: titles(upstream), downstream: titles(downstream) }
 })
 
-/** Distinct milestones in the loaded graph, for the card-colour legend. */
+/** Distinct milestones in the visible graph, for the card-colour legend. */
 const milestoneLegend = computed(() => {
   const entries = new Map<string, { id: string; name: string; color: string; count: number }>()
-  for (const node of graphNodes.value) {
+  for (const node of visibleNodes.value) {
     const key = node.milestone_id ?? ''
     const entry = entries.get(key)
     if (entry) {
@@ -168,13 +187,31 @@ async function loadGraph() {
     focus: focus || undefined,
     expand: scoped ? 'all' : focus ? expandMode.value : 'none',
     direction: direction.value,
-    include_parent: showParentEdges.value ? 'true' : undefined,
+    include_parent: showParentRelations.value ? 'true' : undefined,
     context: scoped ? 'false' : 'true',
     depth: 5,
   })
   graph.value = data
   selectedEdge.value = null
   lastRefreshed.value = data.generated_at
+  // A task selected through the URL can sit inside a collapsed subtree: expand
+  // its ancestors so the initial focus always lands on something visible.
+  if (showParentRelations.value && selectedId.value) {
+    const view = groupByParent(
+      data.nodes,
+      data.edges,
+      data.parent_edges,
+      collapsedParents.value,
+    )
+    if (view.hidden.has(selectedId.value)) {
+      collapsedParents.value = revealPath(
+        data.nodes,
+        data.parent_edges,
+        collapsedParents.value,
+        selectedId.value,
+      )
+    }
+  }
 }
 
 async function reload(options: { fitGraph?: boolean } = {}) {
@@ -211,7 +248,7 @@ function applyQuery() {
   columnLimit.value = Number.isFinite(limit) && limit > 0 ? limit : 20
   relatedOnly.value = readParam(query.related) === 'true'
   relationListMode.value = readParam(query.relations) === 'true'
-  showParentEdges.value = readParam(query.parent) === 'true'
+  showParentRelations.value = readParam(query.parent) !== 'false'
   expandMode.value = readParam(query.expand) === 'all' ? 'all' : 'one'
   const dir = readParam(query.direction)
   direction.value = dir === 'upstream' || dir === 'downstream' ? dir : 'both'
@@ -250,7 +287,7 @@ function queryFromState(): Record<string, string> {
   if (columnLimit.value !== 20) set('limit', String(columnLimit.value))
   if (relatedOnly.value) set('related', 'true')
   if (relationListMode.value) set('relations', 'true')
-  if (showParentEdges.value) set('parent', 'true')
+  if (!showParentRelations.value) set('parent', 'false')
   if (view.value === 'graph') {
     if (expandMode.value === 'all') set('expand', 'all')
     if (direction.value !== 'both') set('direction', direction.value)
@@ -301,13 +338,25 @@ function switchView(next: 'overview' | 'graph') {
   void reload({ fitGraph: next === 'graph' })
 }
 
+function revealHidden(id: string) {
+  if (!graph.value || !collapsedParents.value.size) return
+  collapsedParents.value = revealPath(
+    graphNodes.value,
+    graph.value.parent_edges,
+    collapsedParents.value,
+    id,
+  )
+}
+
 function onSelect(id: string) {
+  revealHidden(id)
   selectedId.value = id
   drawerOpen.value = true
   syncUrl()
 }
 
 function onFocus(id: string) {
+  revealHidden(id)
   selectedId.value = id
   drawerOpen.value = false
   if (view.value !== 'graph') {
@@ -317,6 +366,30 @@ function onFocus(id: string) {
   } else {
     syncUrl()
     graphRef.value?.locate(id)
+  }
+}
+
+/** Collapse or expand a parent's subtasks in the graph. */
+function onToggleChildren(id: string) {
+  const next = new Set(collapsedParents.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  collapsedParents.value = next
+  // A collapsed subtree hides the selection: clear it instead of pointing at a
+  // card that is no longer on the canvas.
+  if (selectedId.value && graph.value) {
+    const view = groupByParent(
+      graphNodes.value,
+      graphEdges.value,
+      graph.value.parent_edges,
+      next,
+    )
+    if (view.hidden.has(selectedId.value)) {
+      selectedId.value = null
+      drawerOpen.value = false
+      selectedEdge.value = null
+      syncUrl()
+    }
   }
 }
 
@@ -478,7 +551,9 @@ onBeforeUnmount(() => {
       <el-button v-if="relatedOnly" link type="primary" size="small" @click="onToggleRelated">
         返回完整范围
       </el-button>
-      <el-checkbox v-model="showParentEdges" @change="onGraphOptionChange">显示拆分关系</el-checkbox>
+      <el-checkbox v-model="showParentRelations" @change="onGraphOptionChange">
+        显示父子任务关系
+      </el-checkbox>
       <el-checkbox v-model="relationListMode" @change="syncUrl">关系列表</el-checkbox>
       <span class="meta">画布横轴是依赖层级，不是时间或状态</span>
     </div>
@@ -578,15 +653,15 @@ onBeforeUnmount(() => {
 
           <DependencyGraph
             ref="graphRef"
-            :nodes="graphNodes"
-            :edges="graphEdges"
-            :parent-edges="graph.parent_edges"
+            :nodes="visibleNodes"
+            :edges="visibleEdges"
             :selected-id="selectedId"
-            :show-parent-edges="showParentEdges"
+            :grouping="grouped"
             :emphasis-ids="emphasisIds"
             @select="onSelect"
             @focus="onFocus"
             @edge-select="selectedEdge = $event"
+            @toggle-collapse="onToggleChildren"
           />
 
           <div class="workspace__graph-meta">
@@ -604,6 +679,9 @@ onBeforeUnmount(() => {
               关系完整
             </el-tag>
             <el-tag v-else type="warning" size="small">关系不完整</el-tag>
+            <el-tag v-if="grouped && grouped.hidden.size" type="info" size="small">
+              已折叠 {{ grouped.hidden.size }} 个子任务（依赖已合并到父任务）
+            </el-tag>
           </div>
 
           <div v-if="milestoneLegend.length" class="workspace__milestone-legend">
@@ -629,7 +707,7 @@ onBeforeUnmount(() => {
       <el-tag size="small" type="success">已完成</el-tag>
       <el-tag size="small" type="danger">已取消</el-tag>
       <span class="meta">
-        · 依赖箭头方向：前置 → 依赖它的任务；实线灰=已满足，橙色=等待；虚线=父子拆分关系；卡片颜色=所属里程碑
+        · 依赖箭头方向：前置 → 依赖它的任务；实线灰=已满足，橙色=等待；卡片颜色=所属里程碑；勾选「显示父子任务关系」时子任务垂直挂在父任务下，折叠后其依赖合并到父任务
       </span>
       <span class="meta">· 上次刷新 {{ formatTime(lastRefreshed) }}</span>
     </div>
