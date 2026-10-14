@@ -3,12 +3,29 @@ import type {
   BuildStatus,
   MilestoneStatus,
   MissionPriority,
+  MissionStatus,
   MissionType,
   SubmissionOutcome,
   SubmissionProvider,
 } from './api/types'
 
 type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
+
+export const STATUS_OPTIONS: { label: string; value: MissionStatus }[] = [
+  { label: '待认领', value: 'Open' },
+  { label: '进行中', value: 'InProgress' },
+  { label: '待验收', value: 'Submitted' },
+  { label: '已完成', value: 'Done' },
+  { label: '已取消', value: 'Cancelled' },
+]
+
+export const STATUS_LABELS: Record<MissionStatus, string> = {
+  Open: '待认领',
+  InProgress: '进行中',
+  Submitted: '待验收',
+  Done: '已完成',
+  Cancelled: '已取消',
+}
 
 export const TYPE_OPTIONS: { label: string; value: MissionType }[] = [
   { label: '功能（Feature）', value: 'Feature' },

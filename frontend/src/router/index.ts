@@ -26,6 +26,11 @@ export const router = createRouter({
           component: () => import('../views/MissionSquareView.vue'),
         },
         {
+          path: 'workspace',
+          name: 'workspace',
+          component: () => import('../views/WorkspaceView.vue'),
+        },
+        {
           path: 'missions/new',
           name: 'mission-create',
           component: () => import('../views/MissionCreateView.vue'),

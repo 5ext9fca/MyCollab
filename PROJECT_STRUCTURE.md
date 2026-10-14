@@ -196,6 +196,7 @@ Bob 将其拆成：
 - **我认领的**：显示自己的进行中、待验收任务。
 - **我发布的**：查看任务进展，并处理验收。
 - **里程碑（`/milestones`）**：新建与筛选里程碑，查看进度、延期提示与关联任务；里程碑详情可编辑字段并做受控状态流转。
+- **工作台（`/workspace`）**：把同一批任务按「里程碑 × 状态」概览和「依赖图」两种联动视图呈现，配合筛选、摘要与详情抽屉，快速回答「现在能做什么、被什么阻塞、每个里程碑的进展」（见第 9 节）。
 - **素材库（`/library`）**：上传、查看、复制 Markdown 引用、删除自己的文件。任务与评论编辑器提供「插入素材」按钮，可从素材库选择或直接上传，并把引用插入到光标处。
 - **管理后台（`/manage`，仅管理员）**：审批注册申请、查看成员列表。由 SPA 自行实现，与 Django Admin（`/admin/`）相互独立。
 
@@ -238,6 +239,8 @@ Bob 将其拆成：
 | `GET /api/library/files` | 分页查看自己的素材 |
 | `GET /api/library/files/{id}` | 经授权下载素材（图片内联，其余附件下载） |
 | `DELETE /api/library/files/{id}` | 删除自己的素材 |
+| `GET /api/workspace/overview` | 只读聚合：工作台「里程碑 × 状态」看板与页头摘要（见第 9 节） |
+| `GET /api/workspace/graph` | 只读聚合：工作台依赖图节点、有向边与截断元数据（见第 9 节） |
 
 **认领必须是原子操作。** 例如：
 
@@ -403,3 +406,39 @@ WHERE id = :mission_id
 四组功能的前端已适配：任务创建/编辑表单包含类型、优先级、验收者与目标里程碑；列表展示类型/优先级/受阻标识与里程碑，并支持 type / priority / milestone / blocked 筛选与优先级排序；详情页将任务树、前置依赖、下游任务、未完成子任务分开展示，并处理阻塞原因、依赖复核与验收者失效提示；提供成果提交（含源码/构建引用）、按轮次的成果与验收历史、验收构建选择、转交验收与重新打开原因输入；新增里程碑列表与详情页（进度、延期、关联任务、受控流转）；所有写操作携带 `expected_version`，遇到 `409` 刷新数据。前端路由新增 `/milestones` 与 `/milestones/:id`，导航新增「里程碑」。
 
 前端验证命令（`frontend/`）：`npm run type-check`、`npm run test`、`npm run build`。
+
+**9. 扩展：F5 可视化工作台**
+
+本节是 F1—F4 之上的只读聚合层，用于把已有的类型、依赖阻塞、优先级、里程碑、验收等数据同时用「里程碑 × 状态」和「依赖图」两种视图表达。它**不新增业务状态、不新增写接口**，所有写入仍走 `missions/services.py`。
+
+**9.1 页面与两种视图**
+
+工作台页面为 `/workspace`（导航「工作台」，路由名 `workspace`），默认显示概览，可切换到依赖图：
+
+- **概览（视图 A）**：按里程碑分组，每组五个状态列（待认领 / 进行中 / 待验收 / 已完成 / 已取消）。里程碑组默认按 `Active`、`Planned`、`Completed`、`Cancelled` 排序，同状态按目标日期（空日期在后）、再按 ID。**未归属里程碑**单独成组，不默认省略。组头显示名称、里程碑状态、目标日期、延期标识与「里程碑总计 有效完成/有效总数」（进度沿用 8.4：`Cancelled` 不计入分母，无有效任务显示「暂无有效任务」而非 100%）。
+- **依赖图（视图 B）**：节点是 Mission，显式依赖是有向边，方向为 **前置 → 依赖它的任务**；横轴是依赖层级（左侧为较早的前置层），不是时间、状态或优先级。无依赖的孤立任务同样绘制。前置为 `Done` 的边为低强调灰色实线，未满足为橙色实线并可显示「等待」；跨里程碑边照常绘制并标注；可选开关显示 `parent → child` 的虚线「拆分关系」边，拆分边只表达层级，**不当作依赖边**。图提供平移、缩放、适应全部、定位选中、重置布局与「关系列表」等效表格。
+
+**9.2 数据契约（只读）**
+
+| 接口 | 参数 | 说明 |
+|---|---|---|
+| `GET /api/workspace/overview/` | `q`/`search`、`milestone`（uuid 或 `none`）、`status`、`type`、`priority`、`assignee`（`me`/`none`/uuid）、`reviewer`、`blocked`、`revalidation`、`tag`（可重复，AND）、`column_limit`（默认 20，上限 100） | 返回 `summary`（匹配总数、有效完成数、受阻数、待验收数、需复核数）、`groups`（每组含 `milestone` 摘要、`full_counts`、`matched_counts`、`columns`、`loaded`）与 `columns`/`column_labels` |
+| `GET /api/workspace/graph/` | 同上，另加 `scope`（`team`/`milestone`/`mission`）、`focus`（任务 id）、`expand`（`none`/`one`/`all`）、`direction`（`upstream`/`downstream`/`both`）、`depth`（1–5）、`context`、`include_parent` | 返回 `nodes`（含派生信息与 `is_context`）、`edges`（`is_satisfied`、`cross_milestone`）、可选 `parent_edges` 与 `meta`（计数、上限、截断标记、`snapshot_id`） |
+
+- 节点字段与 `/api/missions/` 派生字段一致：`is_blocked`、`has_unresolved_prerequisites`、`requires_revalidation`（= `Done` 且前置不再满足，即 8.2 的复核提示）、`blocking_count`、`unfinished_child_count`、`reviewer_missing`、`milestone_closed`、`allowed_actions`，另含 `type`/`priority`/`status`/`assignee`/`reviewer`/`parent_id`/`milestone_id`/`version`。
+- 只有**匹配筛选的任务**计入页头摘要；被筛选排除但直接相连的可见任务作为**一跳上下文节点**保留（`is_context=true`，虚线卡片），避免让任务看起来没有前置依赖。
+- 图最多返回 200 个节点（含上下文，`GRAPH_CONTEXT_LIMIT` 50）与 1000 条边；达到上限返回截断标记而不是静默删边。`snapshot_id` 是本次读取批次标识，不是可写版本号。
+- 非法参数（未知 `status`/`type`/`priority`、非整数 `column_limit`、非 UUID 的 `milestone`/`focus`）返回 `400`（`validation_error`）；未登录返回 `403`。本系统所有登录成员可见全部任务，因此无受限节点泄露问题。
+
+**9.3 前端与查询参数**
+
+- 筛选栏：搜索、里程碑、状态、认领者、类型、优先级、受阻，以及快捷项「只看我的」（`assignee=me`）、「只看阻塞」（`blocked=true`）、「待我验收」（`reviewer=me` + `status=Submitted`）；另设「需复核」摘要计数。视图、筛选与选中任务写入 URL（`view`、`q`、`milestone`、`status`、`assignee`、`reviewer`、`blocked`、`selected`、`limit`、`related`、`relations`、`parent`、`expand`、`direction`），链接可复现视图但不能绕过权限。
+- 详情抽屉点击卡片打开，分别展示内容、**前置依赖 / 下游任务 / 父子关系**三类关系、成果与验收历史；抽屉内可执行认领、退出、验收/退回、转交验收、重新打开、取消、增删依赖等受控操作（携带 `expected_version`，冲突时提示并刷新），并可跳转完整详情页。
+- 概览卡片显示 ID、标题、类型、优先级、状态文本、认领者、里程碑、受阻/需复核/未完成子任务摘要；颜色始终配合文本标签。卡片「查看依赖」切换到依赖图并以该任务为焦点；图支持「全部上游/下游」传递闭包与「只看相关」。
+- 前端不自行推断阻塞或权限：`is_blocked`、`allowed_actions` 等均来自后端。
+
+**9.4 实现说明**
+
+- 图布局在 `frontend/src/workspaceLayout.ts` 中自行实现（最长路径分层 + 稳定排序），**未引入第三方节点图/DAG 库**，因此没有新增前端依赖，也无需评估外部库的许可证与维护状态；画布交互（平移/缩放/适应/定位/重置）集中在 `DependencyGraph.vue`。
+- 后端聚合位于 `frontend/src/api/workspace.ts` 对应的 `backend/missions/workspace.py`，与服务层共用同一套 `derived_state_bulk` 与共享筛选（`backend/missions/filters.py`），避免列表与工作台的筛选逻辑分叉。
+- 第一版通过操作后刷新与页面可见时的低频轮询更新，不实现甘特图、关键路径、工时预测、实时协同画布或保存节点坐标。

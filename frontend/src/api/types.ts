@@ -58,6 +58,8 @@ export interface MilestoneBrief {
   name: string
   status: MilestoneStatus
   due_date: string | null
+  /** Only present on the F5 workspace milestone briefs. */
+  overdue?: boolean
 }
 
 export interface MilestoneCounts {
@@ -295,4 +297,117 @@ export interface MilestoneUpdatePayload {
   name?: string
   description?: string
   due_date?: string | null
+}
+
+/* -------------------------------------------------------------------------
+ * F5 workspace (milestone board + dependency graph)
+ * ----------------------------------------------------------------------- */
+
+export type WorkspaceScope = 'team' | 'milestone' | 'mission'
+export type WorkspaceExpand = 'none' | 'one' | 'all'
+export type WorkspaceDirection = 'upstream' | 'downstream' | 'both'
+
+/** One mission as rendered on the board and in the graph. */
+export interface WorkspaceNode {
+  id: string
+  title: string
+  type: MissionType
+  priority: MissionPriority
+  status: MissionStatus
+  creator: User
+  assignee: User | null
+  reviewer: User | null
+  parent_id: string | null
+  milestone_id: string | null
+  milestone_name: string | null
+  version: number
+  created_at: string
+  updated_at: string
+  is_blocked: boolean
+  has_unresolved_prerequisites: boolean
+  /** Done but its prerequisites are no longer satisfied (F1 review hint). */
+  requires_revalidation: boolean
+  needs_dependency_review: boolean
+  blocking_count: number
+  unfinished_child_count: number
+  reviewer_missing: boolean
+  milestone_closed: boolean
+  /** Visible for context but excluded by the active task filters. */
+  is_context: boolean
+  allowed_actions: string[]
+}
+
+export interface WorkspaceEdge {
+  id: string
+  mission_id: string
+  prerequisite_id: string
+  is_satisfied: boolean
+  cross_milestone: boolean
+}
+
+/** `parent -> child` decomposition edge; never a dependency edge. */
+export interface WorkspaceParentEdge {
+  child_id: string
+  parent_id: string
+}
+
+export interface WorkspaceGroup {
+  milestone: MilestoneBrief | null
+  is_unassigned: boolean
+  /** Full visible scope of the milestone (ignores task filters). */
+  full_counts: MilestoneCounts
+  /** Matched counts per status under the active filters. */
+  matched_counts: Record<MissionStatus, number>
+  matched_total: number
+  loaded: Record<MissionStatus, number>
+  columns: Record<MissionStatus, WorkspaceNode[]>
+}
+
+export interface WorkspaceSummary {
+  matched_total: number
+  effective_total: number
+  done: number
+  blocked: number
+  submitted: number
+  requires_revalidation: number
+}
+
+export interface WorkspaceOverview {
+  generated_at: string
+  snapshot_id: string
+  filters_active: boolean
+  column_limit: number
+  columns: MissionStatus[]
+  column_labels: Record<MissionStatus, string>
+  summary: WorkspaceSummary
+  groups: WorkspaceGroup[]
+}
+
+export interface WorkspaceGraphMeta {
+  scope: WorkspaceScope
+  focus: string | null
+  expand: WorkspaceExpand
+  direction: WorkspaceDirection
+  depth: number
+  matched_count: number
+  matched_included: number
+  context_count: number
+  node_count: number
+  edge_count: number
+  parent_edge_count: number
+  node_limit: number
+  edge_limit: number
+  context_limit: number
+  nodes_truncated: boolean
+  edges_truncated: boolean
+}
+
+export interface WorkspaceGraph {
+  generated_at: string
+  snapshot_id: string
+  filters_active: boolean
+  nodes: WorkspaceNode[]
+  edges: WorkspaceEdge[]
+  parent_edges: WorkspaceParentEdge[]
+  meta: WorkspaceGraphMeta
 }
