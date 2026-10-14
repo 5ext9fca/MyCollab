@@ -140,22 +140,22 @@ onMounted(async () => {
       >
         <el-option v-for="item in milestoneOptions" :key="item.id" :label="item.name" :value="item.id" />
       </el-select>
-      <el-tooltip
-        placement="top"
-        content="按受阻状态筛选：存在未完成前置任务的任务即为受阻，受阻任务不能提交或通过验收"
+      <el-select
+        v-model="filters.blocked"
+        placeholder="受阻状态"
+        style="width: 150px"
+        @change="onFilter"
       >
-        <el-select v-model="filters.blocked" style="width: 150px" @change="onFilter">
-          <el-option v-for="item in blockedOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-      </el-tooltip>
-      <el-tooltip
-        placement="top"
-        content="结果排序方式：默认按创建时间（新的在前），也可改为优先级高在前或低在前"
+        <el-option v-for="item in blockedOptions" :key="item.value" :label="item.label" :value="item.value" />
+      </el-select>
+      <el-select
+        v-model="filters.ordering"
+        placeholder="排序方式"
+        style="width: 180px"
+        @change="onFilter"
       >
-        <el-select v-model="filters.ordering" style="width: 180px" @change="onFilter">
-          <el-option v-for="item in orderingOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-      </el-tooltip>
+        <el-option v-for="item in orderingOptions" :key="item.value" :label="item.label" :value="item.value" />
+      </el-select>
       <el-select
         v-model="filters.tags"
         multiple
