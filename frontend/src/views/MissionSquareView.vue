@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
 import { ApiException } from '../api/client'
@@ -12,6 +12,7 @@ import DesignElementSelect from '../components/DesignElementSelect.vue'
 import MissionCard from '../components/MissionCard.vue'
 
 const router = useRouter()
+const route = useRoute()
 
 const missions = ref<Mission[]>([])
 const total = ref(0)
@@ -68,6 +69,9 @@ async function load() {
   try {
     const data = await listMissions({
       design_element: filters.design_element || undefined,
+      assignee: typeof route.query.assignee === 'string' ? route.query.assignee : undefined,
+      reviewer: typeof route.query.reviewer === 'string' ? route.query.reviewer : undefined,
+      revalidation: typeof route.query.revalidation === 'string' ? route.query.revalidation : undefined,
       status: filters.status || undefined,
       // Repeated ``tag`` params; the API ANDs them (must carry every tag).
       tag: filters.tags.length ? filters.tags : undefined,
@@ -77,6 +81,8 @@ async function load() {
       milestone: filters.milestone || undefined,
       blocked: filters.blocked === '' ? undefined : filters.blocked,
       ordering: filters.ordering || undefined,
+      date_from: typeof route.query.date_from === 'string' ? route.query.date_from : undefined,
+      date_to: typeof route.query.date_to === 'string' ? route.query.date_to : undefined,
       page: page.value,
       page_size: pageSize,
     })
@@ -100,6 +106,12 @@ function onPage(next: number) {
 }
 
 onMounted(async () => {
+  for (const key of ['design_element', 'milestone', 'type', 'priority', 'blocked'] as const) {
+    if (typeof route.query[key] === 'string') Object.assign(filters, { [key]: route.query[key] })
+  }
+  if (typeof route.query.status === 'string') filters.status = route.query.status === 'all' ? '' : route.query.status as MissionStatus
+  if (typeof route.query.q === 'string') filters.search = route.query.q
+
   const [tags, milestones] = await Promise.allSettled([listTags(), listMilestones({ page_size: 100 })])
   if (tags.status === 'fulfilled') tagOptions.value = tags.value.map((tag) => tag.name)
   if (milestones.status === 'fulfilled') milestoneOptions.value = milestones.value.results
@@ -116,6 +128,7 @@ onMounted(async () => {
       </el-button>
     </div>
 
+    <p v-if="route.query.date_from" class="meta">计划范围：{{ route.query.date_from }} — {{ route.query.date_to }}（含未排期任务）</p>
     <div class="toolbar">
       <DesignElementSelect :model-value="filters.design_element" filter @update:model-value="filters.design_element = $event || ''; onFilter()" />
       <el-input

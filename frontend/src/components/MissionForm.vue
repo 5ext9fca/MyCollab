@@ -28,6 +28,8 @@ const emit = defineEmits<{ (e: 'submit', payload: MissionFormValues): void }>()
 const formRef = ref<FormInstance>()
 const form = reactive<MissionFormValues>({
   design_element_id: props.initial?.design_element_id ?? null,
+  planned_start_date: props.initial?.planned_start_date ?? null,
+  planned_end_date: props.initial?.planned_end_date ?? null,
   title: props.initial?.title ?? '',
   content: props.initial?.content ?? '',
   acceptance_criteria: props.initial?.acceptance_criteria ?? '',
@@ -69,6 +71,8 @@ async function onSubmit() {
   if (!valid) return
   emit('submit', {
     design_element_id: form.design_element_id || null,
+    planned_start_date: form.planned_start_date || null,
+    planned_end_date: form.planned_end_date || null,
     title: form.title,
     content: form.content,
     acceptance_criteria: form.acceptance_criteria,
@@ -133,6 +137,11 @@ async function onSubmit() {
         </el-form-item>
       </el-col>
     </el-row>
+    <el-row :gutter="16">
+      <el-col :sm="12"><el-form-item label="计划开始日期（可空）"><el-date-picker v-model="form.planned_start_date" value-format="YYYY-MM-DD" type="date" placeholder="未计划" /></el-form-item></el-col>
+      <el-col :sm="12"><el-form-item label="计划结束日期（可空）"><el-date-picker v-model="form.planned_end_date" value-format="YYYY-MM-DD" type="date" placeholder="未计划" /></el-form-item></el-col>
+    </el-row>
+    <p class="meta">日期仅用于计划与风险提示，不限制认领，不自动调整其他任务。</p>
     <el-form-item label="设计依据"><DesignElementSelect v-model="form.design_element_id" /></el-form-item>
     <el-form-item label="验收者">
       <el-select

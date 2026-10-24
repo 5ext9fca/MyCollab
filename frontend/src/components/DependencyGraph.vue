@@ -1,21 +1,6 @@
 <script setup lang="ts">
-/**
- * F5 dependency graph, rendered with Vue Flow.
- *
- * The canvas reads top to bottom: every card sits below all of its visible
- * prerequisites (see `useGraphLayout`). Read-only by construction: node
- * dragging, connecting, edge re-linking and the delete shortcut are all
- * disabled, and no Vue Flow event ever writes to the business API. A pure
- * status refresh keeps the same coordinates. Only direct relations are
- * emphasised by default — "all upstream/downstream" is an explicit action in
- * the page.
- *
- * Parent/child grouping arrives fully resolved (`grouping`): the page already
- * merged collapsed children onto their parent and hands over the visible
- * parent/child structure, so the canvas only renders what it is given and
- * never mutates the graph.
- */
-import { computed, nextTick, watch } from 'vue'
+/** 现有依赖画布升级为甘特图，保留只读交互、焦点与父子折叠。 */
+import { computed, nextTick } from 'vue'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import type { Edge, Node } from '@vue-flow/core'
 import { Controls } from '@vue-flow/controls'
@@ -24,14 +9,19 @@ import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 
 import type { WorkspaceEdge, WorkspaceNode } from '../api/types'
-import { useGraphLayout } from '../composables/useGraphLayout'
+import { computeGanttLayout } from '../composables/useGanttLayout'
+import GanttAxis from './GanttAxis.vue'
 import { buildDependencyEdges, buildMissionNodes, NODE_HEIGHT, NODE_WIDTH } from '../workspace/dto'
-import type { GroupInfo, MissionNodeData } from '../workspace/dto'
+import type { GroupInfo } from '../workspace/dto'
 import { directRelations } from '../workspace/dependencyTraversal'
 import MissionGraphNode from './MissionGraphNode.vue'
 
 const props = withDefaults(
   defineProps<{
+    dateFrom?: string
+    dateTo?: string
+    today?: string
+    zoom?: 'day' | 'week'
     nodes: WorkspaceNode[]
     edges: WorkspaceEdge[]
     selectedId?: string | null
@@ -40,7 +30,7 @@ const props = withDefaults(
     /** Extra ids to emphasise (e.g. "all upstream"): null keeps direct-only. */
     emphasisIds?: Set<string> | null
   }>(),
-  { selectedId: null, grouping: null, emphasisIds: null },
+  { selectedId: null, grouping: null, emphasisIds: null, zoom: 'day' },
 )
 
 const emit = defineEmits<{
@@ -50,7 +40,10 @@ const emit = defineEmits<{
   (event: 'toggleCollapse', id: string): void
 }>()
 
-const { positions, update } = useGraphLayout()
+const today = computed(() => props.today ?? new Date().toISOString().slice(0, 10))
+const from = computed(() => props.dateFrom ?? today.value)
+const to = computed(() => props.dateTo ?? new Date(Date.parse(`${from.value}T00:00:00Z`) + 28 * 86400000).toISOString().slice(0, 10))
+const layout = computed(() => computeGanttLayout(props.nodes, props.edges, props.grouping, from.value, to.value, props.zoom))
 const { fitView, setCenter, findNode, onNodesInitialized, onNodeClick, onEdgeClick } = useVueFlow()
 
 let fitted = false
@@ -69,21 +62,17 @@ const emphasis = computed(() => {
  */
 const visibleNodeIds = computed(() => new Set(props.nodes.map((node) => node.id)))
 
-const flowNodes = computed<Node<MissionNodeData>[]>(() =>
-  buildMissionNodes(props.nodes, positions.value, emphasis.value, props.selectedId, props.grouping),
-)
+const flowNodes = computed<Node[]>(() => [
+  { id: '__gantt_axis__', type: 'gantt-axis', position: { x: 0, y: 0 }, selectable: false, draggable: false, connectable: false, deletable: false, zIndex: -1,
+    style: { pointerEvents: 'none' }, data: { from: from.value, to: to.value, today: today.value, scale: layout.value.scale,
+      width: layout.value.width, height: layout.value.height, zoom: props.zoom, nodes: props.nodes, undatedY: layout.value.undatedY } },
+  ...buildMissionNodes(layout.value.rows, layout.value.positions, emphasis.value, props.selectedId, props.grouping).map(node => ({ ...node,
+    style: { width: `${layout.value.bars.get(node.id)!.width}px` }, data: { ...node.data!, gantt: layout.value.bars.get(node.id)! } })),
+])
 
 const flowEdges = computed<Edge[]>(() =>
   buildDependencyEdges(props.edges, props.selectedId, visibleNodeIds.value),
 )
-
-/** Recompute the layered coordinates only when the structure changed. */
-function applyLayout() {
-  update(props.nodes, props.edges, { childrenOf: props.grouping?.childrenOf ?? null })
-}
-
-applyLayout()
-watch(() => [props.nodes, props.edges, props.grouping], applyLayout)
 
 onNodesInitialized(() => {
   if (fitted || !props.nodes.length) return
@@ -91,7 +80,7 @@ onNodesInitialized(() => {
   void nextTick(() => fitView({ padding: 0.15 }))
 })
 
-onNodeClick(({ node }) => emit('select', node.id))
+onNodeClick(({ node }) => { if (node.type === 'mission') emit('select', node.id) })
 onEdgeClick(({ edge }) => {
   const data = edge.data as { edge?: WorkspaceEdge } | undefined
   if (data?.edge) emit('edgeSelect', data.edge)
@@ -109,7 +98,7 @@ function reset() {
 function locate(id: string) {
   const node = findNode(id)
   if (!node) return
-  void setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + NODE_HEIGHT / 2, {
+  void setCenter(node.position.x + (layout.value.bars.get(id)?.width ?? NODE_WIDTH) / 2, node.position.y - NODE_HEIGHT / 2, {
     zoom: 1,
     duration: 300,
   })
@@ -134,6 +123,7 @@ defineExpose({ fit, reset, locate })
         :elevate-edges-on-select="true"
         :default-viewport="{ x: 0, y: 0, zoom: 0.9 }"
       >
+        <template #node-gantt-axis="axisProps"><GanttAxis :data="axisProps.data" /></template>
         <template #node-mission="nodeProps">
           <MissionGraphNode
             v-bind="nodeProps"

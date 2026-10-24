@@ -131,10 +131,16 @@ def _node(mission: Mission, derived: dict, user, *, is_context: bool = False) ->
         "parent_id": str(mission.parent_id) if mission.parent_id else None,
         "milestone_id": str(mission.milestone_id) if mission.milestone_id else None,
         "milestone_name": milestone.name if milestone else None,
+        "milestone_due_date": _iso(milestone.due_date) if milestone else None,
         "design_element_id": str(mission.design_element_id) if mission.design_element_id else None,
         "version": mission.version,
         "created_at": _iso(mission.created_at),
         "updated_at": _iso(mission.updated_at),
+        "planned_start_date": _iso(mission.planned_start_date),
+        "planned_end_date": _iso(mission.planned_end_date),
+        "overdue": derived["overdue"],
+        "dependency_date_conflict_ids": derived["dependency_date_conflict_ids"],
+        "beyond_milestone_due": derived["beyond_milestone_due"],
         "is_blocked": derived["is_blocked"],
         "has_unresolved_prerequisites": derived["has_unresolved_prerequisites"],
         "requires_revalidation": derived["needs_dependency_review"],
@@ -370,7 +376,10 @@ class WorkspaceGraphView(APIView):
     permission_classes = [IsTeamMember]
 
     def get(self, request):
-        params = request.query_params
+        from .scheduling import date_window
+        date_from, date_to = date_window(request.query_params, default=True)
+        params = request.query_params.copy()
+        params["date_from"], params["date_to"] = date_from.isoformat(), date_to.isoformat()
         user = request.user
 
         scope = (params.get("scope") or "team").strip().lower()
@@ -509,8 +518,20 @@ class WorkspaceGraphView(APIView):
             truncation_reasons.append("edge_limit")
         truncated = bool(truncation_reasons)
 
+        prerequisite_rows = list(MissionDependency.objects.filter(mission_id__in=nodes).values_list(
+            "mission_id", "prerequisite_id", "prerequisite__version", "prerequisite__status", "prerequisite__planned_end_date"))
+        missing = {str(pk): 0 for pk in nodes}
+        for mid, pid, *_ in prerequisite_rows:
+            if pid not in nodes:
+                missing[str(mid)] += 1
+        for payload in node_payload:
+            payload["unloaded_prerequisite_count"] = missing[payload["id"]]
+        today = timezone.localdate()
         revision = _revision(
             [
+                today.isoformat(), date_from.isoformat(), date_to.isoformat(),
+                *(str(row) for row in prerequisite_rows),
+                *(f"milestone:{m.milestone_id}:{m.milestone.due_date}:{m.milestone.version}" for m in missions if m.milestone_id),
                 *(_mission_signature(mission) for mission in missions),
                 *(
                     f"e:{edge['id']}:{edge['prerequisite_id']}:{edge['mission_id']}"
@@ -531,6 +552,7 @@ class WorkspaceGraphView(APIView):
                 "edges": edges,
                 "parent_edges": parent_edges,
                 "meta": {
+                    "date_from": date_from.isoformat(), "date_to": date_to.isoformat(), "today": today.isoformat(),
                     "scope": scope,
                     "focus": str(focus.id) if focus else None,
                     "expand": expand,
@@ -550,7 +572,7 @@ class WorkspaceGraphView(APIView):
                     "edges_truncated": edges_truncated,
                     "truncated": truncated,
                     "truncation_reasons": truncation_reasons,
-                    "relationships_complete": not truncated,
+                    "relationships_complete": not truncated and not any(missing.values()),
                 },
             }
         )

@@ -19,11 +19,7 @@ export const NODE_WIDTH = 220
 /** Card height in CSS pixels; the graph card is fixed to this height. */
 export const NODE_HEIGHT = 120
 
-/**
- * Handle ids. The graph now reads top to bottom, so a prerequisite leaves its
- * card from the bottom and a dependent enters from the top. The page never
- * creates connections, so these are only routing anchors.
- */
+/** 连线端点 ID 保持兼容；甘特图从双方结束端连接，画布禁止新建关系。 */
 export const DEPENDENCY_SOURCE_HANDLE = 'dep-source'
 export const DEPENDENCY_TARGET_HANDLE = 'dep-target'
 
@@ -40,6 +36,7 @@ export interface GroupInfo {
 }
 
 export interface MissionNodeData {
+  gantt?: import('../composables/useGanttLayout').GanttBar
   node: WorkspaceNode
   selected: boolean
   dimmed: boolean

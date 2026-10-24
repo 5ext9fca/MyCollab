@@ -274,6 +274,7 @@ def derived_state(mission: Mission) -> dict:
         "needs_dependency_review": mission.status == MissionStatus.DONE and has_unresolved,
         "reviewer_missing": reviewer_missing,
         "milestone_closed": milestone_closed,
+        **schedule_risks_bulk([mission])[mission.pk],
     }
 
 
@@ -303,6 +304,7 @@ def derived_state_bulk(missions: Iterable[Mission]) -> dict:
     ):
         unfinished_children.setdefault(parent_id, []).append(str(child_id))
 
+    risks = schedule_risks_bulk(missions)
     result: dict = {}
     for mission in missions:
         blocking_ids = blocking.get(mission.id, [])
@@ -314,6 +316,7 @@ def derived_state_bulk(missions: Iterable[Mission]) -> dict:
         )
         reviewer = mission.reviewer
         result[mission.id] = {
+            **risks[mission.pk],
             "has_unresolved_prerequisites": has_unresolved,
             "is_blocked": is_blocked,
             "blocking_mission_ids": blocking_ids,
@@ -408,6 +411,8 @@ def create_mission(
     reviewer_id=None,
     milestone_id=None,
     design_element_id=None,
+    planned_start_date=None,
+    planned_end_date=None,
 ) -> Mission:
     title = (title or "").strip()
     if not title:
@@ -434,6 +439,7 @@ def create_mission(
     if not _is_active_member(reviewer):
         raise ValidationFailure("验收者必须是有效成员。", field_errors={"reviewer_id": ["无效成员。"]})
     milestone = _resolve_milestone(milestone_id, require_accepting=True)
+    planned_start_date, planned_end_date = _validate_schedule(planned_start_date, planned_end_date)
 
     mission = Mission.objects.create(
         title=title,
@@ -447,6 +453,8 @@ def create_mission(
         reviewer=reviewer,
         milestone=milestone,
         design_element=_resolve_design_element(design_element_id),
+        planned_start_date=planned_start_date,
+        planned_end_date=planned_end_date,
     )
     _apply_tags(mission, tags)
     _record_event(
@@ -482,6 +490,16 @@ def update_mission(*, actor, mission_id, expected_version: int, changes: dict) -
         raise ConflictError("当前状态已冻结内容，请先退回进行中再修改。", code="mission_frozen")
 
     changed_fields: list[str] = []
+
+    if {"planned_start_date", "planned_end_date"} & changes.keys():
+        start, end = _validate_schedule(changes.get("planned_start_date", mission.planned_start_date), changes.get("planned_end_date", mission.planned_end_date))
+        before = _schedule_values(mission)
+        mission.planned_start_date, mission.planned_end_date = start, end
+        _assert_schedule_dependencies(mission)
+        after = _schedule_values(mission)
+        if before != after:
+            _record_event(mission, actor, MissionEventAction.SCHEDULE_CHANGED, {"from": before, "to": after})
+            changed_fields.extend(["planned_start_date", "planned_end_date"])
 
     if "design_element_id" in changes:
         target = changes["design_element_id"]
@@ -1002,6 +1020,8 @@ def add_dependency(*, actor, mission_id, prerequisite_id, expected_version) -> M
         raise ConflictError("该依赖已存在。", code="dependency_exists")
 
     _assert_edge_allowed(_graph_adjacency(), prerequisite.id, mission.id)
+    if mission.planned_end_date and prerequisite.planned_end_date and mission.planned_end_date < prerequisite.planned_end_date:
+        raise ConflictError("任务的计划结束日期不得早于前置任务。", code="schedule_dependency_conflict")
 
     dependency = MissionDependency.objects.create(
         mission=mission, prerequisite=prerequisite, created_by=actor
@@ -1432,3 +1452,55 @@ def instantiate_production(*, actor, element_id, expected_version, template_id, 
     asset.save(update_fields=["version", "updated_at"])
     DesignElementEvent.objects.create(element=asset, actor=actor, action="instantiated", payload={"batch_id": str(batch.pk), "template_id": str(template.pk), "template_version": template.version, "mission_count": len(missions)})
     return batch
+
+
+# 计划日期校验结束顺序并派生风险，保留原认领与实际完成规则。
+def _validate_schedule(start, end):
+    from datetime import date, datetime
+    def parse(value):
+        if value is None:
+            return None
+        if isinstance(value, date) and not isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = date.fromisoformat(value)
+                if parsed.isoformat() == value:
+                    return parsed
+            except ValueError:
+                pass
+        raise ValidationFailure("计划日期必须是 YYYY-MM-DD 或 null。")
+    start, end = parse(start), parse(end)
+    if start and end and start > end:
+        raise ValidationFailure("计划开始日期不能晚于结束日期。", field_errors={"planned_end_date": ["不能早于开始日期。"]})
+    return start, end
+
+
+def _schedule_values(mission):
+    return {key: getattr(mission, key).isoformat() if getattr(mission, key) else None for key in ("planned_start_date", "planned_end_date")}
+
+
+def schedule_risks_bulk(missions):
+    missions = list(missions)
+    by_id = {mission.pk: mission for mission in missions}
+    conflicts = {pk: [] for pk in by_id}
+    for mission_id, prerequisite_id, end in MissionDependency.objects.filter(mission_id__in=by_id).values_list("mission_id", "prerequisite_id", "prerequisite__planned_end_date"):
+        start = by_id[mission_id].planned_start_date
+        if start and end and end > start:
+            conflicts[mission_id].append(str(prerequisite_id))
+    today = timezone.localdate()
+    return {m.pk: {
+        "overdue": bool(m.status in [MissionStatus.OPEN, MissionStatus.IN_PROGRESS, MissionStatus.SUBMITTED] and m.planned_end_date and m.planned_end_date < today),
+        "dependency_date_conflict_ids": sorted(conflicts[m.pk]),
+        "beyond_milestone_due": bool(m.planned_end_date and m.milestone_id and m.milestone.due_date and m.planned_end_date > m.milestone.due_date),
+    } for m in missions}
+
+
+
+def _assert_schedule_dependencies(mission):
+    if not mission.planned_end_date:
+        return
+    invalid_upstream = MissionDependency.objects.filter(mission=mission, prerequisite__planned_end_date__gt=mission.planned_end_date)
+    invalid_downstream = MissionDependency.objects.filter(prerequisite=mission, mission__planned_end_date__lt=mission.planned_end_date)
+    if invalid_upstream.exists() or invalid_downstream.exists():
+        raise ConflictError("计划结束日期与依赖顺序冲突：任务不得早于任何前置结束；延后前置时请先调整下游日期。", code="schedule_dependency_conflict")

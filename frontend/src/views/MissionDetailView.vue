@@ -53,6 +53,7 @@ import {
 } from '../missionMeta'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import MissionDesignLink from '../components/MissionDesignLink.vue'
+import MissionSchedule from '../components/MissionSchedule.vue'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 import MissionForm from '../components/MissionForm.vue'
 import StatusTag from '../components/StatusTag.vue'
@@ -117,6 +118,7 @@ const ACTION_LABELS: Record<string, string> = {
   reopened: '重新打开了任务',
   milestone_changed: '修改了里程碑',
   design_element_changed: '修改了设计依据',
+  schedule_changed: '修改了计划日期',
   dependency_added: '添加了前置依赖',
   dependency_removed: '移除了前置依赖',
 }
@@ -464,6 +466,8 @@ async function onEditSubmit(values: MissionFormValues) {
         reviewer: values.reviewer_id,
         milestone: values.milestone_id,
         design_element_id: values.design_element_id,
+        planned_start_date: values.planned_start_date,
+        planned_end_date: values.planned_end_date,
       }),
     '已保存',
   )
@@ -655,6 +659,8 @@ function formatDate(value: string | null) {
             reviewer_id: mission.reviewer?.id ?? null,
             milestone_id: mission.milestone?.id ?? null,
             design_element_id: mission.design_element?.id ?? null,
+            planned_start_date: mission.planned_start_date,
+            planned_end_date: mission.planned_end_date,
           }"
           submit-label="保存"
           @submit="onEditSubmit"
@@ -664,6 +670,7 @@ function formatDate(value: string | null) {
       <section class="section">
         <h3>背景与目标</h3>
         <MissionDesignLink :element="mission.design_element" />
+        <MissionSchedule :mission="mission" />
         <MarkdownContent :source="mission.content" />
       </section>
 

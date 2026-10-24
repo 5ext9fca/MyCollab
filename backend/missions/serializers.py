@@ -26,6 +26,14 @@ from .models import (
 from .services import allowed_actions, derived_state, milestone_progress
 
 
+class ISODateField(serializers.DateField):
+    def to_internal_value(self, value):
+        import re
+        if isinstance(value, str) and not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+            self.fail("invalid", format="YYYY-MM-DD")
+        return super().to_internal_value(value)
+
+
 class TagSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tag
@@ -71,6 +79,16 @@ class DesignElementBriefSerializer(serializers.ModelSerializer):
         fields = ["id", "title", "kind", "archived"]
 
 
+class MissionBulkListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        from .services import derived_state_bulk
+        rows = list(data.all() if hasattr(data, "all") else data)
+        states = derived_state_bulk(rows)
+        for row in rows:
+            row._derived_cache = states[row.pk]
+        return super().to_representation(rows)
+
+
 class MissionListSerializer(serializers.ModelSerializer):
     creator = UserBriefSerializer(read_only=True)
     assignee = UserBriefSerializer(read_only=True)
@@ -88,9 +106,13 @@ class MissionListSerializer(serializers.ModelSerializer):
     needs_dependency_review = serializers.SerializerMethodField()
     reviewer_missing = serializers.SerializerMethodField()
     milestone_closed = serializers.SerializerMethodField()
+    overdue = serializers.SerializerMethodField()
+    dependency_date_conflict_ids = serializers.SerializerMethodField()
+    beyond_milestone_due = serializers.SerializerMethodField()
 
     class Meta:
         model = Mission
+        list_serializer_class = MissionBulkListSerializer
         fields = [
             "id",
             "title",
@@ -103,6 +125,7 @@ class MissionListSerializer(serializers.ModelSerializer):
             "parent",
             "milestone",
             "design_element",
+            "planned_start_date", "planned_end_date", "overdue", "dependency_date_conflict_ids", "beyond_milestone_due",
             "tags",
             "version",
             "created_at",
@@ -149,6 +172,17 @@ class MissionListSerializer(serializers.ModelSerializer):
 
     def get_milestone_closed(self, obj):
         return self._derived(obj)["milestone_closed"]
+
+
+
+    def get_overdue(self, obj):
+        return self._derived(obj)["overdue"]
+
+    def get_dependency_date_conflict_ids(self, obj):
+        return self._derived(obj)["dependency_date_conflict_ids"]
+
+    def get_beyond_milestone_due(self, obj):
+        return self._derived(obj)["beyond_milestone_due"]
 
 
 class MissionDetailSerializer(MissionListSerializer):
@@ -203,6 +237,8 @@ class MilestoneEventSerializer(serializers.ModelSerializer):
 
 
 class MissionCreateSerializer(serializers.Serializer):
+    planned_start_date = ISODateField(required=False, allow_null=True)
+    planned_end_date = ISODateField(required=False, allow_null=True)
     design_element_id = serializers.UUIDField(required=False, allow_null=True)
     title = serializers.CharField(max_length=200)
     content = serializers.CharField(required=False, allow_blank=True, default="")
@@ -226,6 +262,8 @@ class MissionCreateSerializer(serializers.Serializer):
 
 
 class MissionUpdateSerializer(serializers.Serializer):
+    planned_start_date = ISODateField(required=False, allow_null=True)
+    planned_end_date = ISODateField(required=False, allow_null=True)
     design_element_id = serializers.UUIDField(required=False, allow_null=True)
     expected_version = serializers.IntegerField()
     title = serializers.CharField(max_length=200, required=False)

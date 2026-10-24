@@ -21,7 +21,7 @@
 | 后端 | Python、Django | 业务逻辑、用户体系、ORM、迁移、事务 |
 | API | Django REST Framework（DRF） | JSON REST API、输入校验、权限检查 |
 | 依赖图渲染 | Vue Flow（`@vue-flow/core` + `@vue-flow/controls`） | 只读依赖图的节点/边、平移与缩放控制 |
-| 依赖图布局 | 前端自研分层布局（`frontend/src/composables/useGraphLayout.ts`） | 自顶向下的依赖分层、父子横向编排与家庭区域预留 |
+| 依赖图布局 | 前端自研甘特布局（`frontend/src/composables/useGanttLayout.ts`） | 真实日期横轴、逐任务行与父子标签缩进 |
 | 数据库 | PostgreSQL | 业务数据、约束、索引、并发控制 |
 | 身份认证 | Django Session、Cookie、CSRF | 同域浏览器登录与请求认证 |
 | 管理界面 | Django Admin + SPA 自建管理后台 | 数据检查、注册审批、成员与标签管理 |
@@ -184,8 +184,8 @@ cancel_mission(...)
 - 所有 API 调用集中在类型化客户端模块中。
 - 默认使用浏览器 fetch；统一处理 CSRF、错误响应、加载状态与会话失效。
 - 共享状态确有需求时再添加 Pinia；组件内状态优先保持局部。
-- 主要页面：设计与资产（懒加载设计树、关联任务与进度、生产模板与步骤）、任务广场、工作台（里程碑 × 状态概览与依赖图）、我认领的、我发布的、里程碑、素材库、Mission 详情（含评论/讨论区）与任务树；另有注册页与仅管理员可见的管理后台。
-- 工作台为只读聚合视图，复用既有写接口；依赖图使用 Vue Flow 渲染，坐标由工作台自研的**自顶向下分层布局**（`frontend/src/composables/useGraphLayout.ts`：依赖分层 + 父子横向编排 + 家庭区域预留）计算，画布关闭拖线连边、端点重接、节点拖动与删除快捷键，且不在画布上写入任务状态。
+- 主要页面：设计与资产（懒加载设计树、关联任务与进度、生产模板与步骤）、任务广场、工作台（里程碑 × 状态概览与甘特图）、我认领的、我发布的、里程碑、素材库、Mission 详情（含评论/讨论区）与任务树；另有注册页与仅管理员可见的管理后台。
+- 工作台为只读聚合视图，复用既有写接口；依赖图使用 Vue Flow 渲染，坐标由工作台自研的**甘特日期布局**（`frontend/src/composables/useGanttLayout.ts`：真实日期横轴、独立任务行、未排期区域；`GanttAxis.vue` 绘制日期与目标标记）计算，画布关闭拖线连边、端点重接、节点拖动与删除快捷键，且不在画布上写入任务状态。
 - 根据后端提供的状态或操作能力显示按钮，后端仍执行最终权限检查。
 - 认领等操作应展示服务器确认后的结果，并明确处理 `409`。
 - Markdown 和成果内容的渲染必须处理不可信 HTML，不能直接注入用户输入。
@@ -242,3 +242,5 @@ Redis、后台任务队列、WebSocket、独立搜索服务与 Kubernetes 不属
 - PostgreSQL 行锁：https://www.postgresql.org/docs/current/explicit-locking.html
 - Caddy：https://caddyserver.com/docs/
 - Docker Compose 生产部署：https://docs.docker.com/compose/how-tos/production/
+
+- Mission 日期写入复用原创建/PATCH 和服务事务，结束顺序约束与新增依赖在团队锁内共同校验；不做自动排程。甘特图继续使用 `/api/workspace/graph/`，日/周档位、日期窗口和可访问列表均使用现有 Vue/Element Plus/Vue Flow，不增加图布局或时间管理依赖。

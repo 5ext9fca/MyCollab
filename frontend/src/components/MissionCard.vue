@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MissionSchedule from './MissionSchedule.vue'
 import { useRouter } from 'vue-router'
 
 import type { Mission } from '../api/types'
@@ -36,6 +37,7 @@ function open() {
       <template v-else> · 待认领</template>
       <template v-if="mission.milestone"> · 里程碑：{{ mission.milestone.name }}</template>
     </div>
+    <MissionSchedule v-if="mission.planned_start_date || mission.planned_end_date" :mission="mission" />
     <div v-if="mission.tags.length" class="tag-row">
       <el-tag v-for="tag in mission.tags" :key="tag.id" size="small" type="info">
         {{ tag.name }}

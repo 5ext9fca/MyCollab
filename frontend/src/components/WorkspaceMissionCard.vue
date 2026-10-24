@@ -194,7 +194,7 @@ function onKey(event: KeyboardEvent) {
   color: #6b7280;
 }
 .ws-card--compact {
-  /* Fixed height: the layered layout places cards by NODE_HEIGHT. */
+  /* 固定卡片高度，保证甘特图逐行排布时不遮挡时间条。 */
   height: 120px;
   overflow: hidden;
 }

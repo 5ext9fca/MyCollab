@@ -196,7 +196,7 @@ Bob 将其拆成：
 - **我认领的**：显示自己的进行中、待验收任务。
 - **我发布的**：查看任务进展，并处理验收。
 - **里程碑（`/milestones`）**：新建与筛选里程碑，查看进度、延期提示与关联任务；里程碑详情可编辑字段并做受控状态流转。
-- **工作台（`/workspace`）**：把同一批任务按「里程碑 × 状态」概览和「依赖图」两种联动视图呈现，配合筛选、摘要与详情抽屉，快速回答「现在能做什么、被什么阻塞、每个里程碑的进展」（见第 9 节）。
+- **工作台（`/workspace`）**：把同一批任务按「里程碑 × 状态」概览和「甘特图」两种联动视图呈现，配合筛选、摘要与详情抽屉，快速回答「现在能做什么、被什么阻塞、每个里程碑的进展」（见第 9 节）。
 - **素材库（`/library`）**：上传、查看、复制 Markdown 引用、删除自己的文件。任务与评论编辑器提供「插入素材」按钮，可从素材库选择或直接上传，并把引用插入到光标处。
 - **管理后台（`/manage`，仅管理员）**：审批注册申请、查看成员列表。由 SPA 自行实现，与 Django Admin（`/admin/`）相互独立。
 
@@ -409,21 +409,23 @@ WHERE id = :mission_id
 
 **9. 扩展：F5 可视化工作台**
 
-本节是 F1—F4 之上的只读聚合层，用于把已有的类型、依赖阻塞、优先级、里程碑、验收等数据同时用「里程碑 × 状态」和「依赖图」两种视图表达。它**不新增业务状态、不新增写接口**，所有写入仍走 `missions/services.py`。
+本节是 F1—F4 之上的只读聚合层，用于把已有的类型、依赖阻塞、优先级、里程碑、验收等数据同时用「里程碑 × 状态」和「甘特图」两种视图表达。它**不新增业务状态、不新增写接口**，所有写入仍走 `missions/services.py`。
 
 **9.1 页面与两种视图**
 
-工作台页面为 `/workspace`（导航「工作台」，路由名 `workspace`），默认显示概览，可切换到依赖图：
+工作台页面为 `/workspace`（导航「工作台」，路由名 `workspace`），默认显示概览，可切换到甘特图：
 
 - **概览（视图 A）**：按里程碑分组，每组五个状态列（待认领 / 进行中 / 待验收 / 已完成 / 已取消）。里程碑组默认按 `Active`、`Planned`、`Completed`、`Cancelled` 排序，同状态按目标日期（空日期在后）、再按 ID。**未归属里程碑**单独成组，不默认省略。组头显示名称、里程碑状态、目标日期、延期标识与「里程碑总计 有效完成/有效总数」（进度沿用 8.4：`Cancelled` 不计入分母，无有效任务显示「暂无有效任务」而非 100%）。
-- **依赖图（视图 B）**：使用 **Vue Flow**（`@vue-flow/core` + `@vue-flow/controls`）渲染节点与边；坐标由工作台自研的**自顶向下分层布局**（`frontend/src/composables/useGraphLayout.ts`，不再使用第三方图布局引擎）计算。**纵轴是依赖层级**：没有可见前置的任务为第 0 层，其余任务为「1 + 所有可见前置层级的最大值」，因此每张卡片整体（含顶边）都位于其全部可见前置卡片下方，多前置、跨家庭与跨里程碑依赖同样遵守；**横轴**用于同层节点的横向排布。节点是 Mission，显式依赖是有向边，方向为 **前置 → 依赖它的任务**（由上至下），不是时间、状态或优先级；无依赖的孤立任务同样绘制。**依赖线的颜色取自可见源端**（即该边的前置 Mission）：同一可见前置发出的所有线段与末端箭头同色，颜色由源任务 `id` 稳定散列得到，刷新、筛选、状态改变与选择切换都不改变；源端未加载的异常边用中性回退色，**不借用目标任务的颜色**。**线色与卡片色是两套语义**：卡片色块与「卡片颜色（所属里程碑）」图例仍表示里程碑，不因线色改变，且线色调色板与里程碑调色板不同，避免混淆。满足状态不再由线色表达——`Done` 前置的边为实线，未满足为虚线，配合关系列表与点击信息用文字区分「已满足／尚未满足」，选中加粗、非相关淡化与箭头样式都与源色兼容，图下标注「依赖线颜色对应前置 Mission」。跨里程碑边照常绘制但**不额外标注**——任务所属里程碑改由**节点卡片颜色**表达（由 `milestone_id` 稳定散列得到固定色，同一里程碑颜色不随数据变化，未归属里程碑为中性灰），卡片上同时有对应的色块与「所属里程碑」提示，颜色从不单独承载语义或表示状态。父子任务折叠时，线色以**当前可见边的源端卡片**为准：折叠合并后的边按可见的代表源端着色，展开后恢复各真实源任务的线色。**「显示父子任务关系」默认勾选**（可关闭）：勾选时父任务在左、直接子任务在其右方并逐级向右展开，同一依赖层级且无排序冲突的父子卡片共享同一水平行；依赖层级优先于父子对齐（子任务有前置时必须排在其全部前置下方）；每个「父任务 + 可见后代」形成一个布局区域，按其占用的依赖层级预留垂直空间，家庭区域之间互不侵入、卡片不重叠。父子关系只参与分组与定位，**不新增依赖边，也不改变业务依赖方向**。父任务卡片提供折叠控件，折叠后隐藏整棵子树并把它的关系**合并到父任务**（合并边仅当被折叠的边全部满足时才标记为已满足，子任务内部边被丢弃），布局按当前实际显示的卡片与边重新计算，隐藏卡片不再占位；若折叠合并产生环，画布只按可用层级展示并给出「依赖关系存在环」提示，不强行画出违反方向的结果。画布保留选择、平移、缩放、适应视图与定位，但**关闭拖线连边、端点重接、节点拖动与删除快捷键**；来自库的 `connect`/`remove`/`update` 事件一律不写入业务 API。图提供「关系列表」等效表格，并显示源任务、目标任务与满足情况。
+- **甘特图（视图 B，保留 `view=graph`）**：Vue Flow 绘制任务条与依赖线，`useGanttLayout.ts` 将真实日期映射到横轴，每个任务独占一行。日/周两档，显示今天和里程碑目标日期；单端日期明确缺失端点，不推算时长；双空任务放在未排期区域。超出窗口的上下文任务裁剪并标注延伸，原日期不变。
+- 依赖仍为前置 → 下游，连线连接结束端，表达下游完成不得早于前置；缺结束日期时只表达业务关系。源 Mission 的稳定散列决定线色，前置 Done 为实线，否则虚线；里程碑决定卡片色，两套颜色语义独立。折叠后的合并边按可见源端着色，全部原边满足才显示满足，内部边隐藏。
+- 父子分组默认开启，通过标签缩进与折叠控件表达层级，不占用日期横轴。折叠隐藏子树并合并关系，代表父任务日期不表示隐藏子任务排期，页面明确提示；合并环仍提示。保留选择、上下游聚焦、平移、缩放、适应视图、定位与原详情抽屉。禁止拖线、重接、节点拖动、删除快捷键和画布写入。关系列表及可键盘打开详情的任务日期列表提供等效信息。
 
 **9.2 数据契约（只读）**
 
 | 接口 | 参数 | 说明 |
 |---|---|---|
 | `GET /api/workspace/overview/` | `q`/`search`、`milestone`（uuid 或 `none`）、`status`、`type`、`priority`、`assignee`（`me`/`none`/uuid）、`reviewer`、`blocked`、`revalidation`、`tag`（可重复，AND）、`column_limit`（默认 20，上限 100） | 返回 `summary`（匹配总数、有效完成数、受阻数、待验收数、需复核数）、`groups`（每组含 `milestone` 摘要、`full_counts`、`matched_counts`、`columns`、`loaded`，并用 `full_counts_scope`/`matched_counts_scope` 明确统计范围）、`columns`/`column_labels` 与 `revision` |
-| `GET /api/workspace/graph/` | 同上，另加 `scope`（`team`/`milestone`/`mission`）、`focus`（任务 id）、`expand`（`none`/`one`/`all`）、`direction`（`upstream`/`downstream`/`both`）、`depth`（1–5）、`context`、`include_parent`（父子分组默认开启，前端据此请求 `parent_edges` 驱动横向编排与折叠） | 返回 `nodes`（含派生信息与 `is_context`）、`edges`（`is_satisfied`、`cross_milestone`）、可选 `parent_edges`（驱动父子横向编排与折叠）、`revision` 与 `meta`（计数、上限、`nodes_truncated`/`context_truncated`/`edges_truncated`、`truncation_reasons`、`relationships_complete`） |
+| `GET /api/workspace/graph/` | 同上，另加 `scope`（`team`/`milestone`/`mission`）、`focus`（任务 id）、`expand`（`none`/`one`/`all`）、`direction`（`upstream`/`downstream`/`both`）、`depth`（1–5）、`context`、`include_parent`（父子分组默认开启，前端据此请求 `parent_edges` 驱动层级缩进与折叠） | 返回 `nodes`（含派生信息与 `is_context`）、`edges`（`is_satisfied`、`cross_milestone`）、可选 `parent_edges`（驱动父子层级与折叠）、`revision` 与 `meta`（计数、上限、`nodes_truncated`/`context_truncated`/`edges_truncated`、`truncation_reasons`、`relationships_complete`） |
 
 - 节点字段与 `/api/missions/` 派生字段一致：`is_blocked`、`has_unresolved_prerequisites`、`requires_revalidation`（= `Done` 且前置不再满足，即 8.2 的复核提示）、`blocking_count`、`unfinished_child_count`、`reviewer_missing`、`milestone_closed`、`allowed_actions`，另含 `type`/`priority`/`status`/`assignee`/`reviewer`/`parent_id`/`milestone_id`/`version`。
 - 只有**匹配筛选的任务**计入页头摘要；被筛选排除但直接相连的可见任务作为**一跳上下文节点**保留（`is_context=true`，虚线卡片），避免让任务看起来没有前置依赖。里程碑组头的「里程碑总计」统计该组**全部可见任务**，与「当前筛选」计数分别标注，不混为同一数字。
@@ -437,17 +439,17 @@ WHERE id = :mission_id
 - 详情抽屉点击卡片打开，分别展示内容、**前置依赖 / 下游任务 / 父子关系**三类关系、成果与验收历史；抽屉内可执行认领、退出、验收/退回、转交验收、重新打开、取消、增删依赖等受控操作（携带 `expected_version`，冲突时提示并刷新），并可跳转完整详情页。
 - 概览卡片显示 ID、标题、类型、优先级、状态文本、认领者、里程碑，并**分别**展示「前置未完成」与「子任务未完成」数量（不合并为同一计数）；颜色始终配合文本标签。卡片「查看依赖」切换到依赖图并以该任务为焦点。
 - 依赖图默认高亮选中任务的直接前置与直接下游，「全部上游」「全部下游」是显式操作，「只看相关」保留「返回完整范围」入口；点击边显示源任务、目标任务与满足情况（含源任务标题与源色示意，文字区分「已满足／尚未满足」）。前端仅在**已加载的图**上做展示层遍历，关系是否完整以 `meta.relationships_complete` 为准；某条依赖的端点未加载时不算作分层约束，也不会被当作「没有依赖」。关闭详情抽屉（关闭按钮、Esc、遮罩，或因任务不存在而发出的 `close`）会清除当前 Mission 焦点：`selectedId`、选中依赖边、上下游摘要与 URL `selected` 一并清空，选中高亮与淡化消失；若此前开启「只看相关」，则同时退出该模式并重新获取团队范围的图，避免清除焦点后仍停留在按旧任务裁剪的图上。筛选、视图模式、父子显示／折叠状态与画布视口在关闭过程中保持不变；关闭引发的刷新带请求代次，旧请求不会把旧焦点或旧范围写回。从详情中「定位」另一 Mission 是程序化关闭，会保留新焦点、不会在随后被清掉。
-- 「显示父子任务关系」默认开启：子任务横向排列在父任务右侧并逐级向右展开，父任务卡片可折叠/展开子任务；折叠后子任务从画布移除，其依赖关系合并到父任务（并标注「已折叠 N 个子任务」），布局按当前可见卡片与边重算，「关系列表」与里程碑图例随之只描述当前可见视图。折叠合并若产生依赖环，页面显示「依赖关系存在环」提示、只按可用层级展示，关系列表与其余交互保持可用。
-- 页面可见时每 30 秒刷新一次，切到后台暂停；手动刷新与操作后刷新保留。
+- 「显示父子任务关系」默认开启：子任务按层级缩进标签并各占一行，父任务卡片可折叠/展开子任务；折叠后子任务从画布移除，其依赖关系合并到父任务（并标注「已折叠 N 个子任务」），布局按当前可见卡片与边重算，「关系列表」与里程碑图例随之只描述当前可见视图。折叠合并若产生依赖环，页面显示「依赖关系存在环」提示、只按可用层级展示，关系列表与其余交互保持可用。
+- 页面可见时每 30 秒刷新一次，切到后台暂停；重新可见、窗口获得焦点、手动刷新与操作后均刷新。
 - 前端不自行推断阻塞或权限：`is_blocked`、`allowed_actions` 等均来自后端。
 
 **9.4 实现说明**
 
-- 依赖图由 **Vue Flow** 渲染；坐标由 `frontend/src/composables/useGraphLayout.ts` 的自研**自顶向下分层布局**计算（依赖分层 + 父子横向编排 + 家庭区域预留/打包），不引入第三方图布局引擎，也不做节点坐标持久化。
-- 前端按职责拆分：页面 `frontend/src/views/WorkspaceView.vue`（视图切换、URL 状态、请求代次、父子分组与折叠状态、依赖环提示、详情关闭时清除焦点）、`WorkspaceFilterBar.vue`（筛选与防抖）、`MilestoneBoard.vue`/`MilestoneGroup.vue`（看板）、`WorkspaceMissionCard.vue`/`MissionGraphNode.vue`（卡片、图节点上/下 Handle 与子任务折叠控件）、`DependencyGraph.vue`（Vue Flow 画布与事件）、`MissionDetailDrawer.vue`（详情与受控操作）；`frontend/src/composables/useGraphLayout.ts`（依赖分层、父子横向编排、家庭区域打包、结构签名与布局代次）、`frontend/src/workspace/dto.ts`（DTO 适配与图节点/边契约，按可见源端着色并写入选中的高亮/淡化标记）、`frontend/src/workspace/edgeColor.ts`（按源 Mission `id` 稳定取得依赖线色与无源端回退色）、`frontend/src/workspace/milestoneColor.ts`（按里程碑 `id` 稳定取得卡片色，语义与线色独立）、`frontend/src/workspace/parentGrouping.ts`（父子森林、可见性、折叠合并与依赖重指向）、`frontend/src/workspace/dependencyTraversal.ts`（已加载图的展示层上下游遍历）、`frontend/src/workspace/filters.ts`（筛选契约）。
-- 只有结构、节点尺寸或范围变化才重新布局；单纯状态刷新只更新样式，保留当前视口与选中任务，避免整张图跳动。布局同步派生自已应用的响应，配合请求代次，旧筛选的结果不会覆盖新图。
+- 依赖图由 **Vue Flow** 渲染；坐标由 `frontend/src/composables/useGanttLayout.ts` 按日期与任务行计算，不引入第三方图布局引擎，也不做节点坐标持久化。
+- 前端按职责拆分：页面 `frontend/src/views/WorkspaceView.vue`（视图切换、URL 状态、请求代次、父子分组与折叠状态、依赖环提示、详情关闭时清除焦点）、`WorkspaceFilterBar.vue`（筛选与防抖）、`MilestoneBoard.vue`/`MilestoneGroup.vue`（看板）、`WorkspaceMissionCard.vue`/`MissionGraphNode.vue`（卡片、图节点结束端 Handle 与子任务折叠控件）、`DependencyGraph.vue`（Vue Flow 画布与事件）、`MissionDetailDrawer.vue`（详情与受控操作）；`frontend/src/composables/useGanttLayout.ts`（日期坐标、窗口裁剪与逐行布局）、`GanttAxis.vue`（日期轴与目标标记）；`useGraphLayout.ts` 的依赖分层函数仍用于无父子分组时的行排序与环检查、`frontend/src/workspace/dto.ts`（DTO 适配与图节点/边契约，按可见源端着色并写入选中的高亮/淡化标记）、`frontend/src/workspace/edgeColor.ts`（按源 Mission `id` 稳定取得依赖线色与无源端回退色）、`frontend/src/workspace/milestoneColor.ts`（按里程碑 `id` 稳定取得卡片色，语义与线色独立）、`frontend/src/workspace/parentGrouping.ts`（父子森林、可见性、折叠合并与依赖重指向）、`frontend/src/workspace/dependencyTraversal.ts`（已加载图的展示层上下游遍历）、`frontend/src/workspace/filters.ts`（筛选契约）。
+- 结构、日期、缩放档位或范围变化时重新计算坐标；单纯状态刷新只更新样式，保留当前视口与选中任务，避免整张图跳动。布局同步派生自已应用的响应，配合请求代次，旧筛选的结果不会覆盖新图。
 - 后端聚合位于 `frontend/src/api/workspace.ts` 对应的 `backend/missions/workspace.py`，与服务层共用同一套 `derived_state_bulk` 与共享筛选（`backend/missions/filters.py`），避免列表与工作台的筛选逻辑分叉。
-- 第一版不实现甘特图、关键路径、工时预测、实时协同画布或保存节点坐标。
+- 不实现自动排程、关键路径、工时预测、实时协同画布或保存节点坐标。
 
 **10. 设计条目与 Mission 关联**
 
@@ -478,3 +480,14 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除），返回 des
 `/design/templates` 是设计与资产页的模板管理入口，提供表单步骤编辑、显式前置选择、只读预览、分页列表和活动。模板编辑器不显示私人素材按钮。资产页提供模板和可选里程碑选择、步骤/依赖预览及“生成 N 个待认领 Mission”确认；预览和选择不写入，提交时禁止重复操作，409 后刷新批次/版本。步骤列表显示当前状态、认领者、受阻/复核与当前前置关系，通过原任务抽屉查看成果历史或执行操作；额外手工关联任务单独分页。进度仍是所有直接关联的有效 Mission 的数量比例，不是另一套资产状态。
 
 迁移为 `0006_productiontemplate_productionbatch_and_more.py`；`test_production_templates.py` 覆盖完整流水线、拒绝非法模板、快照、回滚与并发生成/归档/里程碑关闭，`productionTemplates.spec.ts` 覆盖预览不写入、双版本确认、防重复点击与模板素材限制。
+
+
+**12. Mission 日期与甘特图排期**
+
+- Mission 增加可空 `planned_start_date`、`planned_end_date`（迁移 `0007`），旧任务均为空，不从创建时间或里程碑推算。创建及 PATCH 接收严格 ISO `YYYY-MM-DD`，允许单端、双空、同日；双端 start ≤ end，由服务和数据库共同约束。仅发起者或管理员可在 Open/InProgress 编辑，PATCH 使用 `expected_version`，记录 `schedule_changed` 前后日期事件。表单和完整详情编辑日期，卡片及抽屉显示日期与风险。
+- 结束顺序为硬约束：两端结束日期已知时，下游不得早于直接前置。修改任一端或新增依赖均在团队 advisory lock 内检查；延后前置若违反已有下游日期，同样返回 `409 schedule_dependency_conflict`。缺日期不猜测，允许同日完成和重叠执行，不自动平移任务。原提交与验收仍要求前置 Done，取消前置仍阻塞，父子完成与组合环约束不变。日期不限制认领、不自动修改状态或里程碑。
+- `services.py` 统一计算并在列表、详情、工作台输出 `overdue`（活动任务结束早于本地今天）、`dependency_date_conflict_ids`（前置结束晚于本任务开始，仅风险提示）和 `beyond_milestone_due`。缺失比较日期不推算，Done/Cancelled 不标记当前逾期；风险计算覆盖筛选外的直接前置。批量序列化预取派生信息，避免逐任务查询。
+- 原 `/api/workspace/graph/` 扩展 `date_from/date_to`，必须成对且为 1–366 个自然日，默认今天前 14 天到后 42 天；`meta` 返回实际窗口及 `today`。列表与工作台通过 `scheduling.py`、`filters.py` 共享窗口语义：完整区间相交、单端落在窗口、双空纳入未排期。关系上下文仍可超出窗口。
+- 图节点新增日期、风险、`milestone_due_date`、`unloaded_prerequisite_count`；存在未加载前置或截断时 `relationships_complete=false`。原 200 节点、50 上下文、1000 边上限保留，页面明确提示并提供带筛选和日期的分页任务列表入口。`revision` 额外包含今天、窗口、所有直接前置的版本/状态/结束日期及里程碑日期/版本，因此隐藏前置改期、里程碑单独改期和跨日都会刷新风险。
+- URL 保留原 `view=graph` 及焦点/筛选参数，新增 `date_from/date_to/zoom`。旧慢响应受请求代次保护；关闭抽屉清除焦点，保留日期、档位与视口。折叠仅改变显示，不改任务日期。
+- 验证入口：`backend/missions/tests/test_scheduling.py`（日期、权限、冻结、数据库约束、风险、窗口、revision 与依赖/改期并发）；`frontend/src/tests/scheduling.spec.ts`（日期坐标与缺失/裁剪）；`workspaceGraph.integration.spec.ts`（真实 Vue Flow、结束端、父子折叠、只读行为）；`workspace.spec.ts`（URL、筛选、请求代次与抽屉）。

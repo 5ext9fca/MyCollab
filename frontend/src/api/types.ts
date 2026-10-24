@@ -99,7 +99,7 @@ export interface MissionPrerequisiteRef extends MissionRef {
   dependency_id: string
 }
 
-export interface Mission {
+export interface Mission extends ScheduleFields {
   design_element?: DesignElementBrief | null
   id: string
   title: string
@@ -216,6 +216,8 @@ export interface Paginated<T> {
  * onto the create (`reviewer_id`) or update (`reviewer`) API field names.
  */
 export interface MissionFormValues {
+  planned_start_date?: string | null
+  planned_end_date?: string | null
   design_element_id?: string | null
   title: string
   content: string
@@ -229,6 +231,8 @@ export interface MissionFormValues {
 
 /** Payload for `POST /api/missions/`; the server initialises `version`. */
 export interface MissionCreatePayload {
+  planned_start_date?: string | null
+  planned_end_date?: string | null
   design_element_id?: string | null
   title: string
   content?: string
@@ -243,6 +247,8 @@ export interface MissionCreatePayload {
 
 /** Payload for `PATCH /api/missions/{id}/`; always carries `expected_version`. */
 export interface MissionUpdatePayload {
+  planned_start_date?: string | null
+  planned_end_date?: string | null
   design_element_id?: string | null
   expected_version: number
   title?: string
@@ -312,7 +318,9 @@ export type WorkspaceExpand = 'none' | 'one' | 'all'
 export type WorkspaceDirection = 'upstream' | 'downstream' | 'both'
 
 /** One mission as rendered on the board and in the graph. */
-export interface WorkspaceNode {
+export interface WorkspaceNode extends ScheduleFields {
+  milestone_due_date?: string | null
+  unloaded_prerequisite_count?: number
   id: string
   title: string
   type: MissionType
@@ -393,6 +401,9 @@ export interface WorkspaceOverview {
 }
 
 export interface WorkspaceGraphMeta {
+  date_from?: string
+  date_to?: string
+  today?: string
   scope: WorkspaceScope
   focus: string | null
   expand: WorkspaceExpand
@@ -479,4 +490,13 @@ export interface ProductionTemplate {
 export interface ProductionData {
   batch: { id: string; template_id: string; template_version: number; template_snapshot: { name: string; steps: ProductionStep[] }; created_at: string } | null
   items: { step_key: string; mission: Mission }[]
+}
+
+
+export interface ScheduleFields {
+  planned_start_date?: string | null
+  planned_end_date?: string | null
+  overdue?: boolean
+  dependency_date_conflict_ids?: string[]
+  beyond_milestone_due?: boolean
 }

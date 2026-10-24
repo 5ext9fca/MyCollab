@@ -95,6 +95,8 @@ class MissionViewSet(
             reviewer_id=data.get("reviewer_id"),
             milestone_id=data.get("milestone_id"),
             design_element_id=data.get("design_element_id"),
+            planned_start_date=data.get("planned_start_date"),
+            planned_end_date=data.get("planned_end_date"),
         )
         output = MissionDetailSerializer(mission, context=self.get_serializer_context())
         return Response(output.data, status=status.HTTP_201_CREATED)

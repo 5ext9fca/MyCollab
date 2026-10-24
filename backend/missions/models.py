@@ -186,6 +186,8 @@ class Mission(models.Model):
         null=True,
         blank=True,
     )
+    planned_start_date = models.DateField(null=True, blank=True)
+    planned_end_date = models.DateField(null=True, blank=True)
     design_element = models.ForeignKey(DesignElement, null=True, blank=True, on_delete=models.PROTECT, related_name="missions")
     current_submission = models.ForeignKey(
         "MissionSubmission",
@@ -223,6 +225,7 @@ class Mission(models.Model):
                 condition=~Q(parent=models.F("id")),
                 name="mission_parent_not_self",
             ),
+            models.CheckConstraint(condition=Q(planned_start_date__isnull=True) | Q(planned_end_date__isnull=True) | Q(planned_start_date__lte=models.F("planned_end_date")), name="mission_schedule_order"),
         ]
 
     def __str__(self) -> str:
@@ -440,6 +443,7 @@ class MissionEventAction(models.TextChoices):
     REVIEW_REJECTED = "review_rejected", "退回"
     CANCELLED = "cancelled", "取消"
     CHILD_CREATED = "child_created", "创建子任务"
+    SCHEDULE_CHANGED = "schedule_changed", "修改计划日期"
     DESIGN_ELEMENT_CHANGED = "design_element_changed", "修改设计依据"
     TYPE_CHANGED = "type_changed", "修改类型"
     PRIORITY_CHANGED = "priority_changed", "修改优先级"

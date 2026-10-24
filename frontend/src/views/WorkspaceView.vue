@@ -11,7 +11,7 @@
  * never overwrite a newer one, and the graph layout is derived from the applied
  * response only.
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { watch, computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
@@ -31,6 +31,8 @@ import { dependencyLevels } from '../composables/useGraphLayout'
 import DependencyGraph from '../components/DependencyGraph.vue'
 import MilestoneBoard from '../components/MilestoneBoard.vue'
 import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
+import MissionSchedule from '../components/MissionSchedule.vue'
+import StatusTag from '../components/StatusTag.vue'
 import WorkspaceFilterBar from '../components/WorkspaceFilterBar.vue'
 
 const route = useRoute()
@@ -39,6 +41,9 @@ const router = useRouter()
 const view = ref<'overview' | 'graph'>('overview')
 const overview = ref<WorkspaceOverview | null>(null)
 const graph = ref<WorkspaceGraph | null>(null)
+const dateFrom = ref('')
+const dateTo = ref('')
+const dateZoom = ref<'day' | 'week'>('day')
 const loading = ref(false)
 const error = ref('')
 const lastRefreshed = ref('')
@@ -66,7 +71,7 @@ const onlyReview = computed(
 )
 const onlyRevalidation = computed(() => filters.value.revalidation === 'true')
 
-const summary = computed(() => overview.value?.summary ?? null)
+const summary = computed(() => view.value === 'overview' ? overview.value?.summary ?? null : null)
 const graphMeta = computed(() => graph.value?.meta ?? null)
 const graphNodes = computed(() => graph.value?.nodes ?? [])
 const graphEdges = computed(() => graph.value?.edges ?? [])
@@ -224,6 +229,8 @@ async function loadGraph(seq: number) {
   const scoped = relatedOnly.value && !!focus
   const data = await getWorkspaceGraph({
     ...baseParams(),
+    date_from: dateFrom.value || undefined,
+    date_to: dateTo.value || undefined,
     scope: scoped ? 'mission' : 'team',
     focus: focus || undefined,
     expand: scoped ? 'all' : focus ? expandMode.value : 'none',
@@ -234,6 +241,10 @@ async function loadGraph(seq: number) {
   })
   if (seq !== requestSeq) return
   graph.value = data
+  if (data.meta.date_from && data.meta.date_to) {
+    dateFrom.value = data.meta.date_from; dateTo.value = data.meta.date_to
+    syncUrl()
+  }
   selectedEdge.value = null
   lastRefreshed.value = data.generated_at
   // A task selected through the URL can sit inside a collapsed subtree: expand
@@ -284,6 +295,9 @@ async function reload(options: { fitGraph?: boolean } = {}) {
 // --- URL <-> state -------------------------------------------------------- //
 function applyQuery() {
   const query = route.query
+  dateFrom.value = readParam(query.date_from)
+  dateTo.value = readParam(query.date_to)
+  dateZoom.value = readParam(query.zoom) === 'week' ? 'week' : 'day'
   view.value = readParam(query.view) === 'graph' ? 'graph' : 'overview'
   selectedId.value = readParam(query.selected) || null
   const limit = Number(readParam(query.limit))
@@ -316,6 +330,9 @@ function queryFromState(): Record<string, string> {
     if (value) out[key] = value
   }
   if (view.value === 'graph') out.view = 'graph'
+  set('date_from', dateFrom.value)
+  set('date_to', dateTo.value)
+  if (dateZoom.value !== 'day') set('zoom', dateZoom.value)
   const current = filters.value
   set('design_element', current.design_element || '')
   set('q', current.q)
@@ -347,6 +364,15 @@ function syncUrl() {
     Object.entries(next).every(([key, value]) => readParam(current[key]) === value)
   if (!same) void router.replace({ query: next })
 }
+
+// 浏览器前进/后退或外部导航也必须使旧请求失效；本页自己的 URL 同步不重复加载。
+watch(() => route.query, query => {
+  const current = queryFromState()
+  if (Object.keys(current).length === Object.keys(query).length &&
+      Object.entries(current).every(([key, value]) => readParam(query[key]) === value)) return
+  applyQuery()
+  void reload({ fitGraph: view.value === 'graph' })
+})
 
 // --- interactions --------------------------------------------------------- //
 function onFilterChange() {
@@ -494,6 +520,14 @@ function onDrawerClose() {
   if (wasScoped && view.value === 'graph') void reload()
 }
 
+function applyDates() {
+  if (!!dateFrom.value !== !!dateTo.value) { ElMessage.warning('请同时选择开始和结束日期'); return }
+  syncUrl(); void reload({ fitGraph: true })
+}
+function openPagedList() {
+  const query = { ...baseParams(), date_from: dateFrom.value, date_to: dateTo.value, status: filters.value.status || 'all' }
+  void router.push({ name: 'square', query: Object.fromEntries(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)])) })
+}
 function refresh() {
   void reload({ fitGraph: view.value === 'graph' })
 }
@@ -503,6 +537,10 @@ const formatTime = (value: string) => (value ? new Date(value).toLocaleTimeStrin
 // --- low-frequency polling ------------------------------------------------ //
 const POLL_MS = 30_000
 let pollTimer: ReturnType<typeof setInterval> | undefined
+
+function onWindowFocus() {
+  void reload()
+}
 
 function onVisibilityChange() {
   if (document.visibilityState === 'visible') void reload()
@@ -526,12 +564,14 @@ onMounted(async () => {
     if (document.visibilityState === 'visible') void reload()
   }, POLL_MS)
   document.addEventListener('visibilitychange', onVisibilityChange)
+  window.addEventListener('focus', onWindowFocus)
 })
 
 onBeforeUnmount(() => {
   requestSeq += 1
   if (pollTimer) clearInterval(pollTimer)
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('focus', onWindowFocus)
 })
 </script>
 
@@ -546,7 +586,7 @@ onBeforeUnmount(() => {
           @change="(value: string | number | boolean) => switchView(value as 'overview' | 'graph')"
         >
           <el-radio-button value="overview">概览</el-radio-button>
-          <el-radio-button value="graph">依赖图</el-radio-button>
+          <el-radio-button value="graph">甘特图</el-radio-button>
         </el-radio-group>
         <el-button @click="refresh">刷新</el-button>
         <el-button type="primary" @click="router.push({ name: 'mission-create' })">
@@ -582,6 +622,12 @@ onBeforeUnmount(() => {
       <span class="meta">（仅统计当前筛选命中的任务，不含依赖上下文）</span>
     </div>
 
+    <div v-if="view === 'graph'" class="workspace__graph-options">
+      <el-date-picker v-model="dateFrom" type="date" value-format="YYYY-MM-DD" placeholder="范围开始" aria-label="甘特图范围开始" />
+      <el-date-picker v-model="dateTo" type="date" value-format="YYYY-MM-DD" placeholder="范围结束" aria-label="甘特图范围结束" />
+      <el-button @click="applyDates">应用日期</el-button>
+      <el-radio-group v-model="dateZoom" @change="syncUrl"><el-radio-button value="day">日</el-radio-button><el-radio-button value="week">周</el-radio-button></el-radio-group>
+    </div>
     <div v-if="view === 'graph'" class="workspace__graph-options">
       <span class="meta">选中任务：{{ selectedId ? `#${selectedId.slice(0, 8)}` : '未选择' }}</span>
       <el-radio-group
@@ -620,7 +666,7 @@ onBeforeUnmount(() => {
         显示父子任务关系
       </el-checkbox>
       <el-checkbox v-model="relationListMode" @change="syncUrl">关系列表</el-checkbox>
-      <span class="meta">画布纵轴是依赖层级（上→下），不是时间或状态</span>
+      <span class="meta">横轴为计划日期；依赖连接结束端，下游不得早于前置结束</span>
     </div>
 
     <el-alert v-if="error" type="error" :closable="false" show-icon class="workspace__error">
@@ -635,7 +681,7 @@ onBeforeUnmount(() => {
       show-icon
       class="workspace__error"
     >
-      关系加载不完整（{{ graphMeta.truncation_reasons.map((r) => truncationLabels[r] ?? r).join('、') }}），
+      关系加载不完整（{{ graphMeta.truncation_reasons.map((r) => truncationLabels[r] ?? r).join('、') || '存在未加载的前置任务' }}），
       请缩小筛选或聚焦某个任务后再查看上下游。
     </el-alert>
 
@@ -647,7 +693,7 @@ onBeforeUnmount(() => {
       class="workspace__error"
       data-test="graph-cycle"
     >
-      依赖关系存在环（可能由折叠合并产生），已按可用层级展示；请展开相关子任务核对关系。
+      依赖关系存在环（可能由折叠合并产生）；请展开相关子任务核对真实关系。
     </el-alert>
 
     <div v-loading="loading" class="workspace__main">
@@ -735,6 +781,10 @@ onBeforeUnmount(() => {
 
           <DependencyGraph
             ref="graphRef"
+            :date-from="graph.meta.date_from"
+            :date-to="graph.meta.date_to"
+            :today="graph.meta.today"
+            :zoom="dateZoom"
             :nodes="visibleNodes"
             :edges="visibleEdges"
             :selected-id="selectedId"
@@ -787,6 +837,18 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
+    <section v-if="view === 'graph' && graph" class="workspace__date-list">
+      <p v-if="grouped?.hidden.size" class="meta">折叠后的依赖线是隐藏任务关系的汇总，父任务日期不代表全部子任务排期；请展开核对。</p>
+      <p class="meta">里程碑目标：<span v-for="item in [...new Map(graphNodes.filter(n => n.milestone_id).map(n => [n.milestone_id, n])).values()]" :key="item.id">{{ item.milestone_name }} {{ item.milestone_due_date ?? '未设日期' }}；</span></p>
+      <details><summary>已加载任务的日期与风险列表（支持键盘打开详情）</summary>
+        <el-table :data="graphNodes" empty-text="没有匹配任务">
+          <el-table-column label="任务"><template #default="{ row }"><el-button link type="primary" @click="onSelect(row.id)">{{ row.title }}</el-button></template></el-table-column>
+          <el-table-column label="状态与认领者"><template #default="{ row }"><StatusTag :status="row.status" /> {{ row.assignee?.display_name ?? '未认领' }}<span v-if="row.is_blocked"> · 受阻</span></template></el-table-column>
+          <el-table-column label="日期与风险"><template #default="{ row }"><MissionSchedule :mission="row" /><span v-if="row.unloaded_prerequisite_count">{{ row.unloaded_prerequisite_count }} 项前置未加载，请打开详情查看</span></template></el-table-column>
+        </el-table>
+      </details>
+      <el-button @click="openPagedList">在分页任务列表中查看当前范围</el-button>
+    </section>
     <div class="workspace__legend">
       <span class="meta">状态：</span>
       <el-tag size="small" type="info">待认领</el-tag>
@@ -795,7 +857,7 @@ onBeforeUnmount(() => {
       <el-tag size="small" type="success">已完成</el-tag>
       <el-tag size="small" type="danger">已取消</el-tag>
       <span class="meta">
-        · 依赖箭头方向：前置 → 依赖它的任务（由上至下）；线色对应前置 Mission（同一前置的线同色），实线=已满足，虚线=等待；卡片颜色=所属里程碑（与线色是两套含义）；勾选「显示父子任务关系」时子任务横向排列在父任务右侧，折叠后其依赖合并到父任务
+        · 依赖箭头：前置结束端 → 下游结束端；同日前置可先完成。线色对应前置 Mission，实线=已满足，虚线=等待；任务条颜色表示里程碑。未排期位置不表示日期；缺一端时仅显示单端标记，折叠后依赖合并到父任务。
       </span>
       <span class="meta">· 上次刷新 {{ formatTime(lastRefreshed) }}</span>
     </div>

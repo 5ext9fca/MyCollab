@@ -3,8 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { WorkspaceEdge, WorkspaceNode } from '../api/types'
 import DependencyGraph from '../components/DependencyGraph.vue'
-import { GRAPH_H_GAP, GRAPH_V_GAP } from '../composables/useGraphLayout'
-import { NODE_HEIGHT, NODE_WIDTH } from '../workspace/dto'
+import { GANTT_ROW_HEIGHT } from '../composables/useGanttLayout'
 import { sourceEdgeColor } from '../workspace/edgeColor'
 
 function node(id: string, title: string): WorkspaceNode {
@@ -57,16 +56,17 @@ describe('DependencyGraph (real Vue Flow)', () => {
 
     expect(wrapper.find('.vue-flow').exists()).toBe(true)
     // Vue Flow renders one wrapper per node, isolated nodes included.
-    expect(wrapper.findAll('.vue-flow__node')).toHaveLength(3)
+    expect(wrapper.findAll('.vue-flow__node-mission')).toHaveLength(3)
     expect(wrapper.text()).toContain('孤立任务')
 
     wrapper.unmount()
   })
 
-  it('renders a dependent strictly below its prerequisite', async () => {
+  it('按日期绘制任务区间并连接双方结束端', async () => {
     const wrapper = mount(DependencyGraph, {
       props: {
-        nodes: [node('a', '前置任务AAA'), node('b', '依赖任务BBB')],
+        dateFrom: '2026-10-01', dateTo: '2026-10-31',
+        nodes: [{ ...node('a', '前置任务AAA'), planned_start_date: '2026-10-01', planned_end_date: '2026-10-03' }, { ...node('b', '依赖任务BBB'), planned_start_date: '2026-10-04', planned_end_date: '2026-10-08' }],
         edges: [
           { id: '1', prerequisite_id: 'a', mission_id: 'b', is_satisfied: false, cross_milestone: false },
         ],
@@ -79,7 +79,7 @@ describe('DependencyGraph (real Vue Flow)', () => {
       const match = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(style)
       return match ? { x: Number(match[1]), y: Number(match[2]) } : null
     }
-    const wrappers = wrapper.findAll('.vue-flow__node')
+    const wrappers = wrapper.findAll('.vue-flow__node-mission')
     const prerequisite = wrappers.find((element) => element.text().includes('AAA'))
     const dependent = wrappers.find((element) => element.text().includes('BBB'))
     expect(prerequisite).toBeTruthy()
@@ -89,13 +89,15 @@ describe('DependencyGraph (real Vue Flow)', () => {
     const b = parse(dependent!.attributes('style') ?? '')
     expect(a).toBeTruthy()
     expect(b).toBeTruthy()
-    expect(b!.x).toBe(a!.x)
-    expect(b!.y - a!.y).toBe(NODE_HEIGHT + GRAPH_V_GAP)
+    expect(b!.x - a!.x).toBe(3 * 32)
+    expect(b!.y - a!.y).toBe(GANTT_ROW_HEIGHT)
+    expect(prerequisite!.findAll('.vue-flow__handle-right')).toHaveLength(2)
+    expect(dependent!.findAll('.vue-flow__handle-right')).toHaveLength(2)
 
     wrapper.unmount()
   })
 
-  it('places a grouped subtask right of its parent on the same row', async () => {
+  it('父子任务保留层级与折叠，日期横轴不再承担父子排布', async () => {
     const grouping = {
       descendantCount: new Map([['p', 1]]),
       collapsed: new Set<string>(),
@@ -119,7 +121,7 @@ describe('DependencyGraph (real Vue Flow)', () => {
       const match = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(style)
       return match ? { x: Number(match[1]), y: Number(match[2]) } : null
     }
-    const wrappers = wrapper.findAll('.vue-flow__node')
+    const wrappers = wrapper.findAll('.vue-flow__node-mission')
     const parent = wrappers.find((element) => element.text().includes('AAA'))
     const child = wrappers.find((element) => element.text().includes('BBB'))
     expect(parent).toBeTruthy()
@@ -129,8 +131,10 @@ describe('DependencyGraph (real Vue Flow)', () => {
     const c = parse(child!.attributes('style') ?? '')
     expect(p).toBeTruthy()
     expect(c).toBeTruthy()
-    expect(c!.y).toBe(p!.y)
-    expect(c!.x - p!.x).toBe(NODE_WIDTH + GRAPH_H_GAP)
+    expect(c!.y - p!.y).toBe(GANTT_ROW_HEIGHT)
+    expect(c!.x).toBe(p!.x)
+    expect(child!.text()).toContain('↳')
+    expect(parent!.find('.ws-card__toggle').exists()).toBe(true)
 
     wrapper.unmount()
   })

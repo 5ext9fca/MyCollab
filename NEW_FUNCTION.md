@@ -1,6 +1,6 @@
 # 新功能规格：设计关联、资产生产模板与轻量时间规划
 
-本文件已替换原有需求，供后续编码 Agent 实现。核对日期：2026-10-25。本次仅编写规格；下述“待实现”不代表已上线。先依据本文件定位并阅读直接涉及的代码，信息不足时再扩大仓库调查范围。
+本文件已替换原有需求，作为本次功能的实现与验收规格。核对日期：2026-10-25。本文作为实现与验收依据；A/B 已实现并提交，C 已按用户补充要求改造为甘特图。先依据本文件定位并阅读直接涉及的代码，信息不足时再扩大仓库调查范围。
 
 ## 1. 目标与借鉴边界
 
@@ -10,7 +10,7 @@
 
 - [HacknPlan Game Design Model](https://hacknplan.com/docs/design-model/game-design-model)：结构化设计条目连接任务和进度。本项目只增加轻量设计树与 Mission 关联。
 - [Codecks Project Setup](https://manual.codecks.io/project-setup/)：资产、执行任务和生产步骤相互关联。本项目用生产模板生成普通 Mission，资产不是上传文件，也不是第二套任务状态机。
-- [OpenProject Scheduling](https://www.openproject.org/docs/user-guide/gantt-chart/scheduling/)：时间计划与前后置关系一起展示。本项目只做手动日期与风险提示，不照搬自动排程。
+- [OpenProject Scheduling](https://www.openproject.org/docs/user-guide/gantt-chart/scheduling/)：时间计划与前后置关系一起展示。本项目把现有依赖图改为甘特图，保留原关系与操作，只做手动日期、结束顺序约束与风险提示，不照搬自动排程。
 
 以下字段、权限、接口与交互是适配 MyCollab 的产品决策，不声称与参考产品完全一致，也不接入其 API。
 
@@ -18,9 +18,9 @@
 
 不做多项目/多团队、通用 Wiki 平台、实时多人编辑、自定义字段和状态、任意工作流引擎、资源容量和工时核算、预算、Sprint、自动排程、关键路径算法、日历例外、排期基线、通知中心、文件版本仓库或 Git/构建服务自动同步。不新增专用资产审批状态。不引入新的前端组件体系、后台队列或图布局引擎。
 
-## 2. 当前已实现与本次差量
+## 2. 实施前基线与本次差量
 
-已从模型、服务、接口、页面及对应测试核对：
+以下为编写规格时核对的实施前基线；本次完成状态见第 10 节：
 
 - Mission 五态、唯一认领者、父子拆分、类型 `Feature/Task/Bug`、优先级、标签已存在。
 - `MissionDependency`、组合环校验、派生阻塞已存在。阻塞任务仍可认领，提交与验收通过要求直接前置全部 `Done`、有效直接子任务全部 `Done`。前置取消仍阻塞；子任务取消不计入父任务完成约束。
@@ -39,7 +39,7 @@
 5. Mission 内容、关联与日期仅在 `Open/InProgress` 可编辑，权限沿用发起者或管理员；认领者不因认领获得内容/排期编辑权。依赖维护仍允许发起者、当前认领者或管理员。`Submitted/Done/Cancelled` 不能通过新入口绕过冻结规则。
 6. 沿用 Session + CSRF、统一 `{code, message, field_errors}`、`DomainError`、PostgreSQL 事务锁和事件审计。重新打开、取消、验收权限及历史均保持现有行为。
 
-## 4. 待实现 A：设计条目与 Mission 双向关联
+## 4. A：设计条目与 Mission 双向关联
 
 ### 4.1 数据模型
 
@@ -77,7 +77,7 @@ Mission 创建接口新增 `design_element_id`；PATCH 新增同名字段（null
 
 从条目点击「发布 Mission」进入既有创建页并预填关联，操作者仍是任务发起者。Mission 详情页与抽屉增加可跳转的「设计依据」，允许无关联；设计修改不静默同步到 Mission 正文。点击关联任务继续打开现有详情抽屉/详情页，操作后刷新条目进度与任务数据。
 
-## 5. 待实现 B：资产生产模板
+## 5. B：资产生产模板
 
 ### 5.1 最小模型与模板格式
 
@@ -113,7 +113,7 @@ Mission 创建接口新增 `design_element_id`；PATCH 新增同名字段（null
 
 资产页按模板原顺序展示步骤列表及前置关系，可并行步骤同时显示；操作使用普通 Mission 抽屉，不在资产页手改阶段状态。按钮显示“生成 N 个待认领 Mission”，确认时禁用重复提交，冲突后刷新。链接「查看依赖」进入现有工作台并设置 design_element 筛选，跨资产前置保留上下文提示。
 
-## 6. 待实现 C：Mission 日期与时间视图
+## 6. C：Mission 日期与甘特图
 
 ### 6.1 日期与风险规则
 
@@ -128,43 +128,46 @@ Mission 增加 `planned_start_date`、`planned_end_date`，均为可空 DateFiel
 - `beyond_milestone_due`：任务 end 与关联里程碑 due_date 都存在且 end > due_date。
 - 日期缺失时不推算风险；前置取消仍按原业务显示阻塞。对 Done/Cancelled 不显示“当前逾期”，日期和已存在的计划冲突可留作历史提示。业务阻塞与日期冲突分别标识。
 
-不增加 FS/SS/FF/SF 依赖类型、时间滞后、假日计算、自动平移下游、父子日期包含约束或拖拽改期。依赖图仍按拓扑层级布局，不能把现有图坐标解释成时间。
+用户补充决策优先：**修改现有依赖图为甘特图，不新增第三套独立时间视图**。横轴改为日期，任务条表达计划区间，保留父子折叠、上/下游聚焦、源任务线色、里程碑颜色、详情抽屉与只读画布。
 
-### 6.2 查询接口与时间视图
+**结束顺序是硬约束**：直接前置和本任务都设有 planned_end_date 时，本任务不得早于任一前置结束，允许同日完成与重叠执行。修改任一端日期或新增依赖均须在团队事务锁内校验；延后前置而导致已有下游早于前置也拒绝，返回 409 schedule_dependency_conflict，提示先调整下游。没有结束日期时不猜测日期、不自动补排；实际提交/验收仍要求前置 Done。开始早于前置结束仍只是风险提示，不能混淆为禁止并行开工。
 
-在 `/workspace` 增加 `view=timeline`；保留概览和依赖图。使用现有 Element Plus、Vue 与简单 SVG/CSS 渲染横向日期轴，日/周两档，点击任务仍打开 MissionDetailDrawer。时间条只读，改期在既有表单中完成并通过原 PATCH 提交。
+不增加通用 FS/SS/FF/SF 类型配置、时间滞后、假日计算、自动平移下游、父子日期包含约束或拖拽改期。
 
-新增 `GET /api/workspace/timeline/`，复用现有任务筛选并增加 design_element、`date_from/date_to`。范围两端同时提供，均为 ISO 日期，from <= to，跨度最多 366 个自然日；不传时默认本地今天前 14 天至后 42 天，响应返回实际范围与 today；只传一端/非法日期/超限返回 400。
+### 6.2 查询接口与甘特图
 
-- 两个日期完整的任务：区间与可见范围相交即纳入。仅一个日期：该日期落在范围内则作为单端标记，明确缺少哪一端，不伪造时长。两个日期都空的匹配任务放入“未排期”区，按 updated_at、id 稳定排序。
-- 最多返回 200 个匹配任务（有日期在前，日期、id 稳定排序；剩余容量给未排期）；返回全量 matched_total、scheduled_total、undated_total、loaded_total、truncated，明确数字是范围内匹配统计。未载入任务通过现有分页 Mission 列表补查，不无限扩展画布。
-- 返回 rows（Mission 摘要、日期、上述风险、allowed_actions）、milestones（涉及的里程碑及 due_date）、edges（两端均已返回的显式依赖，最多 1000 条）、meta、revision。对每行返回未载入的直接前置数量；关系缺失/边截断时 `relationships_complete=false`。前置明细经现有 dependencies 接口打开，不把缺少线条误解为无依赖。
-- revision 覆盖返回的任务版本、日期、依赖、相关里程碑日期及 today；日期跨天或只修改里程碑日期也能让风险刷新。读接口返回权限一致的数据，不允许用聚合入口写状态。
-- 日期轴显示今天与里程碑目标标记；任务条保留状态、认领者和受阻文字，跨范围任务条裁剪且标注延伸。提供同等信息的可访问列表，键盘可打开详情。时间视图第一期不做父子合并条，避免把父任务计划误当子任务总周期。
-- 筛选与 date_from/date_to/zoom/selected 写入 URL。沿用防抖与请求代次保护；改期、依赖变动、验收、里程碑改期后重新获取；页面跨日/重新获得焦点时刷新风险。关闭抽屉保持当前日期范围并清除 selected，既有焦点清理行为不得退化。
+将 `/workspace` 的 `view=graph` 直接升级为甘特图，保留原链接、概览、Vue Flow 的平移/缩放/定位/适应视图、源任务线色、满足状态线型、父子折叠、关系等效列表和详情操作。旧的上下分层布局被日期横轴与逐任务行替代；父子层级通过任务标签缩进与折叠控件表达，不再让横轴兼任父子层级。无日期任务显示为“未排期”，仅有一端日期时明确缺失另一端，不伪造时长。
+
+扩展现有 `GET /api/workspace/graph/`，不另造一套任务读写协议：新增 date_from/date_to（同时提供，ISO 日期，范围 1–366 个自然日），默认本地今天前 14 天至后 42 天，meta 返回实际范围与 today。复用现有筛选、上下文、节点/边上限、关系不完整提示与 revision；节点增加日期、风险和里程碑目标日期。日期完整时按窗口相交匹配，单端按该日期匹配，双空纳入未排期；关系上下文仍保留，范围外日期只做裁剪/延伸标注，不移动任务日期。
+
+日期轴提供日/周两档、今天及里程碑目标标记；依赖连线连接双方的结束端，表达“下游不能早于前置完成”，没有结束日期时明确未排期/缺结束日期，线仅说明业务关系。父子折叠后的合并边只表达原始关系汇总，不能把代表父任务日期误认成全部隐藏子任务的排期；显示提示并可展开查看。图中不写状态、不拖拽排期，改期仍在现有任务表单通过 PATCH 完成。
+
+增加同等信息的可访问任务日期列表，带状态、认领者、日期、阻塞与风险，可键盘打开原详情。任务/边截断时明确提示并提供分页列表入口；列表复用 date_from/date_to 与既有筛选，不将一页结果视作完整关系。
+
+revision 包含日期风险所依赖的直接前置日期（即使前置未加载）、里程碑日期与 today；改期、依赖、验收、里程碑改期、跨日与页面重新获得焦点后刷新。筛选、date_from/date_to/zoom/selected 写入 URL；旧慢响应不覆盖新请求。关闭抽屉清除焦点但保留日期范围和视口。新日期约束不能改变原有状态机、取消/重开规则或依赖环校验。
 
 ## 7. 实现所需的当前代码结构与数据流
 
 ### 7.1 后端现有文件
 
-- `backend/missions/models.py`：Mission、MissionDependency、Milestone、MissionSubmission、SubmissionSourceReference、SubmissionBuildReference、MissionEvent、MilestoneEvent、Comment、Tag。新增模型和日期/关联字段放此处，迁移放 `backend/missions/migrations/`。
+- `backend/missions/models.py`：Mission、MissionDependency、Milestone、MissionSubmission、SubmissionSourceReference、SubmissionBuildReference、MissionEvent、MilestoneEvent、Comment、Tag，以及本次新增 DesignElement/DesignElementEvent、ProductionTemplate/ProductionTemplateEvent、ProductionBatch/ProductionBatchItem。模型和日期/关联字段放此处，迁移放 `backend/missions/migrations/`。
 - `backend/missions/services.py`：`create_mission/update_mission`、`claim_mission/release_mission`、`submit_mission/review_mission`、`reopen_mission/cancel_mission`、`add_dependency/remove_dependency`、里程碑与评论写入口；`derived_state/derived_state_bulk` 和 `allowed_actions` 负责派生信息与操作能力。新增服务在此复用校验，不改成通用 ModelViewSet 写入。
 - 同文件 `_acquire_team_lock()` 使用固定 `TEAM_OPS_LOCK_KEY` 的 PostgreSQL 事务级 advisory lock；`_get_locked()` 行锁与 `_check_version()` 实现并发控制。图结构读取/校验前先取团队锁，新增批次与树修改沿用固定锁序。依赖图环检查使用 `_graph_adjacency/_reaches/_assert_edge_allowed`，包含 child → parent 隐含完成边。
 - `backend/missions/serializers.py`：输入与列表/详情输出。注意当前创建字段是 reviewer_id/milestone_id，更新字段是 reviewer/milestone；新增字段按本规格统一 design_element_id，不顺带重命名旧字段。
 - `backend/missions/views.py`、`urls.py`：DRF 解析、认证与服务调用，已有 missions/comments/milestones 路由；新增设计与模板 ViewSet，但只暴露本规格动作。
 - `backend/missions/filters.py`：`apply_mission_filters()` 是分页列表与工作台的共享筛选。新增设计筛选应在此集中实现并去重，不能让列表/图/时间视图各自定义不同语义。
-- `backend/missions/workspace.py`：WorkspaceOverviewView、WorkspaceGraphView，输出节点/边、上下文、revision 与截断信息。现有图上限为 200 节点、50 上下文节点、1000 边；时间视图新增只读查询入口，复用筛选与摘要序列化，风险计算避免逐任务查询。
+- `backend/missions/workspace.py`：WorkspaceOverviewView、WorkspaceGraphView，输出节点/边、上下文、revision 与截断信息。现有图上限为 200 节点、50 上下文节点、1000 边；甘特图扩展原只读查询入口，复用筛选与摘要序列化，风险计算避免逐任务查询。
 - `backend/missions/admin.py`：已有业务模型管理入口；新增模型若注册，写动作调用服务，否则只读，不留下可绕过权限/版本的默认保存入口。
 - `backend/library/references.py`：Markdown 引用校验；`library/services.py` 上传/删除，`library/models.py` 的 LibraryFile 保存 owner/file/original_name/content_type/size。无需修改文件归属或下载权限。
 - `backend/config/exception_handler.py` 与 `missions/exceptions.py`：错误统一出口；账号由 `backend/accounts/` 管理，继续使用 is_staff 判断管理员。
 
 ### 7.2 前端现有文件
 
-- `frontend/src/api/client.ts`：request()/CSRF/错误与 buildQuery；`api/types.ts` 共享类型；`api/missions.ts` 封装任务/依赖/成果/事件接口；`api/milestones.ts` 和 `api/workspace.ts` 封装对应查询。新增 `api/designElements.ts`、`api/productionTemplates.ts`，时间接口扩展 workspace.ts，不在组件直接 fetch。
+- `frontend/src/api/client.ts`：request()/CSRF/错误与 buildQuery；`api/types.ts` 共享类型；`api/missions.ts` 封装任务/依赖/成果/事件接口；`api/milestones.ts` 和 `api/workspace.ts` 封装对应查询。新增 `api/designElements.ts`、`api/productionTemplates.ts`，甘特图接口扩展 workspace.ts，不在组件直接 fetch。
 - `frontend/src/router/index.ts` 与 `components/AppLayout.vue`：受登录保护的路由与导航；新增设计路由，模板管理可在设计页子区域完成。
 - `views/MissionCreateView.vue`、`views/MissionDetailView.vue`、`components/MissionForm.vue`：关联与日期表单的接入点；`components/MissionDetailDrawer.vue` 提供工作台复用的操作和详情。
-- `views/WorkspaceView.vue`：视图切换、筛选、URL、请求代次和抽屉焦点；`components/WorkspaceFilterBar.vue`：共享筛选；新增 `components/MissionTimeline.vue`，只负责时间投影与选择事件。
-- `components/DependencyGraph.vue`、`MissionGraphNode.vue`、`workspace/dto.ts`、`workspace/parentGrouping.ts`、`workspace/dependencyTraversal.ts`：现有依赖图数据映射与折叠；`workspace/edgeColor.ts` 和 `milestoneColor.ts` 分别负责源 Mission 线色与里程碑卡片色；`composables/useGraphLayout.ts` 是自研依赖分层布局。本次不重写布局和着色。
+- `views/WorkspaceView.vue`：视图切换、筛选、URL、请求代次和抽屉焦点；`components/WorkspaceFilterBar.vue`：共享筛选；改造 `components/DependencyGraph.vue` 与 `MissionGraphNode.vue`，使用甘特日期布局并保留原交互。
+- `components/DependencyGraph.vue`、`MissionGraphNode.vue`、`workspace/dto.ts`、`workspace/parentGrouping.ts`、`workspace/dependencyTraversal.ts`：现有依赖图数据映射与折叠；`workspace/edgeColor.ts` 和 `milestoneColor.ts` 分别负责源 Mission 线色与里程碑卡片色；`composables/useGraphLayout.ts` 是自研依赖分层布局。本次将分层坐标替换为甘特日期布局，着色、关系遍历与父子折叠继续复用。
 - `components/MarkdownEditor.vue`、`MarkdownContent.vue`、`LibraryPicker.vue`：复用 Markdown 编辑/清洗/素材选择。模板编辑隐藏私人素材插入并给出说明，但安全限制仍须在后端执行。
 
 ### 7.3 数据流与现有接口
@@ -181,7 +184,7 @@ Mission 增加 `planned_start_date`、`planned_end_date`，均为可空 DateFiel
 2. B：新增模板、事件、批次与映射，事务生成和资产步骤页。不要把现有父 Mission 自动转换为资产；不批量修改历史任务。
 3. C：新增可空日期、日期约束、风险字段、手动编辑与时间视图。旧 Mission 两日期均为 null，不把 created_at/updated_at/里程碑日期当作计划回填。
 
-每一单元实现并验证后，将实际数据模型、接口、权限、页面、规则并入 PROJECT_STRUCTURE.md；若技术约束描述需调整，同步 TECH_STACK.md（例如工作台新增时间视图），仍保持只读聚合和原写入口。本次仅规格交付，不把这些待实现功能提前写成已实现事实。各单元独立提交代码、测试与同步文档，不推送。
+每一单元实现并验证后，将实际数据模型、接口、权限、页面、规则并入 PROJECT_STRUCTURE.md；若技术约束描述需调整，同步 TECH_STACK.md（例如现有依赖图改为甘特图），仍保持只读聚合和原写入口。实现通过后按实际状态同步文档。各单元独立提交代码、测试与同步文档，不推送。
 
 ## 9. 验收与验证
 
@@ -218,4 +221,13 @@ npm run test
 npm run build
 ```
 
-本次为规格文档变更，核对路径、规则、引用与 git diff；不声称已运行功能测试或实现上述功能。编码交付时逐项说明验证结果和未完成事项。
+交付前核对路径、规则、引用与 git diff，并逐项说明实际验证结果和未完成事项。
+
+
+## 10. 实现与验收记录
+
+- A 已实现：设计树、Markdown 权限、版本与归档约束、Mission 双向关联、直接进度、分页筛选与页面。提交 `58ec206`；设计边界和并发测试见 `test_design_elements.py`，页面版本冲突保留输入见 `designElements.spec.ts`。
+- B 已实现：生产模板校验、不可变批次快照、原子生成普通待认领 Mission、显式分支依赖与原有人工验收。提交 `8546595`；完整六步流程、回滚、竞态与取消/重开见 `test_production_templates.py`，预览无写入与防重复确认见 `productionTemplates.spec.ts`。
+- C 已实现：现有依赖画布改为日期甘特图，新增可空日期、结束顺序硬约束、风险、窗口、日/周档位、等效日期列表、结束端连线及原有折叠/聚焦交互。没有新增第三套工作台视图。浏览器日期 URL 导航使旧请求失效；窗口获得焦点刷新数据并保留视口。
+- 验证：后端 `makemigrations --check --dry-run`、`check`、全量 183 项测试通过，随后补充设计并发改版测试并执行 `DesignConcurrencyTests` 3 项通过；前端 `type-check`、全量 85 项测试与 `build` 通过。真实 Vue Flow 挂载回归覆盖坐标、结束端与只读交互；`git diff --check` 通过。构建保留原有大于 500 kB 的 chunk 提示。
+- 本次只生成迁移文件，未对现有业务数据库执行迁移；部署时按 README 执行 `manage.py migrate`。当前环境没有可用浏览器会话，未完成截图级视觉检查，不把 jsdom 集成测试称为真实浏览器验收。没有推送远端。

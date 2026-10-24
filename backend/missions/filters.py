@@ -177,6 +177,10 @@ def apply_mission_filters(qs, params, user):
         # Keep a stable order for equal priorities (creation time + id).
         qs = qs.order_by(ordering, "-created_at", "-id")
 
+    from .scheduling import date_window, filter_schedule
+    window = date_window(params)
+    if window:
+        qs = filter_schedule(qs, *window)
     return qs.distinct()
 
 

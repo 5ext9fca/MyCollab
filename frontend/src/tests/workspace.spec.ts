@@ -26,7 +26,7 @@ vi.mock('@vue-flow/core', () => ({
     },
     template: `
       <div class="vf-stub">
-        <div v-for="n in nodes" :key="n.id" class="vf-node">
+        <div v-for="n in nodes.filter(n => n.type === 'mission')" :key="n.id" class="vf-node">
           <slot name="node-mission" :data="n.data" />
         </div>
       </div>`,
@@ -127,6 +127,7 @@ const stubs = {
   'el-radio-group': { template: '<div><slot /></div>' },
   'el-radio-button': { template: '<div><slot /></div>' },
   'el-input': { template: '<input />' },
+  'el-date-picker': { template: '<input />' },
   'el-select': { template: '<div><slot /></div>' },
   'el-option': { template: '<div><slot /></div>' },
   'el-tooltip': { template: '<div><slot /></div>' },
@@ -922,7 +923,7 @@ describe('WorkspaceView focus lifecycle', () => {
 
   it('clears the focus, the relation scope and the URL when the drawer closes', async () => {
     const { wrapper, router, fetchMock } = await mountWorkspace(
-      '/workspace?view=graph&selected=a&related=true',
+      '/workspace?view=graph&selected=a&related=true&date_from=2026-10-01&date_to=2026-10-31&zoom=week&design_element=asset-a',
     )
     // The focused request is scoped to the selected mission.
     expect(
@@ -937,7 +938,29 @@ describe('WorkspaceView focus lifecycle', () => {
     expect(router.currentRoute.value.query.related).toBeUndefined()
     // The view mode and filters survive the close.
     expect(router.currentRoute.value.query.view).toBe('graph')
+    expect(router.currentRoute.value.query).toMatchObject({ date_from: '2026-10-01', date_to: '2026-10-31', zoom: 'week', design_element: 'asset-a' })
+    expect(urls(fetchMock).filter(url => url.startsWith('/api/workspace/graph')).every(url => url.includes('date_from=2026-10-01') && url.includes('date_to=2026-10-31'))).toBe(true)
     expect(urls(fetchMock).some((url) => url.includes('scope=team'))).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('窗口获得焦点刷新风险，旧日期请求不能覆盖新的 URL 与图', async () => {
+    const { wrapper, router, fetchMock } = await mountWorkspace('/workspace?view=graph&date_from=2026-10-01&date_to=2026-10-31')
+    let resolveOld!: (response: Response) => void
+    fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveOld = resolve }))
+    window.dispatchEvent(new Event('focus'))
+    await flushPromises()
+    expect(resolveOld).toBeTypeOf('function')
+    await router.push('/workspace?view=graph&date_from=2026-11-01&date_to=2026-11-30&zoom=week')
+    await flushPromises()
+    const old = graphPayload()
+    Object.assign(old.meta, { date_from: '2026-10-01', date_to: '2026-10-31', today: '2026-10-25' })
+    old.nodes = [node('old-response')]
+    resolveOld(jsonResponse(old))
+    await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({ date_from: '2026-11-01', date_to: '2026-11-30', zoom: 'week' })
+    expect(wrapper.text()).not.toContain('old-response')
+    expect(urls(fetchMock).some(url => url.includes('date_from=2026-11-01'))).toBe(true)
     wrapper.unmount()
   })
 
