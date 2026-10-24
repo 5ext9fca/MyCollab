@@ -94,6 +94,20 @@ class DesignElementTests(TestCase):
 
 
 class DesignConcurrencyTests(TransactionTestCase):
+    def test_concurrent_edits_require_current_version(self):
+        owner = User.objects.create_user('owner')
+        element = services.create_design_element(actor=owner, title='初始设计')
+        results = run_concurrently(
+            lambda: services.update_design_element(actor=owner, element_id=element.pk, expected_version=1, changes={'title': '方案甲'}),
+            lambda: services.update_design_element(actor=owner, element_id=element.pk, expected_version=1, changes={'title': '方案乙'}),
+        )
+        self.assertEqual(list(results.values()).count('ok'), 1, results)
+        errors = [value for value in results.values() if value != 'ok']
+        self.assertEqual(errors[0].code, 'version_conflict')
+        element.refresh_from_db()
+        self.assertEqual(element.version, 2)
+        self.assertEqual(element.events.filter(action='updated').count(), 1)
+
     def test_opposite_moves_cannot_create_cycle(self):
         owner = User.objects.create_user('owner')
         a = services.create_design_element(actor=owner, title='甲')
