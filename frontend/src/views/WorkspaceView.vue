@@ -194,6 +194,7 @@ let requestSeq = 0
 function baseParams(): QueryParams {
   const current = filters.value
   return {
+    design_element: current.design_element || undefined,
     q: current.q || undefined,
     milestone: current.milestone || undefined,
     status: current.status || undefined,
@@ -295,6 +296,7 @@ function applyQuery() {
   direction.value = dir === 'upstream' || dir === 'downstream' ? dir : 'both'
 
   const next = emptyFilters()
+  next.design_element = readParam(query.design_element)
   next.q = readParam(query.q)
   next.milestone = readParam(query.milestone)
   next.status = (readParam(query.status) as WorkspaceFilters['status']) || ''
@@ -315,6 +317,7 @@ function queryFromState(): Record<string, string> {
   }
   if (view.value === 'graph') out.view = 'graph'
   const current = filters.value
+  set('design_element', current.design_element || '')
   set('q', current.q)
   set('milestone', current.milestone)
   set('status', current.status)

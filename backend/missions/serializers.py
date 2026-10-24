@@ -6,6 +6,8 @@ from accounts.serializers import UserBriefSerializer
 from .models import (
     BuildStatus,
     Comment,
+    DesignElement,
+    DesignElementEvent,
     Milestone,
     MilestoneEvent,
     Mission,
@@ -61,12 +63,19 @@ class DependencyRefSerializer(serializers.ModelSerializer):
         fields = ["dependency_id", "id", "title", "status", "type", "priority"]
 
 
+class DesignElementBriefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DesignElement
+        fields = ["id", "title", "kind", "archived"]
+
+
 class MissionListSerializer(serializers.ModelSerializer):
     creator = UserBriefSerializer(read_only=True)
     assignee = UserBriefSerializer(read_only=True)
     reviewer = UserBriefSerializer(read_only=True)
     parent = serializers.UUIDField(source="parent_id", read_only=True, allow_null=True)
     milestone = MilestoneBriefSerializer(read_only=True)
+    design_element = DesignElementBriefSerializer(read_only=True)
     tags = TagSerializer(many=True, read_only=True)
     allowed_actions = serializers.SerializerMethodField()
     # F1/F3 derived flags (never stored).
@@ -91,6 +100,7 @@ class MissionListSerializer(serializers.ModelSerializer):
             "reviewer",
             "parent",
             "milestone",
+            "design_element",
             "tags",
             "version",
             "created_at",
@@ -191,6 +201,7 @@ class MilestoneEventSerializer(serializers.ModelSerializer):
 
 
 class MissionCreateSerializer(serializers.Serializer):
+    design_element_id = serializers.UUIDField(required=False, allow_null=True)
     title = serializers.CharField(max_length=200)
     content = serializers.CharField(required=False, allow_blank=True, default="")
     acceptance_criteria = serializers.CharField(required=False, allow_blank=True, default="")
@@ -213,6 +224,7 @@ class MissionCreateSerializer(serializers.Serializer):
 
 
 class MissionUpdateSerializer(serializers.Serializer):
+    design_element_id = serializers.UUIDField(required=False, allow_null=True)
     expected_version = serializers.IntegerField()
     title = serializers.CharField(max_length=200, required=False)
     content = serializers.CharField(required=False, allow_blank=True)
@@ -423,3 +435,71 @@ class CommentCreateSerializer(serializers.Serializer):
 
 class CommentUpdateSerializer(serializers.Serializer):
     content = serializers.CharField(required=True, allow_blank=True)
+
+
+class StrictInputSerializer(serializers.Serializer):
+    def to_internal_value(self, data):
+        unknown = set(data) - set(self.fields)
+        if unknown:
+            raise serializers.ValidationError({key: ["不支持的字段。"] for key in sorted(unknown)})
+        return super().to_internal_value(data)
+
+
+class DesignCreateSerializer(StrictInputSerializer):
+    title = serializers.CharField(max_length=200)
+    content = serializers.CharField(required=False, allow_blank=True, default="")
+    kind = serializers.ChoiceField(choices=DesignElement.Kind.choices, required=False, default="Design")
+    parent = serializers.UUIDField(required=False, allow_null=True)
+
+
+class DesignUpdateSerializer(StrictInputSerializer):
+    expected_version = serializers.IntegerField(min_value=1)
+    title = serializers.CharField(required=False, max_length=200)
+    content = serializers.CharField(required=False, allow_blank=True)
+    parent = serializers.UUIDField(required=False, allow_null=True)
+    archived = serializers.BooleanField(required=False)
+
+
+class DesignElementSerializer(serializers.ModelSerializer):
+    created_by = UserBriefSerializer(read_only=True)
+    parent = DesignElementBriefSerializer(read_only=True)
+    ancestors = serializers.SerializerMethodField()
+    allowed_actions = serializers.SerializerMethodField()
+    progress = serializers.SerializerMethodField()
+    has_children = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DesignElement
+        fields = ["id", "title", "content", "kind", "parent", "ancestors", "created_by", "version", "archived", "created_at", "updated_at", "allowed_actions", "progress", "has_children"]
+
+    def get_ancestors(self, obj):
+        ancestors = []
+        cursor = obj.parent
+        while cursor:
+            ancestors.append(cursor)
+            cursor = cursor.parent
+        return DesignElementBriefSerializer(reversed(ancestors), many=True).data
+
+    def get_allowed_actions(self, obj):
+        from .services import design_allowed_actions
+        return design_allowed_actions(getattr(self.context.get("request"), "user", None), obj)
+
+    def get_has_children(self, obj):
+        return obj.children.exists()
+
+    def get_progress(self, obj):
+        from .services import derived_state_bulk
+        missions = list(obj.missions.exclude(status="Cancelled").select_related("reviewer", "milestone"))
+        derived = derived_state_bulk(missions)
+        done = sum(m.status == "Done" for m in missions)
+        return {"effective_total": len(missions), "done": done, "progress": done / len(missions) if missions else None,
+                "blocked": sum(d["is_blocked"] for d in derived.values()),
+                "revalidation": sum(d["needs_dependency_review"] for d in derived.values())}
+
+
+class DesignElementEventSerializer(serializers.ModelSerializer):
+    actor = UserBriefSerializer(read_only=True)
+
+    class Meta:
+        model = DesignElementEvent
+        fields = ["id", "actor", "action", "payload", "created_at"]

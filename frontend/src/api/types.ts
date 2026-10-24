@@ -100,6 +100,7 @@ export interface MissionPrerequisiteRef extends MissionRef {
 }
 
 export interface Mission {
+  design_element?: DesignElementBrief | null
   id: string
   title: string
   status: MissionStatus
@@ -215,6 +216,7 @@ export interface Paginated<T> {
  * onto the create (`reviewer_id`) or update (`reviewer`) API field names.
  */
 export interface MissionFormValues {
+  design_element_id?: string | null
   title: string
   content: string
   acceptance_criteria: string
@@ -227,6 +229,7 @@ export interface MissionFormValues {
 
 /** Payload for `POST /api/missions/`; the server initialises `version`. */
 export interface MissionCreatePayload {
+  design_element_id?: string | null
   title: string
   content?: string
   acceptance_criteria?: string
@@ -240,6 +243,7 @@ export interface MissionCreatePayload {
 
 /** Payload for `PATCH /api/missions/{id}/`; always carries `expected_version`. */
 export interface MissionUpdatePayload {
+  design_element_id?: string | null
   expected_version: number
   title?: string
   content?: string
@@ -422,4 +426,30 @@ export interface WorkspaceGraph {
   edges: WorkspaceEdge[]
   parent_edges: WorkspaceParentEdge[]
   meta: WorkspaceGraphMeta
+}
+
+
+export interface DesignElementBrief {
+  id: string
+  title: string
+  kind: 'Design' | 'Asset'
+  archived: boolean
+}
+export interface DesignElement extends DesignElementBrief {
+  content: string
+  parent: DesignElementBrief | null
+  ancestors: DesignElementBrief[]
+  created_by: User
+  version: number
+  created_at: string
+  updated_at: string
+  allowed_actions: string[]
+  has_children: boolean
+  progress: { effective_total: number; done: number; progress: number | null; blocked: number; revalidation: number }
+}
+export interface DesignInput {
+  title: string
+  content: string
+  kind: 'Design' | 'Asset'
+  parent: string | null
 }

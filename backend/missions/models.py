@@ -101,6 +101,39 @@ class Milestone(models.Model):
         return self.name
 
 
+class DesignElement(models.Model):
+    class Kind(models.TextChoices):
+        DESIGN = "Design", "设计说明"
+        ASSET = "Asset", "资产"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=200)
+    content = models.TextField(blank=True)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.DESIGN)
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="children")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="design_elements")
+    version = models.PositiveIntegerField(default=1)
+    archived = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["title", "id"]
+        constraints = [models.CheckConstraint(condition=~Q(parent=models.F("id")), name="design_parent_not_self")]
+        indexes = [models.Index(fields=["archived", "parent"])]
+
+
+class DesignElementEvent(models.Model):
+    element = models.ForeignKey(DesignElement, on_delete=models.CASCADE, related_name="events")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    action = models.CharField(max_length=32)
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
 class Mission(models.Model):
     """A task unit. Parent/child links express decomposition only.
 
@@ -153,6 +186,7 @@ class Mission(models.Model):
         null=True,
         blank=True,
     )
+    design_element = models.ForeignKey(DesignElement, null=True, blank=True, on_delete=models.PROTECT, related_name="missions")
     current_submission = models.ForeignKey(
         "MissionSubmission",
         on_delete=models.SET_NULL,
@@ -406,6 +440,7 @@ class MissionEventAction(models.TextChoices):
     REVIEW_REJECTED = "review_rejected", "退回"
     CANCELLED = "cancelled", "取消"
     CHILD_CREATED = "child_created", "创建子任务"
+    DESIGN_ELEMENT_CHANGED = "design_element_changed", "修改设计依据"
     TYPE_CHANGED = "type_changed", "修改类型"
     PRIORITY_CHANGED = "priority_changed", "修改优先级"
     REVIEWER_CHANGED = "reviewer_changed", "修改验收者"

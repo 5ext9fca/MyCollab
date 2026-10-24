@@ -1,16 +1,25 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
 import { ApiException } from '../api/client'
-import { createMission } from '../api/missions'
+import { createMission, getMission } from '../api/missions'
 import type { MissionFormValues } from '../api/types'
 import MissionForm from '../components/MissionForm.vue'
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
+const ready = ref(false)
+const initial = ref<Partial<MissionFormValues>>({})
+onMounted(async () => {
+  try {
+    if (typeof route.query.design_element === 'string') initial.value.design_element_id = route.query.design_element
+    else if (typeof route.query.parent === 'string') initial.value.design_element_id = (await getMission(route.query.parent)).design_element?.id ?? null
+  } catch { ElMessage.error('加载父任务设计依据失败，可手动选择') }
+  finally { ready.value = true }
+})
 
 async function onSubmit(values: MissionFormValues) {
   loading.value = true
@@ -38,7 +47,7 @@ async function onSubmit(values: MissionFormValues) {
       <h2>发布任务</h2>
     </div>
     <el-card>
-      <MissionForm submit-label="发布" :loading="loading" @submit="onSubmit" />
+      <MissionForm v-if="ready" :initial="initial" submit-label="发布" :loading="loading" @submit="onSubmit" />
     </el-card>
   </div>
 </template>

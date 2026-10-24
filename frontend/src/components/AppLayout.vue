@@ -9,6 +9,7 @@ const route = useRoute()
 const router = useRouter()
 
 const activeMenu = computed(() => {
+  if (route.name === 'design') return '/design'
   if (route.name === 'workspace') return '/workspace'
   if (route.name === 'claimed') return '/claimed'
   if (route.name === 'published') return '/published'
@@ -36,6 +37,7 @@ async function onLogout() {
         class="app-header__menu"
       >
         <el-menu-item index="/missions">任务广场</el-menu-item>
+        <el-menu-item index="/design">设计与资产</el-menu-item>
         <el-menu-item index="/workspace">工作台</el-menu-item>
         <el-menu-item index="/claimed">我认领的</el-menu-item>
         <el-menu-item index="/published">我发布的</el-menu-item>

@@ -8,6 +8,7 @@ import { listMilestones } from '../api/milestones'
 import { listMissions, listTags } from '../api/missions'
 import type { Milestone, Mission, MissionPriority, MissionStatus, MissionType } from '../api/types'
 import { PRIORITY_OPTIONS, TYPE_OPTIONS } from '../missionMeta'
+import DesignElementSelect from '../components/DesignElementSelect.vue'
 import MissionCard from '../components/MissionCard.vue'
 
 const router = useRouter()
@@ -21,6 +22,7 @@ const page = ref(1)
 const pageSize = 10
 
 const filters = reactive<{
+  design_element: string
   search: string
   tags: string[]
   status: MissionStatus | ''
@@ -30,6 +32,7 @@ const filters = reactive<{
   blocked: '' | 'true' | 'false'
   ordering: '' | 'priority' | '-priority'
 }>({
+  design_element: '',
   search: '',
   tags: [],
   status: 'Open',
@@ -64,6 +67,7 @@ async function load() {
   loading.value = true
   try {
     const data = await listMissions({
+      design_element: filters.design_element || undefined,
       status: filters.status || undefined,
       // Repeated ``tag`` params; the API ANDs them (must carry every tag).
       tag: filters.tags.length ? filters.tags : undefined,
@@ -113,6 +117,7 @@ onMounted(async () => {
     </div>
 
     <div class="toolbar">
+      <DesignElementSelect :model-value="filters.design_element" filter @update:model-value="filters.design_element = $event || ''; onFilter()" />
       <el-input
         v-model="filters.search"
         placeholder="搜索标题或内容"

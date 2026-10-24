@@ -98,6 +98,10 @@ def apply_mission_filters(qs, params, user):
             )
         qs = qs.filter(priority=priority)
 
+    design_element = get("design_element")
+    if design_element:
+        qs = qs.filter(design_element_id=None if design_element == "none" else parse_uuid(design_element, "design_element"))
+
     milestone = get("milestone")
     if milestone:
         if milestone in {"none", "null"}:

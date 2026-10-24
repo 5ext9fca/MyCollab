@@ -20,6 +20,8 @@ from .exceptions import ConflictError, NotFound, PermissionDenied, ValidationFai
 from .models import (
     BuildStatus,
     Comment,
+    DesignElement,
+    DesignElementEvent,
     Milestone,
     MilestoneEvent,
     MilestoneEventAction,
@@ -401,6 +403,7 @@ def create_mission(
     priority: str = MissionPriority.P2,
     reviewer_id=None,
     milestone_id=None,
+    design_element_id=None,
 ) -> Mission:
     title = (title or "").strip()
     if not title:
@@ -439,6 +442,7 @@ def create_mission(
         priority=priority,
         reviewer=reviewer,
         milestone=milestone,
+        design_element=_resolve_design_element(design_element_id),
     )
     _apply_tags(mission, tags)
     _record_event(
@@ -474,6 +478,17 @@ def update_mission(*, actor, mission_id, expected_version: int, changes: dict) -
         raise ConflictError("当前状态已冻结内容，请先退回进行中再修改。", code="mission_frozen")
 
     changed_fields: list[str] = []
+
+    if "design_element_id" in changes:
+        target = changes["design_element_id"]
+        if str(target or "") != str(mission.design_element_id or ""):
+            old_id = mission.design_element_id
+            mission.design_element = _resolve_design_element(target)
+            _record_event(mission, actor, MissionEventAction.DESIGN_ELEMENT_CHANGED, {
+                "from": str(old_id) if old_id else None,
+                "to": str(mission.design_element_id) if mission.design_element_id else None,
+            })
+            changed_fields.append("design_element")
 
     if "title" in changes:
         title = (changes["title"] or "").strip()
@@ -1178,3 +1193,88 @@ def delete_comment(*, actor, comment_id) -> None:
     if comment.author_id != actor.pk:
         raise PermissionDenied("只有作者可以删除自己的评论。")
     comment.delete()
+
+
+# 设计树写入与 Mission 结构变更共用团队事务锁。
+def _resolve_design_element(element_id):
+    if element_id is None:
+        return None
+    try:
+        element = DesignElement.objects.get(pk=element_id)
+    except (DesignElement.DoesNotExist, ValueError, TypeError):
+        raise ValidationFailure("设计条目不存在。", field_errors={"design_element_id": ["不存在。"]})
+    if element.archived:
+        raise ConflictError("不能关联已归档的设计条目。", code="design_archived")
+    return element
+
+
+def design_allowed_actions(actor, element):
+    if not actor or not actor.is_active or (actor.pk != element.created_by_id and not _is_admin(actor)):
+        return []
+    return ["restore"] if element.archived else ["edit", "archive"]
+
+
+def _design_title(value):
+    if not isinstance(value, str) or not value.strip() or len(value.strip()) > 200:
+        raise ValidationFailure("标题须为 1–200 字符。", field_errors={"title": ["标题长度不合法。"]})
+    return value.strip()
+
+
+@transaction.atomic
+def create_design_element(*, actor, title, content="", kind="Design", parent=None):
+    _acquire_team_lock()
+    if not _is_active_member(actor):
+        raise PermissionDenied("只有有效团队成员可以创建设计条目。")
+    if kind not in DesignElement.Kind.values:
+        raise ValidationFailure("无效的设计条目类型。")
+    assert_markdown_references_allowed(content, actor, field="content")
+    element = DesignElement.objects.create(title=_design_title(title), content=content,
+        kind=kind, parent=_resolve_design_element(parent), created_by=actor)
+    DesignElementEvent.objects.create(element=element, actor=actor, action="created")
+    return element
+
+
+@transaction.atomic
+def update_design_element(*, actor, element_id, expected_version, changes):
+    _acquire_team_lock()
+    try:
+        element = DesignElement.objects.select_for_update().select_related("created_by").get(pk=element_id)
+    except DesignElement.DoesNotExist:
+        raise NotFound("设计条目不存在。")
+    if not design_allowed_actions(actor, element):
+        raise PermissionDenied("只有创建者或管理员可以修改设计条目。")
+    _check_version(element, expected_version)
+    if set(changes) - {"title", "content", "parent", "archived"}:
+        raise ValidationFailure("包含不支持修改的字段。")
+    if element.archived and changes != {"archived": False}:
+        raise ConflictError("请先恢复设计条目再编辑。", code="design_archived")
+    if "archived" in changes and not isinstance(changes["archived"], bool):
+        raise ValidationFailure("归档状态必须是布尔值。")
+    old = {"title": element.title, "content": element.content, "parent": str(element.parent_id) if element.parent_id else None, "archived": element.archived}
+    if "parent" in changes:
+        parent = _resolve_design_element(changes["parent"])
+        cursor = parent
+        while cursor:
+            if cursor.pk == element.pk:
+                raise ConflictError("设计树不能形成环。", code="design_cycle")
+            cursor = cursor.parent
+        element.parent = parent
+    if changes.get("archived") is True and element.children.filter(archived=False).exists():
+        raise ConflictError("请先归档所有子条目。", code="design_children_active")
+    if changes.get("archived") is False and element.parent_id and element.parent.archived:
+        raise ConflictError("请先恢复父条目。", code="design_archived")
+    if "content" in changes:
+        assert_markdown_references_allowed(changes["content"], element.created_by, field="content")
+        element.content = changes["content"]
+    if "title" in changes:
+        element.title = _design_title(changes["title"])
+    if "archived" in changes:
+        element.archived = changes["archived"]
+    element.version += 1
+    element.save()
+    new = {"title": element.title, "content": element.content, "parent": str(element.parent_id) if element.parent_id else None, "archived": element.archived}
+    for field, action in (("parent", "moved"), ("archived", "archived" if element.archived else "restored")):
+        if old[field] != new[field]:
+            DesignElementEvent.objects.create(element=element, actor=actor, action=action, payload={"from": old[field], "to": new[field]})
+    DesignElementEvent.objects.create(element=element, actor=actor, action="updated", payload={"from": old, "to": new, "version": element.version})
+    return element

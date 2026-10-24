@@ -65,7 +65,7 @@ class MissionViewSet(
 
     def get_queryset(self):
         qs = Mission.objects.select_related(
-            "creator", "assignee", "reviewer", "parent", "milestone"
+            "creator", "assignee", "reviewer", "parent", "milestone", "design_element"
         ).prefetch_related("tags")
         return apply_mission_filters(qs, self.request.query_params, self.request.user)
 
@@ -94,6 +94,7 @@ class MissionViewSet(
             priority=data.get("priority", MissionPriority.P2),
             reviewer_id=data.get("reviewer_id"),
             milestone_id=data.get("milestone_id"),
+            design_element_id=data.get("design_element_id"),
         )
         output = MissionDetailSerializer(mission, context=self.get_serializer_context())
         return Response(output.data, status=status.HTTP_201_CREATED)
@@ -234,7 +235,7 @@ class MissionViewSet(
                 expected_version=data["expected_version"],
             )
             mission = Mission.objects.select_related(
-                "creator", "assignee", "reviewer", "parent", "milestone"
+                "creator", "assignee", "reviewer", "parent", "milestone", "design_element"
             ).get(pk=mission.id)
             return self._detail_response(mission)
 
@@ -439,3 +440,58 @@ class TagListView(ListAPIView):
     serializer_class = TagSerializer
     permission_classes = [IsTeamMember]
     pagination_class = None
+
+
+class DesignElementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    permission_classes = [IsTeamMember]
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_queryset(self):
+        from django.db.models import Q
+        from .models import DesignElement
+        from .filters import parse_uuid
+        qs = DesignElement.objects.select_related("created_by", "parent")
+        if self.action != "list":
+            return qs
+        params = self.request.query_params
+        archived = params.get("archived", "false")
+        if archived not in {"true", "false", "all"}:
+            raise ValidationFailure("无效的归档筛选。")
+        if archived != "all":
+            qs = qs.filter(archived=archived == "true")
+        if params.get("q"):
+            qs = qs.filter(Q(title__icontains=params["q"]) | Q(content__icontains=params["q"]))
+        if params.get("kind"):
+            if params["kind"] not in DesignElement.Kind.values:
+                raise ValidationFailure("无效的条目类型。")
+            qs = qs.filter(kind=params["kind"])
+        if params.get("parent"):
+            qs = qs.filter(parent_id=None if params["parent"] == "root" else parse_uuid(params["parent"], "parent"))
+        return qs
+
+    def get_serializer_class(self):
+        from .serializers import DesignElementSerializer
+        return DesignElementSerializer
+
+    def create(self, request):
+        from .serializers import DesignCreateSerializer
+        data = DesignCreateSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        element = services.create_design_element(actor=request.user, **data.validated_data)
+        return Response(self.get_serializer(element).data, status=201)
+
+    def partial_update(self, request, pk=None):
+        from .serializers import DesignUpdateSerializer
+        element = self.get_object()
+        data = DesignUpdateSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        changes = dict(data.validated_data)
+        element = services.update_design_element(actor=request.user, element_id=element.pk,
+            expected_version=changes.pop("expected_version"), changes=changes)
+        return Response(self.get_serializer(element).data)
+
+    @action(detail=True, methods=["get"])
+    def events(self, request, pk=None):
+        from .serializers import DesignElementEventSerializer
+        rows = self.paginate_queryset(self.get_object().events.select_related("actor"))
+        return self.get_paginated_response(DesignElementEventSerializer(rows, many=True).data)

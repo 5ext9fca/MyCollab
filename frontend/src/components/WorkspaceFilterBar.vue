@@ -8,6 +8,7 @@
  */
 import { onBeforeUnmount, ref, watch } from 'vue'
 
+import DesignElementSelect from './DesignElementSelect.vue'
 import type { User } from '../api/types'
 import { PRIORITY_OPTIONS, STATUS_OPTIONS, TYPE_OPTIONS } from '../missionMeta'
 import type { QuickKey, WorkspaceFilters } from '../workspace/filters'
@@ -55,6 +56,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="filters">
     <div class="filters__row">
+      <DesignElementSelect :model-value="filters.design_element" filter @update:model-value="filters.design_element = $event || ''; emit('change')" />
       <el-input
         v-model="keyword"
         placeholder="搜索标题或内容"

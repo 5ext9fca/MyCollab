@@ -12,6 +12,7 @@ import {
   TYPE_OPTIONS,
 } from '../missionMeta'
 import MarkdownEditor from './MarkdownEditor.vue'
+import DesignElementSelect from './DesignElementSelect.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -26,6 +27,7 @@ const emit = defineEmits<{ (e: 'submit', payload: MissionFormValues): void }>()
 
 const formRef = ref<FormInstance>()
 const form = reactive<MissionFormValues>({
+  design_element_id: props.initial?.design_element_id ?? null,
   title: props.initial?.title ?? '',
   content: props.initial?.content ?? '',
   acceptance_criteria: props.initial?.acceptance_criteria ?? '',
@@ -66,6 +68,7 @@ async function onSubmit() {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
   emit('submit', {
+    design_element_id: form.design_element_id || null,
     title: form.title,
     content: form.content,
     acceptance_criteria: form.acceptance_criteria,
@@ -130,6 +133,7 @@ async function onSubmit() {
         </el-form-item>
       </el-col>
     </el-row>
+    <el-form-item label="设计依据"><DesignElementSelect v-model="form.design_element_id" /></el-form-item>
     <el-form-item label="验收者">
       <el-select
         v-model="form.reviewer_id"

@@ -3,6 +3,7 @@
 import type { MissionPriority, MissionStatus, MissionType } from '../api/types'
 
 export interface WorkspaceFilters {
+  design_element?: string
   q: string
   milestone: string
   status: MissionStatus | ''
@@ -18,6 +19,7 @@ export type QuickKey = 'mine' | 'blocked' | 'review' | 'revalidation'
 
 export function emptyFilters(): WorkspaceFilters {
   return {
+    design_element: '',
     q: '',
     milestone: '',
     status: '',

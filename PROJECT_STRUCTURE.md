@@ -448,3 +448,17 @@ WHERE id = :mission_id
 - 只有结构、节点尺寸或范围变化才重新布局；单纯状态刷新只更新样式，保留当前视口与选中任务，避免整张图跳动。布局同步派生自已应用的响应，配合请求代次，旧筛选的结果不会覆盖新图。
 - 后端聚合位于 `frontend/src/api/workspace.ts` 对应的 `backend/missions/workspace.py`，与服务层共用同一套 `derived_state_bulk` 与共享筛选（`backend/missions/filters.py`），避免列表与工作台的筛选逻辑分叉。
 - 第一版不实现甘特图、关键路径、工时预测、实时协同画布或保存节点坐标。
+
+**10. 设计条目与 Mission 关联**
+
+`DesignElement` 保存 UUID、title（1–200 字符）、content（Markdown）、kind（Design/Asset，创建后固定）、parent（可空、自引用 PROTECT）、created_by、version、archived、created_at/updated_at。设计树表达产品结构，与 Mission 拆分、依赖和里程碑相互独立；Asset 表示角色/关卡等交付对象，不是 LibraryFile。Mission 新增可空 `design_element`（PROTECT），最多一个主要设计依据，旧数据默认空，子任务不自动继承；创建表单可预填父任务关联并允许清空。
+
+有效成员可读取和创建；创建者或管理员可修改、移动和归档/恢复。所有写入走 missions/services.py，并记录 DesignElementEvent（element/actor/action/payload/created_at）。树变更先取现有团队事务锁，再行锁及 expected_version 校验，禁止自引用与循环。归档不级联，要求没有未归档直接子条目；恢复要求父节点未归档，归档内容须先恢复再编辑。禁止硬删除。Markdown 素材归属按条目创建者校验，管理员代编辑也不能引用管理员自己的私人素材替代作者素材。
+
+Mission 创建与 PATCH 接受 `design_element_id`（null 解除），返回 design_element 摘要（id/title/kind/archived）。关联修改遵守原任务编辑权限和 Open/InProgress 状态，记录 design_element_changed 事件并递增任务版本。新关联禁止指向归档条目；既有关联保留，编辑无关字段不受影响。设计内容变更不覆盖 Mission 内容、验收标准或成果，不自动重开任务。
+
+接口：GET/POST `/api/design-elements/`，GET/PATCH `/api/design-elements/{id}/`，GET `/api/design-elements/{id}/events/`。列表和事件分页；列表支持 q、kind、parent（UUID/root）、archived（false 默认/true/all），详情含祖先路径、父节点、allowed_actions、has_children 和直属任务进度。PATCH 必须 expected_version，过期 409；kind 等未知输入拒绝。Mission 列表、工作台概览/依赖图共享 design_element（UUID/none）筛选，只匹配直接关联，不递归到设计后代。
+
+`/design` 与 `/design/:id` 的「设计与资产」页面提供懒加载分页树、搜索/类型/归档筛选、Markdown 正文、编辑、归档、祖先跳转、直属任务、分页活动与进度。进度为非 Cancelled 直属 Mission 的 Done/有效数，零分母显示「暂无有效任务」，另列受阻/需复核数；父子 Mission 独立计数，不代表工时或资产验收状态。发布入口预填设计依据；任务详情和抽屉可回到设计条目；任务仍用原抽屉与生命周期操作。编辑版本冲突刷新版本并保留输入，不静默覆盖。
+
+对应迁移为 `0005_alter_missionevent_action_designelement_and_more.py`；测试入口为 `test_design_elements.py` 与 `frontend/src/tests/designElements.spec.ts`，并保留原任务和工作台回归。

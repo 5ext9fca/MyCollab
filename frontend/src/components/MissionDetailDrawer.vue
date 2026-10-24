@@ -41,6 +41,7 @@ import {
   SUBMISSION_OUTCOME_LABELS,
 } from '../missionMeta'
 import MarkdownContent from './MarkdownContent.vue'
+import MissionDesignLink from './MissionDesignLink.vue'
 import StatusTag from './StatusTag.vue'
 
 const props = defineProps<{ missionId: string | null; open: boolean }>()
@@ -421,6 +422,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
         <el-tabs class="drawer__tabs">
           <el-tab-pane label="内容">
             <h4>背景与目标</h4>
+            <MissionDesignLink :element="mission.design_element" />
             <MarkdownContent :source="mission.content" />
             <h4>验收标准</h4>
             <MarkdownContent :source="mission.acceptance_criteria" />

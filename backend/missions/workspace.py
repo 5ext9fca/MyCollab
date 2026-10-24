@@ -72,6 +72,7 @@ _MILESTONE_STATUS_ORDER = {
 _FILTER_PARAMS = (
     "q",
     "search",
+    "design_element",
     "milestone",
     "status",
     "assignee",
@@ -100,7 +101,7 @@ def _user_brief(user):
 
 def _mission_queryset():
     return Mission.objects.select_related(
-        "creator", "assignee", "reviewer", "parent", "milestone"
+        "creator", "assignee", "reviewer", "parent", "milestone", "design_element"
     )
 
 
@@ -130,6 +131,7 @@ def _node(mission: Mission, derived: dict, user, *, is_context: bool = False) ->
         "parent_id": str(mission.parent_id) if mission.parent_id else None,
         "milestone_id": str(mission.milestone_id) if mission.milestone_id else None,
         "milestone_name": milestone.name if milestone else None,
+        "design_element_id": str(mission.design_element_id) if mission.design_element_id else None,
         "version": mission.version,
         "created_at": _iso(mission.created_at),
         "updated_at": _iso(mission.updated_at),
