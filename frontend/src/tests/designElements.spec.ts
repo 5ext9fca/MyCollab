@@ -27,11 +27,12 @@ async function render(value = detail) {
   const router = createRouter({ history: createMemoryHistory(), routes: [
     { path: '/design/:id?', name: 'design', component: DesignView },
     { path: '/missions/new', name: 'mission-create', component: { template: '<div />' } },
+    { path: '/design/templates', name: 'production-templates', component: { template: '<div />' } },
     { path: '/workspace', name: 'workspace', component: { template: '<div />' } },
   ] })
   await router.push('/design/asset'); await router.isReady()
   const wrapper = mount(DesignView, { attachTo: document.body, global: { plugins: [router, ElementPlus], stubs: {
-    DesignTreeBranch: true, DesignElementSelect: true, MarkdownEditor: defineComponent({ props: ['modelValue'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' }), MissionDetailDrawer: true,
+    ProductionPanel: true, DesignTreeBranch: true, DesignElementSelect: true, MarkdownEditor: defineComponent({ props: ['modelValue'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' }), MissionDetailDrawer: true,
   } } })
   wrappers.push(wrapper); await flushPromises()
   return wrapper
@@ -41,7 +42,7 @@ describe('设计关联页面', () => {
     const wrapper = await render()
     expect(wrapper.text()).toContain('暂无有效任务')
     expect(wrapper.text()).not.toContain('100%')
-    expect(listMissions).toHaveBeenCalledWith({ design_element: 'asset', page: 1 })
+    expect(listMissions).toHaveBeenCalledWith({ design_element: 'asset', production_batch: 'none', page: 1 })
     expect(wrapper.find('a[href="/missions/new?design_element=asset"]').exists()).toBe(true)
     expect(wrapper.find('a[href="/workspace?view=graph&design_element=asset"]').exists()).toBe(true)
   })

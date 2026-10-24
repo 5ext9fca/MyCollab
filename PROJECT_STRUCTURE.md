@@ -462,3 +462,19 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除），返回 des
 `/design` 与 `/design/:id` 的「设计与资产」页面提供懒加载分页树、搜索/类型/归档筛选、Markdown 正文、编辑、归档、祖先跳转、直属任务、分页活动与进度。进度为非 Cancelled 直属 Mission 的 Done/有效数，零分母显示「暂无有效任务」，另列受阻/需复核数；父子 Mission 独立计数，不代表工时或资产验收状态。发布入口预填设计依据；任务详情和抽屉可回到设计条目；任务仍用原抽屉与生命周期操作。编辑版本冲突刷新版本并保留输入，不静默覆盖。
 
 对应迁移为 `0005_alter_missionevent_action_designelement_and_more.py`；测试入口为 `test_design_elements.py` 与 `frontend/src/tests/designElements.spec.ts`，并保留原任务和工作台回归。
+
+**11. 资产生产模板与批次**
+
+`ProductionTemplate` 保存 UUID、name、纯文本 description、steps JSON、created_by、version、archived 与时间戳；`ProductionTemplateEvent` 保存创建、修改、归档/恢复的操作者与前后值。有效成员可创建/读取，创建者或管理员可编辑/归档/恢复，归档后须先恢复再编辑，所有更新校验 expected_version，不提供硬删除。steps 为 1–30 个有序步骤，每步包含唯一 key（1–50 位字母数字下划线）、title、content、acceptance_criteria、type、priority、tags、prerequisite_keys。展示顺序不隐含依赖；允许并行与汇合，禁止未知字段、非法枚举、未知前置、重复边、自依赖与循环。Markdown 复用现有引用解析，仅允许 http(s) 外链和文内锚点，代码示例不视作引用；私人素材（含绝对 URL 的素材 API 路径）禁止进入可跨作者复用的模板。
+
+`ProductionBatch` 是不可变的实例化记录：asset（DesignElement，一对一）、template（PROTECT）、template_version、template_snapshot（模板名与完整步骤）、created_by、created_at。`ProductionBatchItem` 保存 batch/step_key/mission，批次内步骤 key 唯一、每个 Mission 只属于一个生产步骤。每项 Asset 最多一个批次，后续工作通过普通发布入口增加，不提供重置或再次生成。
+
+仅资产创建者或管理员可生成；资产与模板须未归档、资产 kind 必须 Asset，可选里程碑须 Planned/Active。操作携带资产 expected_version 和 template_version，在团队事务锁及资产/模板行锁下校验，整个批次、Mission、依赖、映射、事件一次提交；失败全部回滚。重复请求返回 `409 production_already_generated`，版本冲突 `409 version_conflict`。生成 Mission 标题为“资产标题 · 步骤标题”（拼接超过 200 字符拒绝），creator/reviewer 为操作者、assignee=null、status=Open、parent=null，关联资产，可统一指定里程碑；字段来自模板快照，依赖通过原 add_dependency 服务建立，不按步骤数组顺序推断。资产版本递增，模板版本不变。
+
+生成任务继续使用原认领、提交、验收、拆分、取消与重新打开；取消前置不会自动解除下游依赖，完成步骤不会自动完成里程碑。生成后模板修改不回写任务，任务编辑也不回写快照。批次任务不得解除或更换 design_element（`409 production_asset_locked`）。其他手工任务仍可正常改绑。
+
+接口：GET/POST `/api/production-templates/`，GET/PATCH `/api/production-templates/{id}/`，GET `/{id}/events/`，列表/事件分页，列表支持 q、archived=false/true/all。POST `/api/design-elements/{id}/instantiate/` 接受 template_id/template_version/expected_version/milestone_id，201 返回 batch_id、asset_version、template_version 与步骤到 Mission 的映射；GET `/{id}/production/` 无批次返回 batch:null/items:[]，有批次返回不可变快照和按原步骤排序的当前 Mission 摘要、当前前置关系。Mission 筛选增加 production_batch（UUID/none），用于分页区分生产步骤和其他任务。
+
+`/design/templates` 是设计与资产页的模板管理入口，提供表单步骤编辑、显式前置选择、只读预览、分页列表和活动。模板编辑器不显示私人素材按钮。资产页提供模板和可选里程碑选择、步骤/依赖预览及“生成 N 个待认领 Mission”确认；预览和选择不写入，提交时禁止重复操作，409 后刷新批次/版本。步骤列表显示当前状态、认领者、受阻/复核与当前前置关系，通过原任务抽屉查看成果历史或执行操作；额外手工关联任务单独分页。进度仍是所有直接关联的有效 Mission 的数量比例，不是另一套资产状态。
+
+迁移为 `0006_productiontemplate_productionbatch_and_more.py`；`test_production_templates.py` 覆盖完整流水线、拒绝非法模板、快照、回滚与并发生成/归档/里程碑关闭，`productionTemplates.spec.ts` 覆盖预览不写入、双版本确认、防重复点击与模板素材限制。

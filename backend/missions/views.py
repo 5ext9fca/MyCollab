@@ -495,3 +495,83 @@ class DesignElementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, vie
         from .serializers import DesignElementEventSerializer
         rows = self.paginate_queryset(self.get_object().events.select_related("actor"))
         return self.get_paginated_response(DesignElementEventSerializer(rows, many=True).data)
+
+
+    @action(detail=True, methods=["post"])
+    def instantiate(self, request, pk=None):
+        from .serializers import InstantiateSerializer
+        element = self.get_object()
+        data = InstantiateSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        batch = services.instantiate_production(actor=request.user, element_id=element.pk, **data.validated_data)
+        element.refresh_from_db()
+        return Response({"batch_id": str(batch.pk), "asset_version": element.version,
+            "template_version": batch.template_version,
+            "items": [{"step_key": item.step_key, "mission_id": str(item.mission_id)} for item in batch.items.all()]}, status=201)
+
+    @action(detail=True, methods=["get"])
+    def production(self, request, pk=None):
+        from .models import ProductionBatch
+        element = self.get_object()
+        batch = ProductionBatch.objects.filter(asset=element).select_related("created_by").first()
+        if batch is None:
+            return Response({"batch": None, "items": []})
+        items = list(batch.items.select_related("mission__creator", "mission__assignee", "mission__reviewer", "mission__milestone", "mission__design_element").prefetch_related("mission__tags", "mission__dependencies__prerequisite"))
+        derived = services.derived_state_bulk(item.mission for item in items)
+        by_key = {}
+        for item in items:
+            item.mission._derived_cache = derived[item.mission_id]
+            summary = dict(MissionListSerializer(item.mission, context=self.get_serializer_context()).data)
+            summary["prerequisites"] = DependencyRefSerializer(item.mission.dependencies.all(), many=True).data
+            by_key[item.step_key] = {"step_key": item.step_key, "mission": summary}
+        return Response({"batch": {"id": str(batch.pk), "template_id": str(batch.template_id),
+            "template_version": batch.template_version, "template_snapshot": batch.template_snapshot,
+            "created_at": batch.created_at},
+            "items": [by_key[step["key"]] for step in batch.template_snapshot["steps"] if step["key"] in by_key]})
+
+
+class ProductionTemplateViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    permission_classes = [IsTeamMember]
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_queryset(self):
+        from django.db.models import Q
+        from .models import ProductionTemplate
+        qs = ProductionTemplate.objects.select_related("created_by")
+        if self.action == "list":
+            archived = self.request.query_params.get("archived", "false")
+            if archived not in {"true", "false", "all"}:
+                raise ValidationFailure("无效的归档筛选。")
+            if archived != "all":
+                qs = qs.filter(archived=archived == "true")
+            q = self.request.query_params.get("q")
+            if q:
+                qs = qs.filter(Q(name__icontains=q) | Q(description__icontains=q))
+        return qs
+
+    def get_serializer_class(self):
+        from .serializers import ProductionTemplateSerializer
+        return ProductionTemplateSerializer
+
+    def create(self, request):
+        from .serializers import ProductionTemplateCreateSerializer
+        data = ProductionTemplateCreateSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        template = services.create_production_template(actor=request.user, **data.validated_data)
+        return Response(self.get_serializer(template).data, status=201)
+
+    def partial_update(self, request, pk=None):
+        from .serializers import ProductionTemplateUpdateSerializer
+        template = self.get_object()
+        data = ProductionTemplateUpdateSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        changes = dict(data.validated_data)
+        template = services.update_production_template(actor=request.user, template_id=template.pk,
+            expected_version=changes.pop("expected_version"), changes=changes)
+        return Response(self.get_serializer(template).data)
+
+    @action(detail=True, methods=["get"])
+    def events(self, request, pk=None):
+        from .serializers import ProductionTemplateEventSerializer
+        rows = self.paginate_queryset(self.get_object().events.select_related("actor"))
+        return self.get_paginated_response(ProductionTemplateEventSerializer(rows, many=True).data)

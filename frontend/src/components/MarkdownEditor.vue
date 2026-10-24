@@ -4,8 +4,8 @@ import { nextTick, ref } from 'vue'
 import LibraryPicker from './LibraryPicker.vue'
 
 const props = withDefaults(
-  defineProps<{ modelValue: string; rows?: number; placeholder?: string }>(),
-  { rows: 5, placeholder: '' },
+  defineProps<{ modelValue: string; rows?: number; placeholder?: string; allowLibrary?: boolean }>(),
+  { rows: 5, placeholder: '', allowLibrary: true },
 )
 const emit = defineEmits<{ 'update:modelValue': [string] }>()
 
@@ -54,10 +54,10 @@ function onInput(value: string) {
       />
     </div>
     <div class="markdown-editor__actions">
-      <el-button size="small" @click="pickerVisible = true">插入素材</el-button>
-      <span class="markdown-editor__hint">只能引用自己素材库内的文件或外链 URL</span>
+      <el-button v-if="allowLibrary" size="small" @click="pickerVisible = true">插入素材</el-button>
+      <span class="markdown-editor__hint">{{ allowLibrary ? '只能引用自己素材库内的文件或外链 URL' : '模板只能引用 http(s) 外链，生成后可补充自己的素材' }}</span>
     </div>
-    <LibraryPicker v-model="pickerVisible" @select="onSelect" />
+    <LibraryPicker v-if="allowLibrary" v-model="pickerVisible" @select="onSelect" />
   </div>
 </template>
 

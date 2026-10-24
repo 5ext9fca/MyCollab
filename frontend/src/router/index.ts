@@ -19,6 +19,7 @@ export const router = createRouter({
       component: AppLayout,
       meta: { requiresAuth: true },
       children: [
+        { path: 'design/templates', name: 'production-templates', component: () => import('../views/ProductionTemplatesView.vue') },
         { path: 'design/:id?', name: 'design', component: () => import('../views/DesignView.vue') },
         { path: '', redirect: { name: 'square' } },
         {

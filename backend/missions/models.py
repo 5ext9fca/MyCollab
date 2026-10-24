@@ -497,3 +497,48 @@ class MilestoneEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.milestone_id}:{self.action}"
+
+
+class ProductionTemplate(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    steps = models.JSONField(default=list)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    version = models.PositiveIntegerField(default=1)
+    archived = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+
+
+class ProductionTemplateEvent(models.Model):
+    template = models.ForeignKey(ProductionTemplate, on_delete=models.CASCADE, related_name="events")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    action = models.CharField(max_length=32)
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
+class ProductionBatch(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    asset = models.OneToOneField(DesignElement, on_delete=models.PROTECT, related_name="production_batch")
+    template = models.ForeignKey(ProductionTemplate, on_delete=models.PROTECT)
+    template_version = models.PositiveIntegerField()
+    template_snapshot = models.JSONField()
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ProductionBatchItem(models.Model):
+    batch = models.ForeignKey(ProductionBatch, on_delete=models.CASCADE, related_name="items")
+    step_key = models.CharField(max_length=50)
+    mission = models.OneToOneField(Mission, on_delete=models.CASCADE, related_name="production_item")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["batch", "step_key"], name="production_batch_step_unique")]

@@ -9,7 +9,7 @@ const route = useRoute()
 const router = useRouter()
 
 const activeMenu = computed(() => {
-  if (route.name === 'design') return '/design'
+  if (route.name === 'design' || route.name === 'production-templates') return '/design'
   if (route.name === 'workspace') return '/workspace'
   if (route.name === 'claimed') return '/claimed'
   if (route.name === 'published') return '/published'

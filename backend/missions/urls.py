@@ -1,10 +1,11 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from .views import DesignElementViewSet, CommentViewSet, MilestoneViewSet, MissionViewSet, TagListView
+from .views import ProductionTemplateViewSet, DesignElementViewSet, CommentViewSet, MilestoneViewSet, MissionViewSet, TagListView
 from .workspace import WorkspaceGraphView, WorkspaceOverviewView
 
 router = DefaultRouter()
+router.register("production-templates", ProductionTemplateViewSet, basename="production-template")
 router.register("design-elements", DesignElementViewSet, basename="design-element")
 router.register("missions", MissionViewSet, basename="mission")
 router.register("comments", CommentViewSet, basename="comment")

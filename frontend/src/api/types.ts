@@ -453,3 +453,30 @@ export interface DesignInput {
   kind: 'Design' | 'Asset'
   parent: string | null
 }
+
+export interface ProductionStep {
+  key: string
+  title: string
+  content: string
+  acceptance_criteria: string
+  type: MissionType
+  priority: MissionPriority
+  tags: string[]
+  prerequisite_keys: string[]
+}
+export interface ProductionTemplate {
+  id: string
+  name: string
+  description: string
+  steps: ProductionStep[]
+  created_by: User
+  version: number
+  archived: boolean
+  created_at: string
+  updated_at: string
+  allowed_actions: string[]
+}
+export interface ProductionData {
+  batch: { id: string; template_id: string; template_version: number; template_snapshot: { name: string; steps: ProductionStep[] }; created_at: string } | null
+  items: { step_key: string; mission: Mission }[]
+}

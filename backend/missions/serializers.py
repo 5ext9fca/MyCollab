@@ -8,6 +8,8 @@ from .models import (
     Comment,
     DesignElement,
     DesignElementEvent,
+    ProductionTemplate,
+    ProductionTemplateEvent,
     Milestone,
     MilestoneEvent,
     Mission,
@@ -502,4 +504,46 @@ class DesignElementEventSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DesignElementEvent
+        fields = ["id", "actor", "action", "payload", "created_at"]
+
+
+class ProductionTemplateCreateSerializer(StrictInputSerializer):
+    name = serializers.CharField(max_length=200)
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    steps = serializers.JSONField()
+
+
+class ProductionTemplateUpdateSerializer(StrictInputSerializer):
+    expected_version = serializers.IntegerField(min_value=1)
+    name = serializers.CharField(required=False, max_length=200)
+    description = serializers.CharField(required=False, allow_blank=True)
+    steps = serializers.JSONField(required=False)
+    archived = serializers.BooleanField(required=False)
+
+
+class InstantiateSerializer(StrictInputSerializer):
+    expected_version = serializers.IntegerField(min_value=1)
+    template_id = serializers.UUIDField()
+    template_version = serializers.IntegerField(min_value=1)
+    milestone_id = serializers.UUIDField(required=False, allow_null=True)
+
+
+class ProductionTemplateSerializer(serializers.ModelSerializer):
+    created_by = UserBriefSerializer(read_only=True)
+    allowed_actions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductionTemplate
+        fields = ["id", "name", "description", "steps", "created_by", "version", "archived", "created_at", "updated_at", "allowed_actions"]
+
+    def get_allowed_actions(self, obj):
+        from .services import template_allowed_actions
+        return template_allowed_actions(getattr(self.context.get("request"), "user", None), obj)
+
+
+class ProductionTemplateEventSerializer(serializers.ModelSerializer):
+    actor = UserBriefSerializer(read_only=True)
+
+    class Meta:
+        model = ProductionTemplateEvent
         fields = ["id", "actor", "action", "payload", "created_at"]

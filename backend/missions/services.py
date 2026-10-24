@@ -22,6 +22,10 @@ from .models import (
     Comment,
     DesignElement,
     DesignElementEvent,
+    ProductionTemplate,
+    ProductionTemplateEvent,
+    ProductionBatch,
+    ProductionBatchItem,
     Milestone,
     MilestoneEvent,
     MilestoneEventAction,
@@ -482,6 +486,8 @@ def update_mission(*, actor, mission_id, expected_version: int, changes: dict) -
     if "design_element_id" in changes:
         target = changes["design_element_id"]
         if str(target or "") != str(mission.design_element_id or ""):
+            if ProductionBatchItem.objects.filter(mission=mission).exists():
+                raise ConflictError("生产步骤不能解除或更换所属资产。", code="production_asset_locked")
             old_id = mission.design_element_id
             mission.design_element = _resolve_design_element(target)
             _record_event(mission, actor, MissionEventAction.DESIGN_ELEMENT_CHANGED, {
@@ -1278,3 +1284,151 @@ def update_design_element(*, actor, element_id, expected_version, changes):
             DesignElementEvent.objects.create(element=element, actor=actor, action=action, payload={"from": old[field], "to": new[field]})
     DesignElementEvent.objects.create(element=element, actor=actor, action="updated", payload={"from": old, "to": new, "version": element.version})
     return element
+
+
+# 模板仅保存生产说明，实例化后全部工作继续走 Mission 服务。
+def _validate_template_steps(steps):
+    import re
+    from library.references import iter_references, LIBRARY_PATH_PREFIX
+
+    if not isinstance(steps, list) or not 1 <= len(steps) <= 30:
+        raise ValidationFailure("模板必须包含 1–30 个步骤。", field_errors={"steps": ["步骤数量不合法。"]})
+    normalized = []
+    keys = set()
+    allowed = {"key", "title", "content", "acceptance_criteria", "type", "priority", "tags", "prerequisite_keys"}
+    for step in steps:
+        if not isinstance(step, dict) or set(step) - allowed:
+            raise ValidationFailure("步骤包含未知字段或格式错误。")
+        key = step.get("key")
+        if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_]{1,50}", key) or key in keys:
+            raise ValidationFailure("步骤 key 须唯一，且只含 1–50 位字母、数字或下划线。")
+        keys.add(key)
+        item = {"key": key, "title": _design_title(step.get("title")),
+                "type": step.get("type", MissionType.TASK), "priority": step.get("priority", MissionPriority.P2)}
+        if item["type"] not in MissionType.values or item["priority"] not in MissionPriority.values:
+            raise ValidationFailure("步骤类型或优先级无效。")
+        for field in ("content", "acceptance_criteria"):
+            value = step.get(field, "")
+            if not isinstance(value, str):
+                raise ValidationFailure("步骤说明必须是 Markdown 文本。")
+            for target in iter_references(value):
+                try:
+                    target_path = urlsplit(target).path
+                except ValueError:
+                    raise ValidationFailure("步骤中有不合法的链接。")
+                if target_path.startswith(LIBRARY_PATH_PREFIX):
+                    raise ValidationFailure("生产模板不能引用私人素材，请使用 http(s) 外链。", field_errors={"steps": ["不能引用私人素材。"]})
+                if not target or target.startswith("#"):
+                    continue
+                _validate_http_url(target, "steps")
+            item[field] = value
+        tags = step.get("tags", [])
+        if not isinstance(tags, list) or any(not isinstance(t, str) or not t.strip() or len(t.strip()) > 50 for t in tags):
+            raise ValidationFailure("步骤标签须为非空字符串，每项最多 50 字符。")
+        item["tags"] = list(dict.fromkeys(t.strip() for t in tags))
+        prerequisites = step.get("prerequisite_keys", [])
+        if not isinstance(prerequisites, list) or any(not isinstance(k, str) for k in prerequisites) or len(set(prerequisites)) != len(prerequisites):
+            raise ValidationFailure("前置步骤须为不重复的 key 列表。")
+        item["prerequisite_keys"] = prerequisites[:]
+        normalized.append(item)
+    adjacency = {key: set() for key in keys}
+    for item in normalized:
+        for prerequisite in item["prerequisite_keys"]:
+            if prerequisite not in keys:
+                raise ValidationFailure("前置步骤 key 不存在。")
+            if prerequisite == item["key"] or _reaches(adjacency, item["key"], prerequisite):
+                raise ValidationFailure("生产步骤不能自依赖或形成循环。")
+            adjacency[prerequisite].add(item["key"])
+    return normalized
+
+
+def template_allowed_actions(actor, template):
+    if not actor or not actor.is_active or (actor.pk != template.created_by_id and not _is_admin(actor)):
+        return []
+    return ["restore"] if template.archived else ["edit", "archive"]
+
+
+@transaction.atomic
+def create_production_template(*, actor, name, steps, description=""):
+    if not _is_active_member(actor):
+        raise PermissionDenied("只有有效成员可创建模板。")
+    template = ProductionTemplate.objects.create(name=_design_title(name), description=description,
+        steps=_validate_template_steps(steps), created_by=actor)
+    ProductionTemplateEvent.objects.create(template=template, actor=actor, action="created")
+    return template
+
+
+@transaction.atomic
+def update_production_template(*, actor, template_id, expected_version, changes):
+    _acquire_team_lock()
+    try:
+        template = ProductionTemplate.objects.select_for_update().get(pk=template_id)
+    except ProductionTemplate.DoesNotExist:
+        raise NotFound("生产模板不存在。")
+    if not template_allowed_actions(actor, template):
+        raise PermissionDenied("只有模板创建者或管理员可以修改。")
+    _check_version(template, expected_version)
+    if set(changes) - {"name", "description", "steps", "archived"}:
+        raise ValidationFailure("包含不支持的模板字段。")
+    if template.archived and changes != {"archived": False}:
+        raise ConflictError("请先恢复模板再编辑。", code="template_archived")
+    if "archived" in changes and not isinstance(changes["archived"], bool):
+        raise ValidationFailure("归档状态必须是布尔值。")
+    before = {"name": template.name, "description": template.description, "steps": template.steps, "archived": template.archived}
+    if "name" in changes:
+        template.name = _design_title(changes["name"])
+    if "description" in changes:
+        template.description = changes["description"]
+    if "steps" in changes:
+        template.steps = _validate_template_steps(changes["steps"])
+    if "archived" in changes:
+        template.archived = changes["archived"]
+    template.version += 1
+    template.save()
+    after = {"name": template.name, "description": template.description, "steps": template.steps, "archived": template.archived}
+    action = ("archived" if template.archived else "restored") if before["archived"] != template.archived else "updated"
+    ProductionTemplateEvent.objects.create(template=template, actor=actor, action=action, payload={"from": before, "to": after, "version": template.version})
+    return template
+
+
+@transaction.atomic
+def instantiate_production(*, actor, element_id, expected_version, template_id, template_version, milestone_id=None):
+    from copy import deepcopy
+
+    _acquire_team_lock()
+    try:
+        asset = DesignElement.objects.select_for_update().get(pk=element_id)
+        template = ProductionTemplate.objects.select_for_update().get(pk=template_id)
+    except (DesignElement.DoesNotExist, ProductionTemplate.DoesNotExist):
+        raise NotFound("资产或生产模板不存在。")
+    if not design_allowed_actions(actor, asset):
+        raise PermissionDenied("只有资产创建者或管理员可以生成任务。")
+    if ProductionBatch.objects.filter(asset=asset).exists():
+        raise ConflictError("该资产已生成生产任务。", code="production_already_generated")
+    _check_version(asset, expected_version)
+    _check_version(template, template_version)
+    if asset.kind != DesignElement.Kind.ASSET:
+        raise ValidationFailure("只有资产条目可以生成生产任务。")
+    if asset.archived or template.archived:
+        raise ConflictError("资产或模板已归档，不能生成任务。", code="production_archived")
+    _resolve_milestone(milestone_id, require_accepting=True)
+    steps = _validate_template_steps(template.steps)
+    titles = {step["key"]: _design_title(f'{asset.title} · {step["title"]}') for step in steps}
+    batch = ProductionBatch.objects.create(asset=asset, template=template, template_version=template.version,
+        template_snapshot={"name": template.name, "steps": deepcopy(steps)}, created_by=actor)
+    missions = {}
+    for step in steps:
+        mission = create_mission(actor=actor, title=titles[step["key"]], content=step["content"],
+            acceptance_criteria=step["acceptance_criteria"], tags=step["tags"], type=step["type"],
+            priority=step["priority"], design_element_id=asset.pk, milestone_id=milestone_id)
+        missions[step["key"]] = mission
+        ProductionBatchItem.objects.create(batch=batch, step_key=step["key"], mission=mission)
+    for step in steps:
+        mission = missions[step["key"]]
+        for key in step["prerequisite_keys"]:
+            add_dependency(actor=actor, mission_id=mission.pk, prerequisite_id=missions[key].pk, expected_version=mission.version)
+            mission.refresh_from_db(fields=["version"])
+    asset.version += 1
+    asset.save(update_fields=["version", "updated_at"])
+    DesignElementEvent.objects.create(element=asset, actor=actor, action="instantiated", payload={"batch_id": str(batch.pk), "template_id": str(template.pk), "template_version": template.version, "mission_count": len(missions)})
+    return batch

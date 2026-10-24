@@ -98,6 +98,12 @@ def apply_mission_filters(qs, params, user):
             )
         qs = qs.filter(priority=priority)
 
+    production_batch = get("production_batch")
+    if production_batch == "none":
+        qs = qs.filter(production_item__isnull=True)
+    elif production_batch:
+        qs = qs.filter(production_item__batch_id=parse_uuid(production_batch, "production_batch"))
+
     design_element = get("design_element")
     if design_element:
         qs = qs.filter(design_element_id=None if design_element == "none" else parse_uuid(design_element, "design_element"))
