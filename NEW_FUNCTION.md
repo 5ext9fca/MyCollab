@@ -1,233 +1,277 @@
-# 新功能规格：设计关联、资产生产模板与轻量时间规划
+# 新功能规格：个人工作中心、站内通知、保存视图与受控批量操作
 
-本文件已替换原有需求，作为本次功能的实现与验收规格。核对日期：2026-10-25。本文作为实现与验收依据；A/B 已实现并提交，C 已按用户补充要求改造为甘特图。先依据本文件定位并阅读直接涉及的代码，信息不足时再扩大仓库调查范围。
+核对日期：2026-10-25。本文件已清空并替换旧规格，仅覆盖本次第 1、2 优先级。本文是待实现规格，不表示功能已交付。编码 Agent 先根据本文定位直接相关代码，信息不足时再扩大调查；不以通读仓库为固定前置步骤。
 
-## 1. 目标与借鉴边界
+## 1. 目标与现有能力核对
 
-保留单团队 Mission 的「发布 → 认领 → 拆分 → 执行 → 提交 → 验收」，让成员能回答：这个任务服务于什么设计、某项资产还缺哪些生产步骤、依赖链是否赶得上交付日期。
+目标：成员打开一个页面就知道当前需要处理什么；团队可复用常用任务筛选，并安全地一次调整多个任务的计划字段。
 
-借鉴来源（官方资料，访问日期同上）：
+已实现、应复用：
 
-- [HacknPlan Game Design Model](https://hacknplan.com/docs/design-model/game-design-model)：结构化设计条目连接任务和进度。本项目只增加轻量设计树与 Mission 关联。
-- [Codecks Project Setup](https://manual.codecks.io/project-setup/)：资产、执行任务和生产步骤相互关联。本项目用生产模板生成普通 Mission，资产不是上传文件，也不是第二套任务状态机。
-- [OpenProject Scheduling](https://www.openproject.org/docs/user-guide/gantt-chart/scheduling/)：时间计划与前后置关系一起展示。本项目把现有依赖图改为甘特图，保留原关系与操作，只做手动日期、结束顺序约束与风险提示，不照搬自动排程。
+- Mission 五态、认领与退出、提交与验收、退回、重新打开；发起者、认领者、验收者分离。
+- 个人「我认领的」「我发布的」列表；工作台已有我的任务、待验收、受阻、需复核快捷筛选与 URL 参数复现。
+- Mission 列表支持角色、状态、类型、优先级、标签、里程碑、设计条目、生产批次、日期窗口等筛选。
+- 派生阻塞、需复核、逾期、日期冲突；里程碑、任务事件、成果多轮历史、评论；单任务字段编辑。
+- 工作台概览、只读甘特图、任务详情抽屉；设计与资产、生产模板已实现，不再列为本次待办。
 
-以下字段、权限、接口与交互是适配 MyCollab 的产品决策，不声称与参考产品完全一致，也不接入其 API。
+尚未实现、本次新增：
 
-### 1.1 明确不做
+1. 统一个人工作中心与明确的实时待办分类。
+2. 数据库站内通知、任务订阅、已读管理、跨日日期提醒。
+3. 数据库持久化的个人/团队保存视图。
+4. 批量调整优先级、里程碑、计划日期，逐项权限与版本校验，显式部分成功结果。
 
-不做多项目/多团队、通用 Wiki 平台、实时多人编辑、自定义字段和状态、任意工作流引擎、资源容量和工时核算、预算、Sprint、自动排程、关键路径算法、日历例外、排期基线、通知中心、文件版本仓库或 Git/构建服务自动同步。不新增专用资产审批状态。不引入新的前端组件体系、后台队列或图布局引擎。
+不包含：邮件/聊天软件推送、@提及解析、WebSocket/SSE、通用自动化引擎、容量规划、工时、交付趋势报表、代码/构建平台同步、多团队、自定义状态、拖拽排期、自动平移依赖、批量认领/验收/取消/删除。未引入的第三、四优先级不得混入实现。
 
-## 2. 实施前基线与本次差量
+## 2. 必须保留的业务约束
 
-以下为编写规格时核对的实施前基线；本次完成状态见第 10 节：
+- 单团队；Mission 阅读对登录成员开放，写权限仍由服务层判断。用户主键是整数，Mission/里程碑/设计条目主键是 UUID，不可混用类型。
+- Mission 业务写入全部走 `backend/missions/services.py`；新通知与个人配置写入可以在各自服务模块中，但不得直接更新 Mission。
+- 当前实际写接口参数是 `expected_version`，不是旧文字中的 `version`。批量每项也必须携带它。版本过期返回 `409 version_conflict`，缺失/格式错误返回 400。
+- Mission 字段编辑仅发起者或管理员可在 Open/InProgress 执行；认领者并不自动拥有改期权限。Submitted/Done/Cancelled 不可被新入口绕过冻结。
+- 单任务 PATCH 里程碑字段是 `milestone`；创建接口才是 `milestone_id`。本次批量沿用 PATCH 命名。
+- 日期允许双空、单端、同日；严格 ISO 日期；双端开始不得晚于结束。直接前置与下游结束日期都已知时，下游不得早于前置结束；更改任一端都检查，失败为 `409 schedule_dependency_conflict`。
+- 提交/验收仍要求前置 Done、有效子任务 Done；取消前置仍阻塞，依赖解除不等于任务可立即提交。
+- 保留 PostgreSQL 团队 advisory lock、行锁、事务、事件同事务写入、版本控制与组合环校验。禁止 SQLite 替代事务/并发测试。
+- Session + CSRF、统一 `{code, message, field_errors}`、Element Plus、API 集中封装、Markdown 清洗规则不变。
 
-- Mission 五态、唯一认领者、父子拆分、类型 `Feature/Task/Bug`、优先级、标签已存在。
-- `MissionDependency`、组合环校验、派生阻塞已存在。阻塞任务仍可认领，提交与验收通过要求直接前置全部 `Done`、有效直接子任务全部 `Done`。前置取消仍阻塞；子任务取消不计入父任务完成约束。
-- `Milestone` 有目标日期、进度和手动完成规则；它不是父任务。Mission 目前没有计划开始/结束日期。
-- 独立验收者、成果多轮历史、源码/构建引用、退回、转交与重新打开已存在，不再开发另一套资产成果交付系统。
-- `/workspace` 已有「里程碑 × 状态」概览与 Vue Flow 依赖图，支持筛选、上下游、父子折叠、详情抽屉与 URL 复现。依赖线按可见源 Mission 着色、关闭详情清除焦点已实现，原文件所述两项不继续列为待办。
-- `/library` 是用户文件库，文件经登录 API 下载、仅所有者可删除；Markdown 写入只能引用归属作者的素材或 http(s) 外链。它不是团队资产生产台账。
-- 尚无设计条目模型及关联、生产模板与生成批次、Mission 日期与时间视图。这三项才是本次新增范围。
+## 3. A：个人工作中心
 
-## 3. 不变的业务基础
+### 3.1 入口与范围
 
-1. 所有执行工作仍是 Mission。新增入口不自动认领、不指派负责人、不自动推进状态；生成的任务进入任务广场，成员照常认领。
-2. `Open/InProgress/Submitted/Done/Cancelled` 不变；父子关系表达拆分，依赖表达完成前提，设计树表达产品结构，里程碑表达交付归属，四者不得混用。
-3. Mission 业务写入统一进入 `backend/missions/services.py`；新增设计、模板、生成动作也在这里提供服务入口，视图与 Admin 不直接改模型。
-4. 当前实际接口使用 `expected_version`，包括 Mission PATCH，不能依据早期文字改回 `version` 入参。创建由服务端设初始版本；版本冲突为 `409 version_conflict`，缺失为 `400 validation_error`。
-5. Mission 内容、关联与日期仅在 `Open/InProgress` 可编辑，权限沿用发起者或管理员；认领者不因认领获得内容/排期编辑权。依赖维护仍允许发起者、当前认领者或管理员。`Submitted/Done/Cancelled` 不能通过新入口绕过冻结规则。
-6. 沿用 Session + CSRF、统一 `{code, message, field_errors}`、`DomainError`、PostgreSQL 事务锁和事件审计。重新打开、取消、验收权限及历史均保持现有行为。
+新增 `/my-work`，导航名「我的工作」；登录后的默认落点改为这里。保留任务广场、`/claimed`、`/published`、工作台和原链接。不覆盖已有登录 redirect 参数。
 
-## 4. A：设计条目与 Mission 双向关联
+工作中心由待办分类计数、分页任务列表、站内通知入口组成。任务待办按当前业务状态动态查询，不用未读通知数量代替；阅读通知不移除待办，任务状态变化才影响待办。
 
-### 4.1 数据模型
+固定分类（下列是新增口径）：
 
-在 `backend/missions/models.py` 新增 `DesignElement`：
+- `review` 待我验收：reviewer=当前用户且 status=Submitted。管理员不因此看到全团队待验收，仍可从工作台访问管理范围。
+- `returned` 被退回：assignee=当前用户、status=InProgress，且 current_submission 指向的成果 outcome=Rejected。重新提交或重新打开后按当前记录退出分类，不能仅凭任意历史退回事件判断。
+- `due_soon` 即将到期：活动状态 Open/InProgress/Submitted，计划结束在今天至今天后 3 个自然日（含边界），且用户是 creator/assignee/reviewer 任一角色。
+- `overdue` 已逾期：同样的关联角色与活动状态，计划结束早于今天。
+- `unblocked` 依赖已解除：当前用户是 assignee、status=InProgress，至少有一条显式前置且所有直接前置 Done。这是持续的就绪列表，不是事件列表；不保证子任务已完成，列表仍展示未完成子任务提示。删除最后一条依赖的任务不进入此列表，但可收到依赖解除通知。
+- `revalidation` 需要复核：现有 needs_dependency_review=true，且当前用户是 creator 或 reviewer。历史已完成成果不自动撤销。
 
-- `id`：UUID。
-- `title`：非空，最多 200 字符；`content`：Markdown，可空。
-- `kind`：固定 `Design/Asset`，分别表示设计说明与可交付资产；创建后不可改类型。资产例如角色、武器、关卡、音效，不等同于某个文件。
-- `parent`：可空、自引用、`PROTECT`；两种条目均可作为父节点。禁止自引用与祖先环。
-- `created_by`：创建者、不可修改；`version`：从 1 开始。
-- `archived`：默认 false；`created_at/updated_at`。
+同一任务可出现于多个分类，分类数不得相加声称为独立任务总数。默认分类为待我验收；空分类正常显示空态，允许切换。单分类按 planned_end_date 升序（空值最后）、updated_at 降序、id 稳定排序；分页计数覆盖全部匹配任务，不受工作台图节点上限影响。
 
-Mission 增加可空 `design_element` 外键，`PROTECT`，每个 Mission 最多关联一个主要设计条目；不做多对多。子 Mission 不自动继承，创建表单可预填父任务的关联并允许清空，服务端不隐式补值。跨条目依赖、无关联任务仍合法。
+### 3.2 接口与数据流
 
-新增 `DesignElementEvent(element, actor, action, payload, created_at)`，记录创建、修改、移动、归档/恢复与模板实例化。Mission 关联变化用 `MissionEvent` 记录新旧 ID；不把关联操作重复写成条目内容更新。
+新增 GET `/api/my-work/summary/`，返回 `today`、`counts`（六种分类）、`unread_notification_count`。新增 GET `/api/my-work/missions/?category=review&page=1&page_size=20`，category 必填且严格枚举，返回现有分页结构及 MissionListSerializer 同等字段；未知分类 400。本期不接受客户端覆盖用户身份或额外业务筛选。
 
-### 4.2 权限、编辑与历史
+用共享查询函数实现分类列表和计数，返回的 today 采用 Django `timezone.localdate()`；前端不自行用浏览器时区猜测截止日。服务端查询和返回风险使用一致的当天基准；页面显示数据获取时间。
 
-- 所有有效登录成员可读取、创建；仅条目创建者或管理员可编辑、移动、归档/恢复。提供后端 `allowed_actions`，前端据此显示按钮。
-- 所有现有条目写动作携带 `expected_version`，事务中行锁校验并递增版本。树结构变更复用团队 advisory lock，阻止并发移动形成环。
-- 归档不级联、不删除关联 Mission、不改变任务状态；仅允许归档没有未归档直接子条目的节点，需自底向上操作。恢复要求父节点未归档；创建/移动不能进入归档节点下。归档后内容冻结，可恢复再编辑。
-- 已有任务仍显示归档条目及内容；禁止新建关联到归档条目。允许在 Mission 可编辑且操作者有权限时解除/更换既有关联；无关字段修改不能因保留原归档关联而失败。
-- 第一期不提供硬删除、文档分支、差异对比或历史回滚。条目内容是当前设计上下文，更新不覆盖 Mission 验收标准或既有成果，也不自动重开已完成任务。详情展示设计更新时间，验收仍依据 Mission 的冻结内容与提交记录。
-- `content` 经 `library/references.py` 校验，素材引用归属按条目创建者判断，与 Mission 作者规则一致；管理员代编辑也不能把他人的素材变成该作者可引用素材。现有素材可被删除，不承诺新增附件永久保留机制。
+任务打开原详情抽屉，生命周期动作复用原接口与 allowed_actions；操作完成刷新列表、分类计数和通知角标。页面重新获得焦点、跨服务端日期后刷新；慢请求不得覆盖新的分类请求。只在页面可见时以约 60 秒间隔刷新摘要，不持续重载展开的表单。
 
-### 4.3 接口与页面
+## 4. B：站内通知与订阅
 
-新增 `/api/design-elements/`：GET 分页列表，POST 创建；`/{id}/` GET 详情、PATCH 更新；`/{id}/events/` GET 分页事件。PATCH 支持 title/content/parent/archived 与 expected_version，一次变更原子执行；不提供 DELETE。
+### 4.1 建议新增模型（均为待实现）
 
-列表支持 `q`（标题/正文）、`kind`、`parent`（UUID 或 `root`）、`archived`（默认 false）。详情包含父节点摘要、祖先路径、版本、操作能力与进度；子节点用分页列表按 parent 加载，不一次返回无限树。
+新增 `backend/notifications/` Django app，迁移、服务、API、测试完整注册。
 
-Mission 创建接口新增 `design_element_id`；PATCH 新增同名字段（null 解除），返回 `design_element` 摘要含 id/title/kind/archived。Mission 列表、工作台概览和依赖图增加 `design_element`（UUID 或 `none`）筛选；默认只匹配直接关联，不隐式包含设计后代。
+`Notification`：UUID id、recipient（User）、mission（Mission）、actor（User，可空，定时提醒为空）、kind、source_key（非空字符串）、payload（最小纯文本摘要及关联标识）、created_at、read_at（可空）。唯一约束 `(recipient, source_key)`，索引 `(recipient, read_at, created_at)`。不保存完整 Markdown、评论正文或附件内容；读取时附当前任务标题/状态与内部详情链接。通知为历史事实，任务后续状态变化不删除历史通知。
 
-新增 `/design` 与 `/design/:id`，导航「设计与资产」。左侧懒加载树，右侧 Markdown 正文、直属任务、进度、事件；默认只统计直接关联且非 Cancelled 的任务，进度为 Done/有效总数，无有效任务显示「暂无有效任务」。分别显示受阻数与需复核数，不把 100% 当作已验收的资产状态。父子 Mission 分别关联时分别计数，这是任务数比例，不是工时或物理资产完成率；不做递归汇总。
+`MissionSubscription`：UUID id、user、mission、mode（Follow/Mute）、version（初始 1）、created_at/updated_at；唯一 `(user, mission)`。缺记录表示默认规则，Follow 表示额外关注，Mute 表示关闭该任务普通动态。
 
-从条目点击「发布 Mission」进入既有创建页并预填关联，操作者仍是任务发起者。Mission 详情页与抽屉增加可跳转的「设计依据」，允许无关联；设计修改不静默同步到 Mission 正文。点击关联任务继续打开现有详情抽屉/详情页，操作后刷新条目进度与任务数据。
+- 默认关联人是当前 creator/assignee/reviewer 去重后的有效成员；其普通动态默认开启。Follow 可让其他成员关注；Mute 关闭普通动态，Follow 恢复开启。
+- 与用户职责直接相关的提交待验收、退回、转交给自己的验收、需要复核、日期提醒仍送达，即使 Mute；UI 必须说明「静音普通动态，职责提醒仍保留」。
+- 不因阅读、评论自动创建订阅；不回填上线前历史事件，不向停用成员发送新通知，不给操作本人发送由其操作触发的通知。系统日期提醒无 actor，不适用本人排除。
+- 管理员不拥有读取/更改他人私人通知或订阅的权限。
 
-## 5. B：资产生产模板
+### 4.2 事件与接收人
 
-### 5.1 最小模型与模板格式
+普通动态默认发送给任务当前关联人及 Follow 成员，减去 Mute 和操作者；相同来源对同一用户只产生一条。下列职责接收人与普通接收人合并去重：
 
-新增 `ProductionTemplate`：UUID id、name（非空，最多 200 字符）、description（纯文本）、steps（JSON）、created_by、version、archived、created_at/updated_at。有效登录成员可创建和读取，仅创建者或管理员可修改、归档/恢复；使用 expected_version，不提供硬删除。模板变更另记 `ProductionTemplateEvent`（与设计事件相同的 actor/action/payload/created_at 结构）。
+- `submitted`：当前 reviewer 为职责接收人。
+- `review_rejected`：当前 assignee 为职责接收人；验收通过产生普通动态。
+- `review_transferred`：新 reviewer 为职责接收人，原 reviewer 也收到普通转交通知（未静音时）；不能只读取转交后的角色集合而遗漏旧验收者。
+- 新建评论产生普通动态；编辑/删除评论本期不再通知，已有通知只显示“新增评论”摘要，删除后不泄露已删除正文。
+- 认领、退出、重新打开、取消、优先级/里程碑/日期变化产生普通动态；退出使用变化前后角色并集，避免丢失相关人。通用 updated 事件不与对应细分字段事件重复发信；单次更新可将这三个计划字段合并为一条“计划已调整”通知。
+- 前置状态或依赖边变化导致直接下游从“有未完成前置”变为“无未完成前置”，发 `dependency_unblocked` 普通动态；只在真假翻转时发送。取消前置不算解除；移除最后一条未完成依赖可触发。
+- 直接下游 Done 任务的 needs_dependency_review 从 false 变 true，发送 `dependency_revalidation`，下游 creator/reviewer 为职责接收人。不得自动重开下游；反复查询不重复发信，复核恢复后再次恶化属于新事件。
 
-`steps` 是 1–30 个步骤的有序数组，每项固定字段：
+依赖派生通知以受影响的下游 Mission 为通知目标，不能只通知被操作的前置任务。比较变更前后的真实直接邻接关系与状态，覆盖验收、重开、加/删依赖等可改变条件的入口；不能依赖当前画布可见范围。不做跨多跳的风险通知推断。
 
-- `key`：模板内唯一、非空、最多 50 字符，仅字母数字及下划线；修改模板后旧批次保留旧 key。
-- `title`（最多 200 字符）、`content`、`acceptance_criteria`：后两项为 Markdown。
-- `type`：沿用 Mission 枚举，默认 Task；`priority`：默认 P2；`tags`：现有标签字符串列表。
-- `prerequisite_keys`：同一模板内的前置 key 列表，支持分支、汇合和并行。数组顺序只控制展示，不隐式生成依赖。
+### 4.3 事务与幂等
 
-拒绝未知 key、自依赖、重复边、循环、空标题、超限与未知字段。模板 Markdown 仅允许 http(s) 外链，不允许私人素材链接，避免跨用户实例化绕过引用归属；复用现有解析/协议校验，不用正则替代 Markdown 安全检查。生成后由任务发起者按现有规则补充自己的素材。不支持任意表达式、变量脚本或自动上传。
+Mission 服务在业务事务中调用通知服务，将业务变更、事件和应产生的站内通知一起提交/回滚；不使用会丢失持久化保证的进程内异步任务。通知服务不能反向调用 Mission 状态流转，避免循环写入。
 
-新增不可变 `ProductionBatch`：UUID id、asset（DesignElement，必须 kind=Asset）、template（PROTECT）、template_version、template_snapshot（名称与完整 steps）、created_by、created_at。新增 `ProductionBatchItem(batch, step_key, mission)`，`(batch, step_key)` 唯一，mission 唯一；保留步骤到任务的稳定映射。批次与条目不随模板归档而消失。
+来源键必须可稳定重建：例如 `event:<event_id>:<kind>:<target_mission_id>`、`comment:<comment_id>:created`。一个操作产生多个细分事件时选定一个稳定来源，禁止依赖时间戳或随机 UUID 去重。并发重复插入依赖唯一约束安全处理，不能破坏外层事务。可对通知行 bulk_create，但不能借此绕过 Mission 写服务。
 
-### 5.2 实例化规则
+日期提醒新增可重复运行命令 `manage.py send_mission_reminders`：
 
-- 在资产详情选择模板，先显示步骤、显式依赖、任务数与可选里程碑；确认后一次生成。不得因进入页面、切换模板或刷新而生成。
-- 仅资产创建者或管理员可生成，资产与模板必须未归档。第一期每个资产最多一个生产批次（数据库对 batch.asset 唯一）；重复操作返回 `409 production_already_generated`，前端加载已有批次。追加工作通过普通 Mission 创建，不提供再次批量生成/重置入口。
-- 请求必须携带资产 `expected_version` 与 `template_version`，任一过期返回 `409 version_conflict`。事务内先取团队锁，再锁资产/模板、核验版本、权限、状态与里程碑，再生成全部 Mission、依赖、映射与事件。任何失败全部回滚，不遗留部分任务或批次。
-- 生成的 Mission：title 为“资产标题 · 步骤标题”（预检拼接后不超过 200 字符，超长提示调整资产或步骤标题，不静默截断）；creator 为操作者，assignee=null，status=Open，reviewer 默认为操作者；design_element 为资产；parent=null。type/priority/tags/content/acceptance_criteria 来自模板快照。
-- 可选统一 `milestone_id`，只接受 Planned/Active，未选则为空。生成日期均为空。模板不保存认领者、验收者、里程碑或日期，不复制用户身份和历史状态。
-- 每个 prerequisite_key 转为现有 `MissionDependency`，使用同一服务校验和事件入口，不用 bulk_create 绕过状态机；外层事务内维护生成 Mission 的最新版本，避免用初始 version 写多条依赖。资产版本在成功生成后递增并记事件，模板版本不因读取而变化。
-- 模板后续修改不回写生成任务；任务后续编辑不修改模板快照。生成步骤仍可按现有权限拆分、退回、取消、增加跨资产依赖，批次映射保持不变；更换 design_element 前必须先检查映射，批次任务不允许解除/改绑资产，返回 `409 production_asset_locked`，避免资产生产页与任务归属分裂。
-- 取消阶段并不自动解除下游依赖，必须显式调整现有依赖。所有有效步骤 Done 仅展示进度，不自动完成其他任务或里程碑。
+- 用服务器本地今天扫描所有匹配任务，分批处理，不限前端分页；仅当前有效 creator/assignee/reviewer 收到职责提醒，非关联订阅者不接收日期提醒。
+- 活动任务 end 在今天至后 3 天发 `due_soon`；end < 今天发 `overdue`。每个截止日期、每个接收人、每种提醒只发送一次，不每日重复轰炸。
+- 来源键 `deadline:<mission_id>:<planned_end_date>:<kind>`；用户改期到新日期可产生新提醒，改回已提醒过的日期不再重复。漏跑后按当前日期补发当前适用提醒，不伪造过去每日通知。
+- 无日期、Done/Cancelled 不发。扫描后写入前在一致的锁/事务内重新检查日期、状态及接收人，避免并发完成/改期产生过期提醒；锁顺序与 Mission 服务一致。
+- 命令报告扫描/新增数量并以非零退出码报告失败。部署提供每天运行一次的可执行调度示例（使用 `deploy/docker-compose.yml` 中的 `backend` 服务名），README 说明配置时区、日志与手动重跑；不能只实现命令而遗漏调度落地说明。
 
-### 5.3 接口与交互
+本期无需 Redis/Celery；使用现有数据库与部署侧 cron/systemd timer。通知已读操作和订阅变更不会递增 Mission version，也不产生新的任务动态。
 
-新增 `/api/production-templates/` GET 分页列表、POST 创建；`/{id}/` GET/PATCH；`/{id}/events/` GET 分页事件。列表支持 q/archived，默认未归档。嵌入「设计与资产」的模板管理入口，用表单编辑步骤和前置选择，不新增可视化流程编排器。
+### 4.4 接口、权限与页面
 
-新增 `POST /api/design-elements/{id}/instantiate/`，请求 `{template_id, template_version, expected_version, milestone_id?}`；成功 `201` 返回 batch_id、asset_version、template_version 与 `{step_key, mission_id}` 映射。新增 `GET /api/design-elements/{id}/production/`，无批次返回 `{batch: null, items: []}`；有批次返回快照摘要和最多 30 个步骤的 Mission 当前摘要（状态、认领者、阻塞、成果入口）。额外手工关联任务在“其他关联任务”分页展示，不冒充模板步骤。
+- GET `/api/notifications/?read=all|unread|read&page=...`，默认 all，按 created_at/id 倒序，标准分页；GET `/api/notifications/summary/` 返回当前用户 unread_count。
+- POST `/api/notifications/read/` 接受 `{ids: [UUID, ...]}`，1–100 个唯一 ID，仅批量标记自己通知已读；验证全部归属后原子更新，重复标记幂等，返回 changed_count。出现他人/不存在 ID 统一 404，全部不写。不提供无边界“全部标为已读”。
+- GET `/api/missions/{id}/subscription/` 返回本人显式记录（无记录时 null）、effective_following、mandatory_reminders=true。
+- PUT 同一路径接受 `{mode, expected_version}`；首次创建 expected_version=0，随后使用记录当前版本，原子校验唯一键并递增；并发首次设置一方成功，其余 409。不提供客户端 user 字段。
+- 所有通知与订阅写操作走对应 services，Session+CSRF；已读动作是明确的幂等例外，无需 expected_version，订阅仍需版本。
 
-资产页按模板原顺序展示步骤列表及前置关系，可并行步骤同时显示；操作使用普通 Mission 抽屉，不在资产页手改阶段状态。按钮显示“生成 N 个待认领 Mission”，确认时禁用重复提交，冲突后刷新。链接「查看依赖」进入现有工作台并设置 design_element 筛选，跨资产前置保留上下文提示。
+新增 `/notifications` 收件箱与顶部未读角标，可切换全部/未读/已读；仅查看列表不标已读，点击通知或批量选中后显式调用已读 API。可用键盘打开关联任务；标记已读失败显示错误，不伪造已读成功。无权访问/目标不可用时给明确提示。
 
-## 6. C：Mission 日期与甘特图
+任务详情与抽屉提供关注/静音开关；需显示职责提醒不可静音的语义。通知与任务加载分离，通知接口失败不阻断原任务操作；重登/切换账户清空所有用户相关前端缓存。
 
-### 6.1 日期与风险规则
+## 5. C：保存视图
 
-Mission 增加 `planned_start_date`、`planned_end_date`，均为可空 DateField；创建/PATCH 使用同名字段。允许两者都空、仅开始、仅结束；两者都有时必须 start <= end（服务校验 + 数据库约束）。日期使用 ISO YYYY-MM-DD；“今天”按 Django settings.TIME_ZONE 解释。它们是人工计划，不是实际工作时间或工时。
+### 5.1 模型与权限
 
-只允许 Mission 发起者或管理员在 Open/InProgress 修改，记录 `schedule_changed` 事件（前后日期）并递增 Mission version。任务表单与详情编辑区增加日期；未到开始日不限制认领，逾期不阻止提交/验收，清空日期合法。父子日期不继承、不自动汇总、修改日期不改变里程碑或状态。
+新增 `SavedMissionView`（建议放在 missions app）：UUID id、name（去首尾空格后 1–100 字符）、owner、visibility（Private/Team，默认 Private）、target（List/Overview/Gantt）、definition（JSON）、version（初始 1）、created_at/updated_at。
 
-后端统一派生以下风险，由列表/详情/工作台复用，不能只在当前画布可见节点上计算：
+- 所有人可创建，owner 固定为当前用户。个人视图仅 owner 可读写删除；管理员不例外。团队视图全员可读，仅 owner 或管理员可修改/删除。
+- 创建团队视图须显式选择，默认不公开；同一 owner 内名称唯一，不同 owner 可以同名，列表显示作者与可见范围。
+- PATCH/DELETE 必须 expected_version，事务锁校验；冲突不覆盖输入。不允许通过 owner 字段转让所有权。
+- 共享定义只共享查询，不保存结果快照、不授予额外任务权限；`me` 始终解释为当前打开者，不是创建者。
 
-- `overdue`：status 为 Open/InProgress/Submitted，end 非空且早于今天。
-- `dependency_date_conflict_ids`：直接前置 end 与本任务 start 都存在，且前置 end > 本任务 start。允许同日交接，仅为计划冲突，不代表业务依赖已满足；前置 Done 后仍可有计划冲突，不追溯修改计划。
-- `beyond_milestone_due`：任务 end 与关联里程碑 due_date 都存在且 end > due_date。
-- 日期缺失时不推算风险；前置取消仍按原业务显示阻塞。对 Done/Cancelled 不显示“当前逾期”，日期和已存在的计划冲突可留作历史提示。业务阻塞与日期冲突分别标识。
+### 5.2 定义与校验
 
-用户补充决策优先：**修改现有依赖图为甘特图，不新增第三套独立时间视图**。横轴改为日期，任务条表达计划区间，保留父子折叠、上/下游聚焦、源任务线色、里程碑颜色、详情抽屉与只读画布。
+`definition` 固定为 `{filters, ordering, date_window, zoom}`，四项按 target 校验。无分页、无选中任务、无抽屉焦点、无平移坐标、无父子折叠状态；禁止任意 URL、SQL、脚本或 JSON 表达式。
 
-**结束顺序是硬约束**：直接前置和本任务都设有 planned_end_date 时，本任务不得早于任一前置结束，允许同日完成与重叠执行。修改任一端日期或新增依赖均须在团队事务锁内校验；延后前置而导致已有下游早于前置也拒绝，返回 409 schedule_dependency_conflict，提示先调整下游。没有结束日期时不猜测日期、不自动补排；实际提交/验收仍要求前置 Done。开始早于前置结束仍只是风险提示，不能混淆为禁止并行开工。
+filters 白名单：q、status、type、priority、tag（字符串数组，AND 语义）、creator、assignee、reviewer、parent、milestone、design_element、production_batch、blocked、revalidation。统一使用 q 保存文本查询，加载 List 时映射到已有 q/search 能力；重复标签去重。枚举、布尔、整数用户 ID、UUID 和现有 me/none/root 特殊值按各字段含义校验，不使用“未知值忽略”策略。角色整数筛选需修正现有 filters.py 中将非 me 角色 ID 按 UUID 解析的问题，并增加回归。
 
-不增加通用 FS/SS/FF/SF 类型配置、时间滞后、假日计算、自动平移下游、父子日期包含约束或拖拽改期。
+ordering 白名单沿用现有 created_at/updated_at/title/status/priority/type 及其负号倒序；target 非 List 时不承诺影响现有工作台分组。zoom 仅 Gantt 可选 day/week，与现有页面值一致。
 
-### 6.2 查询接口与甘特图
+date_window 支持：
 
-将 `/workspace` 的 `view=graph` 直接升级为甘特图，保留原链接、概览、Vue Flow 的平移/缩放/定位/适应视图、源任务线色、满足状态线型、父子折叠、关系等效列表和详情操作。旧的上下分层布局被日期横轴与逐任务行替代；父子层级通过任务标签缩进与折叠控件表达，不再让横轴兼任父子层级。无日期任务显示为“未排期”，仅有一端日期时明确缺失另一端，不伪造时长。
+- null：List/Overview 不限制日期；Gantt 使用原默认窗口。
+- `{mode: "absolute", date_from, date_to}`：沿用现有 1–366 天与完整/单端/未排期匹配语义。
+- `{mode: "relative", preset: "this_week"|"next_7_days"}`：this_week 为本地周一到周日，next_7_days 为今天到后 6 天；每次打开由服务端按今天解析，不能保存一次计算后的过期日期。
 
-扩展现有 `GET /api/workspace/graph/`，不另造一套任务读写协议：新增 date_from/date_to（同时提供，ISO 日期，范围 1–366 个自然日），默认本地今天前 14 天至后 42 天，meta 返回实际范围与 today。复用现有筛选、上下文、节点/边上限、关系不完整提示与 revision；节点增加日期、风险和里程碑目标日期。日期完整时按窗口相交匹配，单端按该日期匹配，双空纳入未排期；关系上下文仍保留，范围外日期只做裁剪/延伸标注，不移动任务日期。
+日期窗口仍是计划区间匹配，包含原规则中的未排期任务，UI 标明“计划窗口（含未排期）”；不能将它表述成严格“截止日在本周”。保存视图的相对日期解析统一在服务端执行。
 
-日期轴提供日/周两档、今天及里程碑目标标记；依赖连线连接双方的结束端，表达“下游不能早于前置完成”，没有结束日期时明确未排期/缺结束日期，线仅说明业务关系。父子折叠后的合并边只表达原始关系汇总，不能把代表父任务日期误认成全部隐藏子任务的排期；显示提示并可展开查看。图中不写状态、不拖拽排期，改期仍在现有任务表单通过 PATCH 完成。
+创建/修改时验证引用对象存在，且用户可读；已有视图引用对象失效时保留定义并返回可读警告，禁止悄悄丢弃条件扩大结果。不能执行的定义阻止打开并提示修复；空结果不等同于非法定义。引用关闭里程碑、归档设计条目用于历史查询合法。
 
-增加同等信息的可访问任务日期列表，带状态、认领者、日期、阻塞与风险，可键盘打开原详情。任务/边截断时明确提示并提供分页列表入口；列表复用 date_from/date_to 与既有筛选，不将一页结果视作完整关系。
+### 5.3 API 与前端
 
-revision 包含日期风险所依赖的直接前置日期（即使前置未加载）、里程碑日期与 today；改期、依赖、验收、里程碑改期、跨日与页面重新获得焦点后刷新。筛选、date_from/date_to/zoom/selected 写入 URL；旧慢响应不覆盖新请求。关闭抽屉清除焦点但保留日期范围和视口。新日期约束不能改变原有状态机、取消/重开规则或依赖环校验。
+新增 GET/POST `/api/saved-views/`（分页，可按 visibility 筛选，仅返回自己 Private 与全员 Team），GET/PATCH/DELETE `/{id}/`。DELETE 的 expected_version 使用查询参数，成功 204；POST 成功 201，更新成功 200。
 
-## 7. 实现所需的当前代码结构与数据流
+新增 GET `/{id}/resolve/`，返回 target、规范化可执行 query、today、warnings；每次打开重新解析日期和 me。不可执行返回统一 400 与字段错误；不可见 ID 返回 404。不得把定义中的任意字符串拼成跳转 URL，前端只按 target 映射到固定站内路由。
 
-### 7.1 后端现有文件
+任务广场、工作台增加保存/打开/管理视图入口：保存当前筛选，选择名称与个人/团队；打开后恢复筛选、目标视图与日期，重置页码和选择；后续手动调整只影响当前页面，必须显式“更新视图”才写数据库。当前页面可显示“已修改”；提供另存为，不自动写回共享定义。
 
-- `backend/missions/models.py`：Mission、MissionDependency、Milestone、MissionSubmission、SubmissionSourceReference、SubmissionBuildReference、MissionEvent、MilestoneEvent、Comment、Tag，以及本次新增 DesignElement/DesignElementEvent、ProductionTemplate/ProductionTemplateEvent、ProductionBatch/ProductionBatchItem。模型和日期/关联字段放此处，迁移放 `backend/missions/migrations/`。
-- `backend/missions/services.py`：`create_mission/update_mission`、`claim_mission/release_mission`、`submit_mission/review_mission`、`reopen_mission/cancel_mission`、`add_dependency/remove_dependency`、里程碑与评论写入口；`derived_state/derived_state_bulk` 和 `allowed_actions` 负责派生信息与操作能力。新增服务在此复用校验，不改成通用 ModelViewSet 写入。
-- 同文件 `_acquire_team_lock()` 使用固定 `TEAM_OPS_LOCK_KEY` 的 PostgreSQL 事务级 advisory lock；`_get_locked()` 行锁与 `_check_version()` 实现并发控制。图结构读取/校验前先取团队锁，新增批次与树修改沿用固定锁序。依赖图环检查使用 `_graph_adjacency/_reaches/_assert_edge_allowed`，包含 child → parent 隐含完成边。
-- `backend/missions/serializers.py`：输入与列表/详情输出。注意当前创建字段是 reviewer_id/milestone_id，更新字段是 reviewer/milestone；新增字段按本规格统一 design_element_id，不顺带重命名旧字段。
-- `backend/missions/views.py`、`urls.py`：DRF 解析、认证与服务调用，已有 missions/comments/milestones 路由；新增设计与模板 ViewSet，但只暴露本规格动作。
-- `backend/missions/filters.py`：`apply_mission_filters()` 是分页列表与工作台的共享筛选。新增设计筛选应在此集中实现并去重，不能让列表/图/时间视图各自定义不同语义。
-- `backend/missions/workspace.py`：WorkspaceOverviewView、WorkspaceGraphView，输出节点/边、上下文、revision 与截断信息。现有图上限为 200 节点、50 上下文节点、1000 边；甘特图扩展原只读查询入口，复用筛选与摘要序列化，风险计算避免逐任务查询。
-- `backend/missions/admin.py`：已有业务模型管理入口；新增模型若注册，写动作调用服务，否则只读，不留下可绕过权限/版本的默认保存入口。
-- `backend/library/references.py`：Markdown 引用校验；`library/services.py` 上传/删除，`library/models.py` 的 LibraryFile 保存 owner/file/original_name/content_type/size。无需修改文件归属或下载权限。
-- `backend/config/exception_handler.py` 与 `missions/exceptions.py`：错误统一出口；账号由 `backend/accounts/` 管理，继续使用 is_staff 判断管理员。
+目标为 List 使用 `/missions`，Overview 使用 `/workspace?view=overview`，Gantt 继续 `/workspace?view=graph`。前端筛选组件目前未暴露全部后端参数，必须补齐本功能允许保存的参数或保证可见的条件摘要和可移除控件，不能出现生效但不可见的过滤条件。
 
-### 7.2 前端现有文件
+## 6. D：受控批量操作
 
-- `frontend/src/api/client.ts`：request()/CSRF/错误与 buildQuery；`api/types.ts` 共享类型；`api/missions.ts` 封装任务/依赖/成果/事件接口；`api/milestones.ts` 和 `api/workspace.ts` 封装对应查询。新增 `api/designElements.ts`、`api/productionTemplates.ts`，甘特图接口扩展 workspace.ts，不在组件直接 fetch。
-- `frontend/src/router/index.ts` 与 `components/AppLayout.vue`：受登录保护的路由与导航；新增设计路由，模板管理可在设计页子区域完成。
-- `views/MissionCreateView.vue`、`views/MissionDetailView.vue`、`components/MissionForm.vue`：关联与日期表单的接入点；`components/MissionDetailDrawer.vue` 提供工作台复用的操作和详情。
-- `views/WorkspaceView.vue`：视图切换、筛选、URL、请求代次和抽屉焦点；`components/WorkspaceFilterBar.vue`：共享筛选；改造 `components/DependencyGraph.vue` 与 `MissionGraphNode.vue`，使用甘特日期布局并保留原交互。
-- `components/DependencyGraph.vue`、`MissionGraphNode.vue`、`workspace/dto.ts`、`workspace/parentGrouping.ts`、`workspace/dependencyTraversal.ts`：现有依赖图数据映射与折叠；`workspace/edgeColor.ts` 和 `milestoneColor.ts` 分别负责源 Mission 线色与里程碑卡片色；`composables/useGraphLayout.ts` 是自研依赖分层布局。本次将分层坐标替换为甘特日期布局，着色、关系遍历与父子折叠继续复用。
-- `components/MarkdownEditor.vue`、`MarkdownContent.vue`、`LibraryPicker.vue`：复用 Markdown 编辑/清洗/素材选择。模板编辑隐藏私人素材插入并给出说明，但安全限制仍须在后端执行。
+### 6.1 范围与输入
 
-### 7.3 数据流与现有接口
+在分页任务列表增加多选与批量编辑入口（任务广场、个人工作中心及 List 保存视图）；工作台甘特图保持只读，不在画布直接批改。首期只选择当前页，翻页/换分类/换筛选/打开保存视图清空选择；不提供“选中全部匹配结果”。最多 50 个唯一任务。
 
-读取：登录会话 → Vue 页面 → 类型化 API request → DRF 认证/筛选 → ORM 与派生字段 → 序列化 → MarkdownContent/任务卡片/抽屉。写入：表单提交 expected_version → 服务权限、锁、校验 → 原子更新与事件 → 返回新版本 → 刷新相关列表/聚合；409 保留用户输入、提示并刷新服务端版本，不能静默覆盖。
+新增 POST `/api/missions/bulk-update/`：
 
-复用接口：`GET/POST /api/missions/`、`GET/PATCH /api/missions/{id}/`，以及 POST `claim/release/submit/review/transfer-review/reopen/cancel`；GET/POST `dependencies/`，DELETE `dependencies/{dependency_id}/?expected_version=...`；GET `submissions/`、`events/`；`/api/milestones/`；GET `/api/workspace/overview/`、`/api/workspace/graph/`。日期与设计关联通过原创建/PATCH 写入，不另造“资产任务完成”接口。
+```json
+{
+  "items": [
+    {"id": "任务 UUID", "expected_version": 3}
+  ],
+  "changes": {
+    "priority": "P1",
+    "milestone": null,
+    "planned_start_date": "2026-11-01",
+    "planned_end_date": "2026-11-05"
+  }
+}
+```
 
-成果仍保存为 MissionSubmission 的独立轮次及源码/构建引用，模板/资产页只展示入口与当前状态，不复制历史记录。验收的 submission_id/current Pending 检查保持现状。
+items 必须 1–50 项、ID 唯一、版本正整数；changes 至少一个字段，严格白名单仅 priority/milestone/planned_start_date/planned_end_date。省略表示保持原值；里程碑/日期 null 表示显式清空；priority 不允许 null。不接受 status/assignee/reviewer/parent/tags/design_element、其他字段或客户端 actor。一次统一设置所选任务的字段，不做日期偏移或逐任务不同 changes。
 
-## 8. 迁移、范围控制与实现顺序
+### 6.2 执行语义：逐项提交，允许部分成功
 
-1. A：新增设计模型、事件、Mission 可空关联、权限/接口/页面/筛选与测试。旧 Mission 关联默认 null，不根据名称或标签猜测归属。
-2. B：新增模板、事件、批次与映射，事务生成和资产步骤页。不要把现有父 Mission 自动转换为资产；不批量修改历史任务。
-3. C：新增可空日期、日期约束、风险字段、手动编辑与时间视图。旧 Mission 两日期均为 null，不把 created_at/updated_at/里程碑日期当作计划回填。
+- 请求外形、未知字段、非法日期字面值、枚举、重复 ID 等整体输入问题返回 400，任何任务都不修改。
+- 输入合法后按 items 原顺序逐项调用 `services.update_mission`；每项独立事务，重用权限、expected_version、冻结、里程碑可接收状态与双向日期依赖检查。不能为整个请求包一层事务，不并行抢团队锁。
+- 每个成功项立即提交任务、现有事件和通知；该项失败则全部回滚，但已成功项保留。预期 DomainError 转成逐项结果；未知程序/数据库异常不得伪装为业务失败继续执行。
+- 无权限、任务不存在、版本过期、冻结、关闭里程碑、日期冲突分别给真实错误。对不可见对象按现有读权限处理，不泄露额外信息。管理员也不能绕过状态/日期约束。
+- 日期按每项执行时的真实数据库状态检查，不做整个选择集的最终排程推演。例如延后前置可能因下游尚未改期而失败；本期明确提示先调整下游再重试。不得为了提高成功率暂时写入违规中间状态或自动改动未选中的任务。
+- 即使新值与当前值相同也沿用单任务服务的版本行为，不另造跳过语义；通知只针对实际字段变化生成。
 
-每一单元实现并验证后，将实际数据模型、接口、权限、页面、规则并入 PROJECT_STRUCTURE.md；若技术约束描述需调整，同步 TECH_STACK.md（例如现有依赖图改为甘特图），仍保持只读聚合和原写入口。实现通过后按实际状态同步文档。各单元独立提交代码、测试与同步文档，不推送。
+只要请求结构合法且处理完成，HTTP 200，返回 `{results, succeeded_count, failed_count}`，每项包含 id、success、status；成功附最新 Mission 摘要/version，失败附 `{code,message,field_errors}`。全部逐项失败也返回 200，前端必须检查结果而非只看 HTTP 状态。整体认证/CSRF/格式错误仍走原 HTTP 错误结构。
 
-## 9. 验收与验证
+### 6.3 用户确认、重试与审计
 
-### 9.1 完整业务样例
+提交前展示选中数量、任务标题、准备修改的字段、保持/清空/设值三种含义，明确“逐项执行，可能部分成功”；预览仅基于当前读取数据，不写入、不保证最终通过。表单不得用默认空值误清空未勾选字段。
 
-创建设计“敌人系统”，下建 Asset“森林守卫”。模板步骤为原画 → 建模；建模后动画与音效并行；动画、音效完成后引擎接入；最后验收测试。生成 6 个 Open、无人认领的 Mission 和 6 条显式依赖，不生成虚构的父 Mission。
+确认后禁用重复点击；完成后逐项呈现成功与失败、原因和详情入口。成功项取消选择，失败项保留供修正；刷新任务版本、风险、工作台关联数据及通知角标。
 
-美术、动画、程序可分别认领；下游即使已认领，在前置未 Done 时不能提交。任务按既有路径提交成果与人工验收；资产页按任务进度更新、可查看成果轮次；模板编辑不影响已生成任务。设动画结束日晚于接入开始日，显示计划冲突；手动修改合法日期消除冲突，不改变阻塞状态。完成前置后业务阻塞才解除。所有任务完成不自动完成里程碑；某前置重开后沿用现有下游阻塞/复核规则。
+失败重试仅提交用户明确确认的失败项；版本冲突先刷新并展示新数据，再确认，不能自动换新版本覆盖。网络中断/500 视为结果不确定，提示已有部分可能成功，重新读取全部涉及任务后再决定；禁止静默重发整个批次。首期不做可恢复批量作业队列或自动重试。
 
-### 9.2 必须覆盖的边界
+每个任务沿用现有 priority_changed/milestone_changed/schedule_changed/updated 事件及真实 actor，不新增绕过审计的 bulk SQL。批量修改后普通动态通知按每个实际变更的 Mission 生成并去重。
 
-- 设计：普通成员只读他人条目、管理员代编辑、匿名拒绝、并发改版冲突、并发移动防环、归档/恢复树约束、旧关联保留、新关联拒绝、Markdown 越权与危险协议拒绝、无关联旧任务兼容、直接计数不递归。
-- 模板：分支汇合、不按数组顺序误建边、30 步上限、未知 key/环拒绝、跨用户私人素材拒绝、两次并发生成仅一个成功、过期版本无写入、模板归档与生成竞态、关闭里程碑与生成竞态、中途失败完整回滚、旧快照不变、生成任务禁止改绑资产、取消前置不自动解锁。
-- 日期：空值/单端/同日/反向区间、非法格式、数据库约束、无权限/冻结状态修改、跨日今天更新、里程碑单独改期风险刷新、取消前置、缺日期不猜测、下游前置被筛掉仍有正确风险。
-- 页面：原认领/拆分/提交/验收入口正常，日期和设计 URL 可复现，生成预览不写入，提交失败保留输入，旧慢请求不覆盖新筛选，图/时间截断明确提示，抽屉关闭焦点行为保持，空数据与无有效任务不显示 100%。
+## 7. 已核对的项目结构与前后端数据流
 
-### 9.3 测试入口与命令
+### 7.1 现有后端文件
 
-现有后端入口：`backend/missions/tests/test_services.py`、`test_api.py`（生命周期与版本）、`test_dependencies.py`（依赖/组合环）、`test_milestones.py`、`test_submissions.py`、`test_workspace.py`、`test_markdown_references.py`、`test_concurrency.py`、`test_concurrency_features.py`；素材规则另见 `backend/library/tests/test_references.py`。新增 `test_design_elements.py`、`test_production_templates.py`、`test_scheduling.py`，并扩展原并发测试和工作台测试。
+- `backend/missions/models.py`：Mission 含 creator/assignee/reviewer/status/version、priority、milestone、计划日期；MissionDependency 表示显式前置；MissionSubmission 的 outcome/current_submission 支持识别当前退回；MissionEvent 含 actor/action/payload/time。Comment 当前没有对应的 MissionEvent 新评论动作，通知不能假定现成评论事件存在。
+- `backend/missions/services.py`：update_mission、submit_mission、review_mission、transfer_review、reopen_mission、claim/release/cancel、add/remove_dependency、create/update/delete_comment；_acquire_team_lock、_check_version、_record_event；derived_state/derived_state_bulk 与 schedule_risks_bulk。核心计划写入和所有通知触发入口位于这里。
+- `backend/missions/filters.py`：apply_mission_filters，任务列表与工作台复用；多标签 AND，角色 me，依赖 blocked/revalidation，设计/生产批次及日期筛选。当前角色具体 ID 使用 UUID 解析，与 User 整数主键不一致，本次保存视图须纠正这一直接相关问题。
+- `backend/missions/scheduling.py`：日期窗口校验与区间匹配；`workspace.py`：概览与图读模型，图限 200 节点、50 上下文、1000 边，不能拿图返回内容计算全量个人待办。
+- `backend/missions/views.py`、`serializers.py`、`urls.py`：DRF 入口、输入校验、MissionListSerializer/DetailSerializer、现有 router 与 workspace 路由。Mission PATCH 使用 milestone/reviewer，创建使用 milestone_id/reviewer_id；避免接口字段猜测。
+- `backend/accounts/models.py`：User 继承 AbstractUser、整数 ID、is_staff 管理员、is_active；注册审批为独立表。`backend/config/settings.py` 注册 app、认证与时区；`config/urls.py` 挂载 API。
+- `backend/config/pagination.py`：默认 20、page_size 最大 100、count/next/previous/results 标准分页。`backend/common/permissions.py` 与 `missions/permissions.py` 提供成员权限；`common/exceptions.py` 定义领域异常，missions/exceptions.py 重新导出；`config/exception_handler.py` 统一错误。
+- `backend/missions/management/commands/` 当前有 seed_demo；提醒命令建议置于新增 notifications app 的 management/commands。`deploy/docker-compose.yml` 为生产部署入口，根 docker-compose.yml 用于本地数据库；定时命令示例须依据真实生产服务名编写。
 
-现有前端入口：`frontend/src/tests/missions.spec.ts`、`milestones.spec.ts`、`workspace.spec.ts`、`workspaceGraph.integration.spec.ts`、`library.spec.ts`、`client.spec.ts`。新增设计、模板、时间视图测试，保留真实 Vue Flow 挂载回归。
+新增文件建议：notifications/{models,services,views,serializers,urls}.py 与迁移/测试；missions 下新增个人工作读模型与保存视图查询/序列化模块，批量写服务留在 services.py。允许按职责拆分读模块，不得拆出另一套 Mission 写规则。
 
-实现后按 README 顺序执行，后端事务/并发测试必须使用 PostgreSQL：
+### 7.2 现有前端文件
+
+- `frontend/src/api/client.ts`：request、ApiException、CSRF 与 buildQuery（数组转重复参数）；types.ts：Mission 等 DTO；missions.ts：列表、详情、单任务更新、状态动作、事件与成果接口；workspace.ts：工作台聚合。新增个人工作/通知/保存视图 API 模块，批量接口可放 missions.ts。
+- `frontend/src/router/index.ts`：登录守卫、默认任务广场、/claimed、/published、/workspace 等；`components/AppLayout.vue`：导航。新增路由与角标在此接入。
+- `views/MyClaimedView.vue` 和 MyPublishedView.vue 仅把 assignee/creator=me 交给 `components/MissionListSection.vue`；后者目前是简单分页卡片，pageSize=10，没有多选或保存视图。
+- `views/MissionSquareView.vue`、WorkspaceView.vue 与 `components/WorkspaceFilterBar.vue`：任务与工作台筛选入口；`workspace/filters.ts` 共享筛选类型和快捷键，当前仅覆盖后端部分筛选。
+- `components/MissionDetailDrawer.vue`、`views/MissionDetailView.vue`：复用任务操作与详情；`MissionForm.vue`：单任务编辑；`MissionCard.vue`/WorkspaceMissionCard.vue：摘要显示。新增入口不复制状态机操作逻辑。
+- `components/MarkdownContent.vue`：DOMPurify 安全渲染；通知摘要用纯文本，禁止直接 v-html。`stores/auth.ts`：登录用户状态，账号变化时清理个人数据。
+
+已有数据流：页面筛选 → api/client request → DRF views/serializers → filters/read model 或 services → PostgreSQL → 序列化 DTO → 列表/抽屉刷新。
+
+新增数据流：任务写服务 → 同事务站内通知 → 个人收件箱；部署定时命令 → 同一通知服务 → 日期提醒；个人工作接口实时聚合业务状态；保存定义 → 服务端 resolve → 原任务查询；批量接口 → 顺序独立事务复用 update_mission → 逐项结果 → 前端确认与刷新。
+
+## 8. 测试、验收与文档同步
+
+### 8.1 既有回归入口
+
+后端 `backend/missions/tests/`：test_services.py、test_api.py、test_submissions.py、test_dependencies.py、test_scheduling.py、test_workspace.py、test_milestones.py、test_comments.py、test_concurrency.py、test_concurrency_features.py；并保留 design_elements/production_templates 测试。
+
+前端 `frontend/src/tests/`：missions.spec.ts、workspace.spec.ts、workspaceGraph.integration.spec.ts、scheduling.spec.ts、comments.spec.ts、client.spec.ts，以及现有设计与生产模板回归。
+
+### 8.2 本次必须新增的有效测试
+
+- 个人工作：六种分类角色/状态边界、当前退回与历史退回区分、分类重叠、管理员仍只看本人待办、全量计数与分页一致、跨日边界、缺日期、需复核与未完成子任务提示。
+- 通知：真实提交/退回/转交/评论服务触发，自己操作不通知自己、角色去重、关注与静音职责例外、旧验收者通知、停用用户、字段事件去重、业务失败无通知、并发来源去重。
+- 依赖通知：有阻塞到无阻塞真假翻转、部分前置完成不触发、前置取消不解除、删最后一条依赖、Done 下游需复核、同一风险多次查询不重复、恢复后再次风险可重发。
+- 日期命令：今天/后 3 天/逾期边界、重复/并发运行、错过执行、改期与改回、完成和扫描并发、无日期、真实部署命令说明。
+- 隔离：他人通知/订阅/Private 视图不可访问，管理员无私人绕过；标已读重复幂等、混入无权 ID 全部回滚，首次订阅并发冲突、CSRF。
+- 保存视图：个人/团队权限、owner 不可变、版本冲突、非法 JSON/枚举/字段/类型、整数成员 ID 回归、标签 AND、me 按访问者解释、相对周跨日、无效引用不扩大查询、URL 与 UI 过滤条件一致。
+- 批量：整体非法零写入，逐项成功/失败混合、版本冲突、冻结与权限、关闭里程碑、缺省保持与显式清空、日期双向依赖、按顺序部分提交、每项事件通知一致、并发单项编辑不覆盖、错误结果不被 200 掩盖。
+- 前端：分类切换慢响应、详情操作后刷新、通知已读失败、账号缓存清理；保存/打开/另存为与不自动覆盖；选择上限/翻页清空、变更预览不写入、防重复提交、只重试确认后的失败项、网络中断不盲重发。
+
+建议新增 test_my_work.py、notifications/tests/、test_saved_views.py、test_bulk_updates.py 及相应前端 spec。新增文件目前不存在，不应写成已有测试已通过。
+
+### 8.3 实施与交付顺序
+
+1. 个人工作分类、通知模型/服务/接口、职责动态、日期命令及页面，完成第 1 优先级闭环。
+2. 保存视图模型、校验与 resolve、前端筛选恢复。
+3. 批量操作服务与 UI，接入通知并完成部分成功/重试验证。
+
+每个可独立验证单元按项目规范提交，提交信息中文；不自动 push。空数据库必须能迁移建立最新结构，允许未发布阶段破坏性调整，不额外承担旧条目兼容。实现后将数据模型、接口、权限、页面、通知/筛选/批量规则同步并入 PROJECT_STRUCTURE.md；TECH_STACK.md 同步数据库通知、定时提醒与新增幂等写例外，README 同步真实调度步骤。本文当前仅登记需求，不将待实现功能写入已实现文档。
+
+实现后的标准验证顺序：
 
 ```bash
-# 在 backend/ 下
+# 在 backend/ 执行，PostgreSQL
 .venv/bin/python manage.py makemigrations --check --dry-run
 .venv/bin/python manage.py check
 .venv/bin/python manage.py test
 
-# 在 frontend/ 下
+# 在 frontend/ 执行
 npm run type-check
 npm run test
 npm run build
 ```
 
-交付前核对路径、规则、引用与 git diff，并逐项说明实际验证结果和未完成事项。
-
-
-## 10. 实现与验收记录
-
-- A 已实现：设计树、Markdown 权限、版本与归档约束、Mission 双向关联、直接进度、分页筛选与页面。提交 `58ec206`；设计边界和并发测试见 `test_design_elements.py`，页面版本冲突保留输入见 `designElements.spec.ts`。
-- B 已实现：生产模板校验、不可变批次快照、原子生成普通待认领 Mission、显式分支依赖与原有人工验收。提交 `8546595`；完整六步流程、回滚、竞态与取消/重开见 `test_production_templates.py`，预览无写入与防重复确认见 `productionTemplates.spec.ts`。
-- C 已实现：现有依赖画布改为日期甘特图，新增可空日期、结束顺序硬约束、风险、窗口、日/周档位、等效日期列表、结束端连线及原有折叠/聚焦交互。没有新增第三套工作台视图。浏览器日期 URL 导航使旧请求失效；窗口获得焦点刷新数据并保留视口。
-- 验证：后端 `makemigrations --check --dry-run`、`check`、全量 183 项测试通过，随后补充设计并发改版测试并执行 `DesignConcurrencyTests` 3 项通过；前端 `type-check`、全量 85 项测试与 `build` 通过。真实 Vue Flow 挂载回归覆盖坐标、结束端与只读交互；`git diff --check` 通过。构建保留原有大于 500 kB 的 chunk 提示。
-- 本次只生成迁移文件，未对现有业务数据库执行迁移；部署时按 README 执行 `manage.py migrate`。当前环境没有可用浏览器会话，未完成截图级视觉检查，不把 jsdom 集成测试称为真实浏览器验收。没有推送远端。
+交付报告须说明实际完成项、实际运行验证和未完成事项；不得将本次规格核查等同于功能测试通过。
