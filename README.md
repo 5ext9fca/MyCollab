@@ -36,6 +36,7 @@ frontend/           Vue 3 SPA
   src/tests/        Vitest 测试
 deploy/             Caddyfile、生产 Docker Compose
 docker-compose.yml  本地 PostgreSQL
+testrun.sh          一键启动本地测试环境
 ```
 
 后端业务写入集中在 `backend/missions/services.py`（Mission 流程）、`backend/accounts/services.py`（注册审批）与 `backend/library/services.py`（素材上传/删除），视图与 Django Admin 都调用同一套服务逻辑，无法绕过状态机。
@@ -63,6 +64,21 @@ npm run dev                                  # http://127.0.0.1:5173
 ```
 
 Vite 开发服务器把 `/api` 代理到 Django，代理不改变 Host/Origin，因此 Session Cookie 与 CSRF 在开发环境可直接工作。
+
+### 一键启动测试环境
+
+在仓库根目录运行（也支持从其他目录使用脚本绝对路径）：
+
+```bash
+./testrun.sh
+./testrun.sh --seed  # 可选：创建演示数据，已存在时跳过
+```
+
+脚本检查 Python 3.14、Node 24+ 和 Docker Compose；首次缺少虚拟环境或依赖时自动安装，因此首次运行需联网。随后启动根目录 Compose 的 PostgreSQL 并等待就绪，执行迁移和系统检查，同时启动 Django 与 Vite。访问 `http://127.0.0.1:5173`；端口 8000 或 5173 被占用时直接提示退出，不终止已有服务。
+
+使用本地 `127.0.0.1:5432/mycollab` 数据库及本地开发账号配置，保留已有数据，不读取生产部署配置。按 Ctrl+C 停止本次前后端进程，PostgreSQL 容器继续运行；需要时可在根目录手动执行 `docker compose stop db`。前端保留热更新，后端使用 `--noreload` 以可靠清理进程，修改后端代码后需重启脚本。
+
+这是供浏览器体验功能的本地环境启动入口；自动化测试仍使用下方“验证命令”。
 
 ## 演示数据
 
