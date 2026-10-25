@@ -57,7 +57,7 @@ async function submit() {
 }
 </script>
 <template>
-  <div class="toolbar"><span>仅选择当前页 {{ selected.length }}/50</span><el-button :disabled="!selected.length || busy" @click="open">批量编辑计划</el-button></div>
+  <el-card shadow="never" class="selection-card"><div class="toolbar selection-toolbar"><span>仅选择当前页 {{ selected.length }}/50</span><el-button :disabled="!selected.length || busy" @click="open">批量编辑计划</el-button></div></el-card>
   <el-dialog v-model="dialog" title="批量编辑计划" width="700px" :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy">
     <p>逐项执行，可能部分成功。仅发起者或管理员可编辑未冻结任务；延后前置受日期约束时，请先调整下游。</p>
     <el-form v-if="!preview" label-width="100px">
@@ -74,3 +74,8 @@ async function submit() {
     <template #footer><el-button v-if="uncertain" :loading="refreshing" @click="refreshRows">读取最新任务</el-button><el-button v-if="preview" :disabled="busy" @click="preview = false">返回修改</el-button><el-button v-if="!preview" :disabled="uncertain || !rows.length || refreshing || busy" @click="prepare">预览变更</el-button><el-button v-else type="primary" :loading="busy" @click="submit">确认逐项执行</el-button></template>
   </el-dialog>
 </template>
+
+<style scoped>
+.selection-card { margin-bottom: 16px; }
+.selection-toolbar { align-items: center; margin-bottom: 0; }
+</style>

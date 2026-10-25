@@ -11,12 +11,12 @@ const hints: Record<string, string> = { creator: '成员 ID / me / none', assign
 function apply() { const query: QueryParams = {}; for (const [key, value] of Object.entries(fields)) if (typeof value === 'string' && value.trim()) query[key] = key === 'tag' ? value.split(',').map(t => t.trim()).filter(Boolean) : value.trim(); emit('apply', query) }
 </script>
 <template>
-  <el-collapse><el-collapse-item title="编辑全部筛选条件" name="filters"><el-form label-width="160px" class="query-grid">
+  <el-card shadow="never" class="filter-card"><el-collapse><el-collapse-item title="高级筛选" name="filters"><el-form label-width="160px" class="query-grid">
     <el-form-item v-for="(label, key) in filterLabels" :key="key" :label="label">
       <el-select v-if="options[key]" v-model="fields[key]" clearable><el-option v-for="value in options[key]" :key="value" :label="value" :value="value" /></el-select>
       <el-date-picker v-else-if="key === 'date_from' || key === 'date_to'" v-model="fields[key]" value-format="YYYY-MM-DD" clearable />
       <el-input v-else v-model="fields[key]" :placeholder="hints[key] || label" clearable />
     </el-form-item>
-  </el-form><el-button type="primary" @click="apply">应用筛选</el-button></el-collapse-item></el-collapse>
+  </el-form><el-button type="primary" @click="apply">应用筛选</el-button></el-collapse-item></el-collapse></el-card>
 </template>
-<style scoped>.query-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 18px; }</style>
+<style scoped>.filter-card { margin-bottom: 16px; } .filter-card :deep(.el-collapse) { border: 0; } .filter-card :deep(.el-collapse-item__header) { border-bottom: 0; } .filter-card :deep(.el-collapse-item__wrap) { border-bottom: 0; } .query-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 18px; }</style>

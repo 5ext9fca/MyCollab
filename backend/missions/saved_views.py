@@ -1,4 +1,4 @@
-"""保存视图的严格定义校验、私有可见性和日期解析。"""
+"""保存筛选的严格定义校验、私有可见性和日期解析。"""
 from datetime import timedelta
 from django.db import transaction
 from django.db.models import Q
@@ -65,7 +65,7 @@ def validate_definition(definition, target):
         invalid('ordering', '排序字段无效。')
     zoom = definition['zoom']
     if zoom is not None and (target != 'Gantt' or zoom not in ('day', 'week')):
-        invalid('zoom', '只有甘特视图可设置 day/week 缩放。')
+        invalid('zoom', '只有甘特图可设置 day/week 缩放。')
     window = definition['date_window']
     if window is not None:
         if not isinstance(window, dict):
@@ -111,9 +111,9 @@ def save_view(*, actor, data, view_id=None):
     if view_id:
         row = visible(actor).select_for_update().filter(pk=view_id).first()
         if not row:
-            raise NotFound('视图不存在。')
+            raise NotFound('筛选不存在。')
         if row.owner_id != actor.pk and not (row.visibility == 'Team' and actor.is_staff):
-            raise PermissionDenied('只有作者或管理员可修改团队视图。')
+            raise PermissionDenied('只有作者或管理员可修改团队筛选。')
         _check_version(row, data['expected_version'])
     else:
         row = SavedMissionView(owner=actor)
@@ -125,7 +125,7 @@ def save_view(*, actor, data, view_id=None):
         invalid('name', '名称须为 1–100 字符。')
     row.definition = validate_definition(row.definition, row.target)
     if SavedMissionView.objects.filter(owner=row.owner, name=row.name).exclude(pk=row.pk).exists():
-        invalid('name', '你已保存同名视图。')
+        invalid('name', '你已保存同名筛选。')
     if view_id:
         row.version += 1
     row.save()
@@ -137,9 +137,9 @@ def delete_view(*, actor, view_id, expected_version):
     _acquire_team_lock()
     row = visible(actor).select_for_update().filter(pk=view_id).first()
     if not row:
-        raise NotFound('视图不存在。')
+        raise NotFound('筛选不存在。')
     if row.owner_id != actor.pk and not (row.visibility == 'Team' and actor.is_staff):
-        raise PermissionDenied('只有作者或管理员可删除团队视图。')
+        raise PermissionDenied('只有作者或管理员可删除团队筛选。')
     _check_version(row, expected_version)
     row.delete()
 
@@ -192,7 +192,7 @@ class SavedViewSet(viewsets.GenericViewSet):
     def create(self, request):
         data = SavedViewInput(data=request.data); data.is_valid(raise_exception=True)
         if 'expected_version' in data.validated_data:
-            invalid('expected_version', '创建视图无需版本。')
+            invalid('expected_version', '创建筛选无需版本。')
         return Response(self.get_serializer(save_view(actor=request.user, data=data.validated_data)).data, status=201)
 
     def partial_update(self, request, pk=None):
