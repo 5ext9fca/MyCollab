@@ -510,3 +510,11 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除），返回 des
 - 定义严格为 filters/ordering/date_window/zoom。filters 支持 q、status/type/priority、tag 数组 AND、creator/assignee/reviewer（整数 ID/me/none）、parent（UUID/root）、milestone/design_element/production_batch（UUID/none）、blocked/revalidation 布尔。未知字段、错误类型/枚举、无效引用拒绝；关闭里程碑和归档设计可用于历史查询。具体成员筛选已修正为整数。
 - ordering 使用 created_at/updated_at/title/status/priority/type 及负号；zoom 仅 Gantt 支持 day/week。日期为 null、absolute 完整 1–366 天窗口，或 relative:this_week（周一至周日）/next_7_days（含今天）。计划区间筛选包含未排期；me 按打开者解析。定义不保存任务结果、页码、选择或画布状态。
 - 引用失效仍保留定义，列表/详情给警告、resolve 返回 400 阻止执行，不丢弃条件扩大查询。任务广场和工作台提供保存、打开、另存为、明确更新、删除与编辑修复。全部生效条件显示摘要并可移除，完整筛选表单可编辑全部白名单；打开重置页码/选择，手动调整不自动写回。父任务筛选 parent 与甘特分组开关 show_parent 分离，旧 parent=false 分组链接继续可读。
+
+## 批量计划编辑
+
+- 任务广场（含保存的 List 视图）和个人工作中心只选择当前页，切页/分类/筛选/打开视图清空选择，最多 50 项。甘特仍只读。
+- POST `/api/missions/bulk-update/` 接收 items（唯一 UUID、正整数 expected_version）与 changes（仅 priority/milestone/planned_start_date/planned_end_date，至少一个）。省略保持，日期/里程碑 null 清空；priority 不能 null。整体格式/枚举/日期/重复项错误 400 且零写入。
+- `missions.services.bulk_update_missions` 按输入顺序逐项调用原 update_mission，每项独立事务；仅发起者/管理员能编辑 Open/InProgress。权限、版本、冻结、里程碑关闭及双向日期依赖校验不变；已成功项不会因后续项失败回滚。未知异常停止且不伪装业务失败，不自动改变执行顺序或未选任务。事件与通知随各项提交。
+- 结构合法处理完成统一 200，返回 results/succeeded_count/failed_count；每项含 id/success/status，成功含 mission 最新摘要与 version，失败含统一 error。全部业务失败也返回 200，因此界面逐项检查结果。
+- 预览展示任务标题、保持/清空/设值和“可能部分成功”，预览不写入。确认时禁止重复点击；成功取消选择，失败保留并显示原因。失败重试先读取最新数据与版本，再由用户重新预览确认，仅提交剩余失败项。网络/500 结果不确定时不自动重发，须读取全部涉及任务后决定。

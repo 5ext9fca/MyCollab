@@ -5,7 +5,7 @@ import NotificationsView from '../views/NotificationsView.vue'
 import * as api from '../api/notifications'
 vi.mock('../api/notifications', () => ({ workMissions: vi.fn(), workSummary: vi.fn(), listNotifications: vi.fn(), readNotifications: vi.fn(), notifyChanged: vi.fn() }))
 vi.mock('element-plus', () => ({ ElMessage: { error: vi.fn() } }))
-const global = { stubs: { MissionCard: { props: ['mission'], template: '<p>{{ mission.title }}</p>' }, MissionDetailDrawer: true, ElButton: { template: '<button><slot /></button>' }, ElPagination: true, ElEmpty: true, ElSelect: true, ElCheckboxGroup: { template: '<div><slot /></div>' }, ElCheckbox: true }, directives: { loading: () => {} } }
+const global = { stubs: { BulkMissionEditor: true, MissionCard: { props: ['mission'], template: '<p>{{ mission.title }}</p>' }, MissionDetailDrawer: true, ElButton: { template: '<button><slot /></button>' }, ElPagination: true, ElEmpty: true, ElSelect: true, ElCheckboxGroup: { template: '<div><slot /></div>' }, ElCheckbox: true }, directives: { loading: () => {} } }
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(api.workSummary).mockResolvedValue({ today: '2026-10-25', counts: {} as never, unread_notification_count: 0 }) })
 describe('个人工作与收件箱', () => {
   it('切换分类后旧请求不能覆盖新结果，详情动作刷新待办', async () => {

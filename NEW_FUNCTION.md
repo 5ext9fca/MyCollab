@@ -1,6 +1,6 @@
 # 新功能规格：个人工作中心、站内通知、保存视图与受控批量操作
 
-核对日期：2026-10-25。本文件已清空并替换旧规格，仅覆盖本次第 1、2 优先级。本文是待实现规格，不表示功能已交付。编码 Agent 先根据本文定位直接相关代码，信息不足时再扩大调查；不以通读仓库为固定前置步骤。
+实现日期：2026-10-25。本文件覆盖第 1、2 优先级，个人工作中心、站内通知、保存视图和受控批量操作均已实现。业务规则已同步至 PROJECT_STRUCTURE.md，技术约束与日期提醒调度分别同步至 TECH_STACK.md、README.md。以下保留完整功能规格与验收口径。
 
 ## 1. 目标与现有能力核对
 
@@ -14,7 +14,7 @@
 - 派生阻塞、需复核、逾期、日期冲突；里程碑、任务事件、成果多轮历史、评论；单任务字段编辑。
 - 工作台概览、只读甘特图、任务详情抽屉；设计与资产、生产模板已实现，不再列为本次待办。
 
-尚未实现、本次新增：
+本次已实现：
 
 1. 统一个人工作中心与明确的实时待办分类。
 2. 数据库站内通知、任务订阅、已读管理、跨日日期提醒。
@@ -64,7 +64,7 @@
 
 ## 4. B：站内通知与订阅
 
-### 4.1 建议新增模型（均为待实现）
+### 4.1 已实现模型
 
 新增 `backend/notifications/` Django app，迁移、服务、API、测试完整注册。
 
@@ -156,7 +156,7 @@ date_window 支持：
 
 任务广场、工作台增加保存/打开/管理视图入口：保存当前筛选，选择名称与个人/团队；打开后恢复筛选、目标视图与日期，重置页码和选择；后续手动调整只影响当前页面，必须显式“更新视图”才写数据库。当前页面可显示“已修改”；提供另存为，不自动写回共享定义。
 
-目标为 List 使用 `/missions`，Overview 使用 `/workspace?view=overview`，Gantt 继续 `/workspace?view=graph`。前端筛选组件目前未暴露全部后端参数，必须补齐本功能允许保存的参数或保证可见的条件摘要和可移除控件，不能出现生效但不可见的过滤条件。
+目标为 List 使用 `/missions`，Overview 使用 `/workspace?view=overview`，Gantt 继续 `/workspace?view=graph`。前端保留常用筛选控件，并通过 MissionQueryForm.vue 补齐全部白名单参数；SavedViewsBar.vue 显示可移除的生效条件摘要，不存在生效但不可见的过滤条件。
 
 ## 6. D：受控批量操作
 
@@ -209,14 +209,14 @@ items 必须 1–50 项、ID 唯一、版本正整数；changes 至少一个字�
 
 - `backend/missions/models.py`：Mission 含 creator/assignee/reviewer/status/version、priority、milestone、计划日期；MissionDependency 表示显式前置；MissionSubmission 的 outcome/current_submission 支持识别当前退回；MissionEvent 含 actor/action/payload/time。Comment 当前没有对应的 MissionEvent 新评论动作，通知不能假定现成评论事件存在。
 - `backend/missions/services.py`：update_mission、submit_mission、review_mission、transfer_review、reopen_mission、claim/release/cancel、add/remove_dependency、create/update/delete_comment；_acquire_team_lock、_check_version、_record_event；derived_state/derived_state_bulk 与 schedule_risks_bulk。核心计划写入和所有通知触发入口位于这里。
-- `backend/missions/filters.py`：apply_mission_filters，任务列表与工作台复用；多标签 AND，角色 me，依赖 blocked/revalidation，设计/生产批次及日期筛选。当前角色具体 ID 使用 UUID 解析，与 User 整数主键不一致，本次保存视图须纠正这一直接相关问题。
+- `backend/missions/filters.py`：apply_mission_filters，任务列表与工作台复用；多标签 AND，角色 me，依赖 blocked/revalidation，设计/生产批次及日期筛选。本次已将角色具体 ID 修正为整数解析，并增加回归测试。
 - `backend/missions/scheduling.py`：日期窗口校验与区间匹配；`workspace.py`：概览与图读模型，图限 200 节点、50 上下文、1000 边，不能拿图返回内容计算全量个人待办。
 - `backend/missions/views.py`、`serializers.py`、`urls.py`：DRF 入口、输入校验、MissionListSerializer/DetailSerializer、现有 router 与 workspace 路由。Mission PATCH 使用 milestone/reviewer，创建使用 milestone_id/reviewer_id；避免接口字段猜测。
 - `backend/accounts/models.py`：User 继承 AbstractUser、整数 ID、is_staff 管理员、is_active；注册审批为独立表。`backend/config/settings.py` 注册 app、认证与时区；`config/urls.py` 挂载 API。
 - `backend/config/pagination.py`：默认 20、page_size 最大 100、count/next/previous/results 标准分页。`backend/common/permissions.py` 与 `missions/permissions.py` 提供成员权限；`common/exceptions.py` 定义领域异常，missions/exceptions.py 重新导出；`config/exception_handler.py` 统一错误。
-- `backend/missions/management/commands/` 当前有 seed_demo；提醒命令建议置于新增 notifications app 的 management/commands。`deploy/docker-compose.yml` 为生产部署入口，根 docker-compose.yml 用于本地数据库；定时命令示例须依据真实生产服务名编写。
+- `backend/missions/management/commands/` 包含 seed_demo；提醒命令已置于 notifications/management/commands/send_mission_reminders.py。`deploy/docker-compose.yml` 为生产部署入口，根 docker-compose.yml 用于本地数据库；定时命令示例须依据真实生产服务名编写。
 
-新增文件建议：notifications/{models,services,views,serializers,urls}.py 与迁移/测试；missions 下新增个人工作读模型与保存视图查询/序列化模块，批量写服务留在 services.py。允许按职责拆分读模块，不得拆出另一套 Mission 写规则。
+本次新增文件：notifications/{models,services,views,urls}.py、迁移、管理命令与 tests/（通知序列化器在 views.py）；missions/my_work.py 负责个人工作读模型，missions/saved_views.py 负责保存视图校验、服务与接口。批量写服务位于 missions/services.py，复用同一套 Mission 写规则。
 
 ### 7.2 现有前端文件
 
@@ -250,7 +250,7 @@ items 必须 1–50 项、ID 唯一、版本正整数；changes 至少一个字�
 - 批量：整体非法零写入，逐项成功/失败混合、版本冲突、冻结与权限、关闭里程碑、缺省保持与显式清空、日期双向依赖、按顺序部分提交、每项事件通知一致、并发单项编辑不覆盖、错误结果不被 200 掩盖。
 - 前端：分类切换慢响应、详情操作后刷新、通知已读失败、账号缓存清理；保存/打开/另存为与不自动覆盖；选择上限/翻页清空、变更预览不写入、防重复提交、只重试确认后的失败项、网络中断不盲重发。
 
-建议新增 test_my_work.py、notifications/tests/、test_saved_views.py、test_bulk_updates.py 及相应前端 spec。新增文件目前不存在，不应写成已有测试已通过。
+上述后端测试文件现已创建。前端新增 myWork.spec.ts、notificationCache.spec.ts、savedViews.spec.ts、bulkUpdates.spec.ts，并保留原有业务回归。
 
 ### 8.3 实施与交付顺序
 
@@ -258,7 +258,7 @@ items 必须 1–50 项、ID 唯一、版本正整数；changes 至少一个字�
 2. 保存视图模型、校验与 resolve、前端筛选恢复。
 3. 批量操作服务与 UI，接入通知并完成部分成功/重试验证。
 
-每个可独立验证单元按项目规范提交，提交信息中文；不自动 push。空数据库必须能迁移建立最新结构，允许未发布阶段破坏性调整，不额外承担旧条目兼容。实现后将数据模型、接口、权限、页面、通知/筛选/批量规则同步并入 PROJECT_STRUCTURE.md；TECH_STACK.md 同步数据库通知、定时提醒与新增幂等写例外，README 同步真实调度步骤。本文当前仅登记需求，不将待实现功能写入已实现文档。
+每个可独立验证单元按项目规范提交，提交信息中文；不自动 push。空数据库必须能迁移建立最新结构，允许未发布阶段破坏性调整，不额外承担旧条目兼容。实现后将数据模型、接口、权限、页面、通知/筛选/批量规则同步并入 PROJECT_STRUCTURE.md；TECH_STACK.md 同步数据库通知、定时提醒与新增幂等写例外，README 同步真实调度步骤。本次规则已并入上述文档；README 的 cron 示例需由部署维护者在实际服务器配置，仓库实现不会自动修改宿主机定时任务。
 
 实现后的标准验证顺序：
 
@@ -275,3 +275,10 @@ npm run build
 ```
 
 交付报告须说明实际完成项、实际运行验证和未完成事项；不得将本次规格核查等同于功能测试通过。
+
+### 8.4 本次实际验证记录（2026-10-25）
+
+- 后端依次执行 `makemigrations --check --dry-run`、`check`、`test --noinput`：无未生成迁移、系统检查通过、PostgreSQL 上 211 项测试全部通过，测试库正常清理。
+- 前端依次执行 `npm run type-check`、`npm run test`、`npm run build`：类型检查通过、18 个测试文件共 94 项测试通过、生产构建成功；保留既有的大分块体积提示。
+- 本地开发数据库已应用 missions.0008 与 notifications.0001 迁移；个人工作摘要/列表、通知列表/摘要、保存视图列表五个只读接口检查均返回 200。
+- 已补充生产每日提醒 cron 示例和时区配置；未替实际生产服务器安装定时任务，未推送远端。

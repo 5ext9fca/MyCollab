@@ -121,3 +121,7 @@ export const listEvents = (id: string): Promise<Paginated<MissionEvent>> =>
 export const listTags = (): Promise<Tag[]> => request<Tag[]>('GET', '/api/tags/')
 
 export { buildQuery }
+
+export interface BulkChanges { priority?: string; milestone?: string | null; planned_start_date?: string | null; planned_end_date?: string | null }
+export interface BulkResult { id: string; success: boolean; status: number; mission?: Mission; error?: { code: string; message: string; field_errors: Record<string, string[]> } }
+export const bulkUpdateMissions = (items: { id: string; expected_version: number }[], changes: BulkChanges) => request<{ results: BulkResult[]; succeeded_count: number; failed_count: number }>('POST', '/api/missions/bulk-update/', { items, changes })

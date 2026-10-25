@@ -1532,3 +1532,52 @@ def _assert_schedule_dependencies(mission):
     invalid_downstream = MissionDependency.objects.filter(prerequisite=mission, mission__planned_end_date__lt=mission.planned_end_date)
     if invalid_upstream.exists() or invalid_downstream.exists():
         raise ConflictError("计划结束日期与依赖顺序冲突：任务不得早于任何前置结束；延后前置时请先调整下游日期。", code="schedule_dependency_conflict")
+
+
+def bulk_update_missions(*, actor, payload):
+    """整体验证输入后逐项独立提交，绝不为整批包外层事务。"""
+    import uuid
+    from common.exceptions import DomainError
+    if not isinstance(payload, dict) or set(payload) != {'items', 'changes'}:
+        raise ValidationFailure('必须且只能包含 items 和 changes。')
+    items, changes = payload['items'], payload['changes']
+    if not isinstance(items, list) or not 1 <= len(items) <= 50:
+        raise ValidationFailure('一次须选择 1–50 个任务。')
+    allowed = {'priority', 'milestone', 'planned_start_date', 'planned_end_date'}
+    if not isinstance(changes, dict) or not changes or set(changes) - allowed:
+        raise ValidationFailure('只能批量修改优先级、里程碑与计划日期，且至少选择一个字段。')
+    normalized, seen = [], set()
+    for item in items:
+        if not isinstance(item, dict) or set(item) != {'id', 'expected_version'}:
+            raise ValidationFailure('每项须包含任务 id 和 expected_version。')
+        try:
+            pk = uuid.UUID(str(item['id']))
+        except (ValueError, TypeError, AttributeError):
+            raise ValidationFailure('任务 ID 必须为 UUID。')
+        version = item['expected_version']
+        if pk in seen or type(version) is not int or version < 1:
+            raise ValidationFailure('任务不可重复，版本须为正整数。')
+        normalized.append((pk, version)); seen.add(pk)
+    changes = changes.copy()
+    if 'priority' in changes and changes['priority'] not in MissionPriority.values:
+        raise ValidationFailure('优先级无效。')
+    if changes.get('milestone') is not None:
+        try:
+            changes['milestone'] = uuid.UUID(str(changes['milestone']))
+        except (ValueError, TypeError, AttributeError):
+            raise ValidationFailure('里程碑 ID 必须为 UUID 或 null。')
+    for field in ('planned_start_date', 'planned_end_date'):
+        if field in changes:
+            changes[field] = _validate_schedule(changes[field], None)[0]
+    if 'planned_start_date' in changes and 'planned_end_date' in changes:
+        _validate_schedule(changes['planned_start_date'], changes['planned_end_date'])
+    results = []
+    for pk, version in normalized:
+        try:
+            mission = update_mission(actor=actor, mission_id=pk, expected_version=version, changes=changes)
+            results.append({'id': str(pk), 'success': True, 'status': 200, 'mission': mission})
+        except DomainError as exc:
+            results.append({'id': str(pk), 'success': False, 'status': exc.status_code,
+                'error': {'code': exc.code, 'message': exc.message, 'field_errors': exc.field_errors}})
+    succeeded = sum(item['success'] for item in results)
+    return {'results': results, 'succeeded_count': succeeded, 'failed_count': len(results) - succeeded}

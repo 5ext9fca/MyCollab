@@ -116,6 +116,14 @@ class MissionViewSet(
         output = MissionDetailSerializer(mission, context=self.get_serializer_context())
         return Response(output.data)
 
+    @action(detail=False, methods=['post'], url_path='bulk-update')
+    def bulk_update(self, request):
+        result = services.bulk_update_missions(actor=request.user, payload=request.data)
+        for item in result['results']:
+            if item['success']:
+                item['mission'] = MissionListSerializer(item['mission'], context=self.get_serializer_context()).data
+        return Response(result)
+
     # -- Actions ---------------------------------------------------------- #
     def _detail_response(self, mission):
         return Response(
