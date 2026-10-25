@@ -141,3 +141,18 @@ body {
 .section-card { margin-bottom: 16px; }
 .toolbar--flush { margin-bottom: 0; }
 .page-header { flex-wrap: wrap; }
+
+/* 等宽两侧固定中间导航位置，页面标题长度不会影响按钮位置。 */
+.design-page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.design-page-header > h2 { min-width: 0; overflow-wrap: anywhere; }
+.design-page-header > .design-navigation { justify-self: center; }
+.design-page-header > .el-button { justify-self: end; }
+@media (max-width: 720px) {
+  .design-page-header { grid-template-columns: minmax(0, 1fr) auto; }
+  .design-page-header > h2 { grid-column: 1; grid-row: 1; }
+  .design-page-header > .el-button { grid-column: 2; grid-row: 1; }
+  .design-page-header > .design-navigation { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
+}

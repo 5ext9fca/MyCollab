@@ -89,7 +89,7 @@ async function changed() { await load(); treeRevision.value++ }
 </script>
 <template>
   <div class="page">
-    <div class="page-header"><h2>设计与资产</h2><DesignNavigation active="design" /><el-button type="primary" @click="openEditor()">新建条目</el-button></div>
+    <div class="page-header design-page-header"><h2>设计与资产</h2><DesignNavigation active="design" /><el-button type="primary" @click="openEditor()">新建条目</el-button></div>
     <div class="design-layout">
       <aside>
         <el-card class="section-card" shadow="never"><div class="design-filters">

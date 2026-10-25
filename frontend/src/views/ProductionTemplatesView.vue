@@ -66,7 +66,7 @@ onMounted(load)
 </script>
 <template>
   <div class="page">
-    <div class="page-header"><h2>资产生产模板</h2><DesignNavigation active="production-templates" /><el-button type="primary" @click="edit()">新建模板</el-button></div>
+    <div class="page-header design-page-header"><h2>资产生产模板</h2><DesignNavigation active="production-templates" /><el-button type="primary" @click="edit()">新建模板</el-button></div>
     <el-card class="section-card" shadow="never">
     <div class="toolbar"><el-input v-model="query" placeholder="搜索模板" clearable @keyup.enter="filter" @clear="filter" /><el-select v-model="archived" @change="filter"><el-option label="未归档" value="false" /><el-option label="已归档" value="true" /><el-option label="全部" value="all" /></el-select><el-button @click="filter">查询</el-button></div>
     <el-table v-loading="loading" :data="templates" @row-click="(item: ProductionTemplate) => { eventPage = 1; inspect(item) }">

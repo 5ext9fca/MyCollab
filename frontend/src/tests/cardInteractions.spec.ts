@@ -55,7 +55,7 @@ describe('卡片交互隔离', () => {
   })
 
   it('设计展开按钮只展开子树，卡片标题保留路由链接', async () => {
-    vi.mocked(listDesignElements).mockResolvedValueOnce({ results: [{ id: 'd', title: '设计条目', kind: 'Design', has_children: true }] as never, count: 1, next: null, previous: null }).mockResolvedValue({ results: [], count: 0, next: null, previous: null })
+    vi.mocked(listDesignElements).mockResolvedValueOnce({ results: [{ id: 'd', title: '设计条目', kind: 'Design', has_children: true }] as never, count: 1, next: null, previous: null }).mockResolvedValue({ results: [{ id: 'a', title: '子资产', kind: 'Asset', has_children: false }] as never, count: 1, next: null, previous: null })
     const navigation = await router()
     const wrapper = mount(DesignTreeBranch, { props: { archived: 'false' }, global: { plugins: [ElementPlus, navigation] } }); wrappers.push(wrapper)
     await flushPromises()
@@ -64,7 +64,10 @@ describe('卡片交互隔离', () => {
     expect(navigation.currentRoute.value.path).toBe('/design')
     expect(wrapper.get('button[aria-expanded]').attributes('aria-expanded')).toBe('true')
     expect(listDesignElements).toHaveBeenLastCalledWith(expect.objectContaining({ parent: 'd' }))
-    expect(wrapper.get('.design-item-card').find('.design-tree').exists()).toBe(false)
+    expect(wrapper.get('.design-item-card').get('.design-children .design-item-card').text()).toContain('子资产')
+    expect(wrapper.get('.design-children a.card-title').attributes('href')).toBe('/design/a')
+    await wrapper.get('button[aria-expanded]').trigger('click')
+    expect(wrapper.find('.design-children').exists()).toBe(false)
   })
 
   it('设计与生产按钮导航保留当前页标识和目标路由', async () => {
