@@ -1,0 +1,32 @@
+---
+description: 开发命令与验证
+alwaysApply: true
+---
+
+# 开发命令与验证
+
+## 常用命令
+
+后端（在 `backend/`，使用 `.venv`）：
+- 启动依赖数据库（仓库根）：`docker compose up -d`
+- 迁移：`.venv/bin/python manage.py migrate`
+- 建用户：`.venv/bin/python manage.py createsuperuser`
+- 开发服务器：`.venv/bin/python manage.py runserver`（http://127.0.0.1:8000）
+- 全部测试：`.venv/bin/python manage.py test`
+- 单个测试：`.venv/bin/python manage.py test missions.tests.test_services.MissionServiceTests.test_claim_sets_assignee_and_is_exclusive`
+- 迁移检查：`.venv/bin/python manage.py makemigrations --check --dry-run`
+
+前端（在 `frontend/`）：
+- 开发：`npm run dev`（http://127.0.0.1:5173，代理 `/api` 到 8000）
+- 类型检查：`npm run type-check`
+- 测试：`npm run test`（单个文件：`npm run test -- src/tests/client.spec.ts`）
+- 生产构建：`npm run build`
+
+## 修改后如何验证
+
+按 `README.md` 的顺序执行：后端 `makemigrations --check --dry-run` → `check` → `test`；前端 `type-check` → `test` → `build`。不得声称未运行的测试已通过；每次交付说明改动、验证结果与未完成事项。
+
+## 已确定决策
+
+- UI 组件库：**Element Plus**（见 `TECH_STACK.md` 第 8 节）。
+- 运行时：Python 3.14 / Django 6.1 / DRF 3.18 / PostgreSQL 16 / Node 24（依赖版本见 `backend/requirements.txt` 与 `frontend/package.json`）。

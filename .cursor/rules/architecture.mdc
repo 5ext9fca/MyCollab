@@ -1,0 +1,20 @@
+---
+description: 架构与业务约束
+alwaysApply: true
+---
+
+# 架构与业务约束
+
+## 架构关键点（容易踩坑）
+
+- **所有业务写入必须走 `backend/missions/services.py`。** DRF 视图只做解析/认证/调用服务/序列化；Django Admin 的写操作也调用同一服务。禁止新增绕过状态机的通用字段更新。
+- 认领/退出/提交/验收/取消都在事务内用 `select_for_update` + 状态校验实现；并发认领只有一个成功，其余返回 `409`（`code=claim_conflict`）。不要写成“先查再写”。
+- 状态固定为 `Open/InProgress/Submitted/Done/Cancelled`：`Open` 认领者为空，`InProgress/Submitted/Done` 必须有认领者，`Cancelled` 保留原认领者（数据库 CheckConstraint 强制）。
+- `Submitted`/`Done` 冻结内容；父任务需未取消的子任务全部 `Done` 才能提交，但不会自动完成；禁止父子循环与自引用。
+- 编辑用 `version` 乐观锁：`PATCH /api/missions/{id}/` 必须以 `expected_version` 传入当前 `version`，过期返回 `409`（`code=version_conflict`）。
+- API 错误统一为 `{code, message, field_errors}`（`backend/config/exception_handler.py`）；服务层抛 `backend/missions/exceptions.py` 的 `DomainError` 子类。
+- 认证是 Django Session + CSRF。Vite 代理必须保持 `changeOrigin: false`，否则 CSRF Origin 校验会失败。
+- 前端 API 调用集中在 `src/api/`，统一用 `request()` 处理 CSRF/错误；Markdown 必须经 `MarkdownContent.vue`（DOMPurify 清洗）渲染，不得直接 `v-html` 用户输入。
+- 用户素材库（`backend/library/`）：文件按用户隔离存放于 `MEDIA_ROOT/library/<user_id>/`，**不作为公开静态目录**（生产由 Caddy 代理 `/api` 后经 API 下载），只能经 `GET /api/library/files/{id}/` 授权下载；上传与删除走 `library/services.py`。
+- 所有 Markdown 字段（Mission 的 `content`/`acceptance_criteria` 与评论 `content`）在服务层校验引用：只允许作者自己的素材链接或 `http(s)` 外链，其余返回 `400`（见 `library/references.py`）。
+- **不要用 SQLite 跑并发/事务测试**：`missions/tests/test_concurrency.py` 依赖 PostgreSQL。
