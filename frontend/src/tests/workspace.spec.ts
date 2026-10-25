@@ -796,7 +796,7 @@ describe('WorkspaceView', () => {
         { path: '/missions/:id', name: 'mission-detail', component: { template: '<div />' } },
       ],
     })
-    router.push('/workspace')
+    router.push('/workspace?view=overview')
     await router.isReady()
 
     const WorkspaceView = (await import('../views/WorkspaceView.vue')).default
@@ -920,6 +920,14 @@ describe('WorkspaceView focus lifecycle', () => {
 
   const urls = (fetchMock: ReturnType<typeof vi.fn>) =>
     fetchMock.mock.calls.map(([input]) => String(input))
+
+  it('未指定视图时默认显示甘特图', async () => {
+    const { wrapper, fetchMock } = await mountWorkspace('/workspace')
+    expect(wrapper.find('.graph-stub').exists()).toBe(true)
+    expect(urls(fetchMock).some(url => url.startsWith('/api/workspace/graph'))).toBe(true)
+    expect(urls(fetchMock).some(url => url.startsWith('/api/workspace/overview'))).toBe(false)
+    wrapper.unmount()
+  })
 
   it('clears the focus, the relation scope and the URL when the drawer closes', async () => {
     const { wrapper, router, fetchMock } = await mountWorkspace(

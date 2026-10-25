@@ -41,7 +41,7 @@ import WorkspaceFilterBar from '../components/WorkspaceFilterBar.vue'
 const route = useRoute()
 const router = useRouter()
 
-const view = ref<'overview' | 'graph'>('overview')
+const view = ref<'overview' | 'graph'>('graph')
 const overview = ref<WorkspaceOverview | null>(null)
 const graph = ref<WorkspaceGraph | null>(null)
 const dateFrom = ref('')
@@ -311,7 +311,7 @@ function applyQuery() {
   dateFrom.value = readParam(query.date_from)
   dateTo.value = readParam(query.date_to)
   dateZoom.value = readParam(query.zoom) === 'week' ? 'week' : 'day'
-  view.value = readParam(query.view) === 'graph' ? 'graph' : 'overview'
+  view.value = readParam(query.view) === 'overview' ? 'overview' : 'graph'
   selectedId.value = readParam(query.selected) || null
   const limit = Number(readParam(query.limit))
   columnLimit.value = Number.isFinite(limit) && limit > 0 ? limit : 20
@@ -344,7 +344,7 @@ function queryFromState(): Record<string, string> {
   const set = (key: string, value: string) => {
     if (value) out[key] = value
   }
-  if (view.value === 'graph') out.view = 'graph'
+  out.view = view.value
   set('date_from', dateFrom.value)
   set('date_to', dateTo.value)
   if (dateZoom.value !== 'day') set('zoom', dateZoom.value)
