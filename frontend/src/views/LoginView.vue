@@ -24,7 +24,7 @@ async function onSubmit() {
   try {
     await auth.login(form.username, form.password)
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : undefined
-    await router.push(redirect ?? { name: 'square' })
+    await router.push(redirect ?? { name: 'my-work' })
   } catch (e) {
     error.value = e instanceof ApiException ? e.message : '登录失败，请稍后重试。'
     ElMessage.error(error.value)

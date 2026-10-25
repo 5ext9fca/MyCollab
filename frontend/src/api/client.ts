@@ -103,5 +103,8 @@ export async function request<T>(method: string, path: string, body?: unknown): 
       error.field_errors ?? {},
     )
   }
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase()) && path.startsWith('/api/missions/')) {
+    window.dispatchEvent(new Event('notifications-changed'))
+  }
   return data as T
 }

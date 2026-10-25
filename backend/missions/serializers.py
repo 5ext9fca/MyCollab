@@ -83,7 +83,7 @@ class MissionBulkListSerializer(serializers.ListSerializer):
     def to_representation(self, data):
         from .services import derived_state_bulk
         rows = list(data.all() if hasattr(data, "all") else data)
-        states = derived_state_bulk(rows)
+        states = derived_state_bulk(rows, today=self.context.get("today"))
         for row in rows:
             row._derived_cache = states[row.pk]
         return super().to_representation(rows)
@@ -477,8 +477,17 @@ class CommentUpdateSerializer(serializers.Serializer):
     content = serializers.CharField(required=True, allow_blank=True)
 
 
+class StrictIntegerField(serializers.IntegerField):
+    def to_internal_value(self, data):
+        if type(data) is not int:
+            raise serializers.ValidationError('必须为 JSON 整数。')
+        return super().to_internal_value(data)
+
+
 class StrictInputSerializer(serializers.Serializer):
     def to_internal_value(self, data):
+        if not isinstance(data, dict):
+            raise serializers.ValidationError({"body": ["必须为 JSON 对象。"]})
         unknown = set(data) - set(self.fields)
         if unknown:
             raise serializers.ValidationError({key: ["不支持的字段。"] for key in sorted(unknown)})

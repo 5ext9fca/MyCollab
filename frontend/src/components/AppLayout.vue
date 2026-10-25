@@ -1,14 +1,29 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useAuthStore } from '../stores/auth'
+
+import { notificationSummary } from '../api/notifications'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
+const unread = ref(0)
+let generation = 0
+async function refreshNotifications() {
+  const token = ++generation
+  if (!auth.user || document.hidden) return
+  try { const result = await notificationSummary(); if (token === generation) unread.value = result.unread_count } catch { /* 通知失败不阻断页面。 */ }
+}
+watch(() => auth.user?.id, () => { generation++; unread.value = 0; void refreshNotifications() })
+let timer: ReturnType<typeof setInterval>
+onMounted(() => { void refreshNotifications(); timer = setInterval(refreshNotifications, 60000); window.addEventListener('notifications-changed', refreshNotifications); window.addEventListener('focus', refreshNotifications) })
+onUnmounted(() => { generation++; clearInterval(timer); window.removeEventListener('notifications-changed', refreshNotifications); window.removeEventListener('focus', refreshNotifications) })
 const activeMenu = computed(() => {
+  if (route.name === 'my-work') return '/my-work'
+  if (route.name === 'notifications') return '/notifications'
   if (route.name === 'design' || route.name === 'production-templates') return '/design'
   if (route.name === 'workspace') return '/workspace'
   if (route.name === 'claimed') return '/claimed'
@@ -36,6 +51,8 @@ async function onLogout() {
         :ellipsis="false"
         class="app-header__menu"
       >
+        <el-menu-item index="/my-work">我的工作</el-menu-item>
+        <el-menu-item index="/notifications">通知 {{ unread || '' }}</el-menu-item>
         <el-menu-item index="/missions">任务广场</el-menu-item>
         <el-menu-item index="/design">设计与资产</el-menu-item>
         <el-menu-item index="/workspace">工作台</el-menu-item>
@@ -51,7 +68,7 @@ async function onLogout() {
       </div>
     </el-header>
     <el-main>
-      <router-view />
+      <router-view :key="auth.user?.id" />
     </el-main>
   </el-container>
 </template>

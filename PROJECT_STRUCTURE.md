@@ -491,3 +491,14 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除），返回 des
 - 图节点新增日期、风险、`milestone_due_date`、`unloaded_prerequisite_count`；存在未加载前置或截断时 `relationships_complete=false`。原 200 节点、50 上下文、1000 边上限保留，页面明确提示并提供带筛选和日期的分页任务列表入口。`revision` 额外包含今天、窗口、所有直接前置的版本/状态/结束日期及里程碑日期/版本，因此隐藏前置改期、里程碑单独改期和跨日都会刷新风险。
 - URL 保留原 `view=graph` 及焦点/筛选参数，新增 `date_from/date_to/zoom`。旧慢响应受请求代次保护；关闭抽屉清除焦点，保留日期、档位与视口。折叠仅改变显示，不改任务日期。
 - 验证入口：`backend/missions/tests/test_scheduling.py`（日期、权限、冻结、数据库约束、风险、窗口、revision 与依赖/改期并发）；`frontend/src/tests/scheduling.spec.ts`（日期坐标与缺失/裁剪）；`workspaceGraph.integration.spec.ts`（真实 Vue Flow、结束端、父子折叠、只读行为）；`workspace.spec.ts`（URL、筛选、请求代次与抽屉）。
+
+## 个人工作中心与站内通知
+
+- `/my-work` 是登录默认入口（保留登录 redirect）：待我验收、当前被退回、即将到期（今天至后 3 天）、已逾期、依赖已解除、需要复核六类动态待办。分类可重叠，不能加总为独立任务数。管理员也只按本人角色计算；认领者的依赖已解除列表要求至少一条显式前置且全 Done，仍展示子任务约束。
+- `GET /api/my-work/summary/` 返回服务端 today、分类 counts、未读通知数；`GET /api/my-work/missions/?category=...` 全量查询、标准分页，结束日期升序空值末尾、更新时间倒序与 ID 稳定排序。拒绝覆盖身份及额外业务筛选。页面焦点、操作后刷新，可见时每分钟刷新摘要；列表请求代次隔离。
+- 新 `notifications` app：Notification(UUID、recipient、mission、actor 可空、kind、source_key、纯文本 payload、created_at/read_at)，唯一 recipient/source_key；MissionSubscription(UUID、user、mission、Follow/Mute、version、时间)，唯一 user/mission。
+- 默认当前发起者/认领者/验收者及额外 Follow 成员收到普通动态，Mute 排除普通动态。提交给验收者、退回给认领者、转交给新验收者、需复核给发起者/验收者及日期提醒属于不可静音职责提醒。去重、排除操作者与停用用户；不回填历史。旧验收者按普通动态规则保留转交通知。
+- 新评论不存正文，编辑/删除不另发通知；计划日期/优先级/里程碑实际变化合并为一个通知，空改动不发。任务事件、通知与业务同事务提交。直接依赖真假翻转触发解除或 Done 下游需复核通知，不自动重开任务，不传播多跳。
+- `/notifications` 收件箱：GET `/api/notifications/` 按 read=all/unread/read 标准分页；GET `summary/` 返回 unread_count；POST `read/` 接受 1–100 个唯一 ids，全部归属预检、原子幂等已读，其他人/不存在统一 404。只看列表不标已读，点击或明确批量操作才标记。
+- GET/PUT `/api/missions/{id}/subscription/` 仅本人，首次 expected_version=0，后续带版本，并发更新冲突 409；不影响 Mission 版本。管理员不能访问他人私人通知/订阅。
+- `send_mission_reminders` 命令在团队锁与任务行锁内复查当前日期/状态/角色，按任务+截止日+kind 幂等写入。支持重跑、漏跑、改期；不提醒 Done/Cancelled。部署调度见 README，服务端时区由 DJANGO_TIME_ZONE 控制。

@@ -244,3 +244,9 @@ Redis、后台任务队列、WebSocket、独立搜索服务与 Kubernetes 不属
 - Docker Compose 生产部署：https://docs.docker.com/compose/how-tos/production/
 
 - Mission 日期写入复用原创建/PATCH 和服务事务，结束顺序约束与新增依赖在团队锁内共同校验；不做自动排程。甘特图继续使用 `/api/workspace/graph/`，日/周档位、日期窗口和可访问列表均使用现有 Vue/Element Plus/Vue Flow，不增加图布局或时间管理依赖。
+
+## 12. 站内通知与日期提醒
+
+数据库 `notifications` app 保存站内通知与任务订阅。MUST 与任务事件同事务持久化通知，以 recipient/source_key 唯一约束去重；不使用进程内异步任务承担可靠投递。日期提醒复用团队 advisory lock 后锁任务并重新检查，部署侧 cron 每日运行 `send_mission_reminders`，无需增加队列服务。
+
+通知已读是版本规则的明确幂等例外：只允许当前用户明确选择的 1–100 个 ID，整批归属预检后更新，不要求 expected_version。订阅仍要求乐观锁，首次版本 0。前端个人数据随账户切换卸载，通知失败不阻断任务操作。

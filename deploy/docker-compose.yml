@@ -27,6 +27,7 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       DJANGO_DEBUG: "False"
+      DJANGO_TIME_ZONE: ${DJANGO_TIME_ZONE:-UTC}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in .env}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost}
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-https://localhost}

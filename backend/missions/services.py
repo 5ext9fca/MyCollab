@@ -70,6 +70,22 @@ def _acquire_team_lock() -> None:
         cursor.execute("SELECT pg_advisory_xact_lock(%s)", [TEAM_OPS_LOCK_KEY])
 
 
+def _notify_dependency_changes(func):
+    """在团队锁内比较直接邻接风险，通知与业务事务一起回滚。"""
+    from functools import wraps
+
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        from notifications.services import dependency_snapshot, dependency_changes
+        _acquire_team_lock()
+        before = dependency_snapshot(kwargs['mission_id'])
+        result = func(*args, **kwargs)
+        event = MissionEvent.objects.filter(mission_id=kwargs['mission_id']).order_by('-pk').first()
+        dependency_changes(before, actor=kwargs['actor'], source_event=event)
+        return result
+    return wrapped
+
+
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
@@ -103,7 +119,9 @@ def _get_locked_milestone(milestone_id) -> Milestone:
 
 
 def _record_event(mission: Mission, actor, action: str, payload: dict | None = None) -> None:
-    MissionEvent.objects.create(mission=mission, actor=actor, action=action, payload=payload or {})
+    from notifications.services import from_event
+    event = MissionEvent.objects.create(mission=mission, actor=actor, action=action, payload=payload or {})
+    from_event(event)
 
 
 def _record_milestone_event(
@@ -278,7 +296,7 @@ def derived_state(mission: Mission) -> dict:
     }
 
 
-def derived_state_bulk(missions: Iterable[Mission]) -> dict:
+def derived_state_bulk(missions: Iterable[Mission], *, today=None) -> dict:
     """Batch version of :func:`derived_state` keyed by mission id.
 
     The workspace endpoints render whole boards and graphs; querying each node
@@ -304,7 +322,7 @@ def derived_state_bulk(missions: Iterable[Mission]) -> dict:
     ):
         unfinished_children.setdefault(parent_id, []).append(str(child_id))
 
-    risks = schedule_risks_bulk(missions)
+    risks = schedule_risks_bulk(missions, today=today)
     result: dict = {}
     for mission in missions:
         blocking_ids = blocking.get(mission.id, [])
@@ -605,6 +623,7 @@ def update_mission(*, actor, mission_id, expected_version: int, changes: dict) -
 
 @transaction.atomic
 def claim_mission(*, actor, mission_id, expected_version) -> Mission:
+    _acquire_team_lock()
     mission = _get_locked(mission_id)
     _check_version(mission, expected_version)
     # Row lock + status/assignee guard: concurrent claims resolve to exactly one
@@ -621,6 +640,7 @@ def claim_mission(*, actor, mission_id, expected_version) -> Mission:
 
 @transaction.atomic
 def release_mission(*, actor, mission_id, expected_version) -> Mission:
+    _acquire_team_lock()
     mission = _get_locked(mission_id)
     _check_version(mission, expected_version)
     if mission.assignee_id != actor.pk:
@@ -765,6 +785,7 @@ def submit_mission(
 
 
 @transaction.atomic
+@_notify_dependency_changes
 def review_mission(
     *,
     actor,
@@ -915,6 +936,7 @@ def transfer_review(
 
 
 @transaction.atomic
+@_notify_dependency_changes
 def reopen_mission(*, actor, mission_id, reason: str, expected_version) -> Mission:
     _acquire_team_lock()
     mission = _get_locked(mission_id)
@@ -1003,6 +1025,7 @@ def cancel_mission(*, actor, mission_id, reason: str = "", expected_version) -> 
 # Dependencies
 # --------------------------------------------------------------------------- #
 @transaction.atomic
+@_notify_dependency_changes
 def add_dependency(*, actor, mission_id, prerequisite_id, expected_version) -> MissionDependency:
     _acquire_team_lock()
     mission = _get_locked(mission_id)
@@ -1038,6 +1061,7 @@ def add_dependency(*, actor, mission_id, prerequisite_id, expected_version) -> M
 
 
 @transaction.atomic
+@_notify_dependency_changes
 def remove_dependency(*, actor, mission_id, dependency_id, expected_version) -> None:
     _acquire_team_lock()
     mission = _get_locked(mission_id)
@@ -1195,10 +1219,14 @@ def transition_milestone(*, actor, milestone_id, status: str, expected_version, 
 @transaction.atomic
 def create_comment(*, actor, mission_id, content: str = "") -> Comment:
     """Any team member may comment on any mission, in any status."""
+    _acquire_team_lock()
     mission = _get_mission(mission_id)
     content = content or ""
     assert_markdown_references_allowed(content, actor, field="content")
-    return Comment.objects.create(mission=mission, author=actor, content=content)
+    from notifications.services import deliver
+    comment = Comment.objects.create(mission=mission, author=actor, content=content)
+    deliver(mission=mission, actor=actor, kind='comment_created', source_key=f'comment:{comment.pk}:created')
+    return comment
 
 
 @transaction.atomic
@@ -1480,7 +1508,7 @@ def _schedule_values(mission):
     return {key: getattr(mission, key).isoformat() if getattr(mission, key) else None for key in ("planned_start_date", "planned_end_date")}
 
 
-def schedule_risks_bulk(missions):
+def schedule_risks_bulk(missions, *, today=None):
     missions = list(missions)
     by_id = {mission.pk: mission for mission in missions}
     conflicts = {pk: [] for pk in by_id}
@@ -1488,7 +1516,7 @@ def schedule_risks_bulk(missions):
         start = by_id[mission_id].planned_start_date
         if start and end and end > start:
             conflicts[mission_id].append(str(prerequisite_id))
-    today = timezone.localdate()
+    today = today or timezone.localdate()
     return {m.pk: {
         "overdue": bool(m.status in [MissionStatus.OPEN, MissionStatus.IN_PROGRESS, MissionStatus.SUBMITTED] and m.planned_end_date and m.planned_end_date < today),
         "dependency_date_conflict_ids": sorted(conflicts[m.pk]),

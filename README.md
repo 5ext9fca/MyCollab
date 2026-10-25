@@ -128,3 +128,21 @@ docker compose up -d --build
 ```
 
 Caddy 在同一域名下按 `/api/*`、`/admin/*`、`/static/*`、其余交给 SPA 的顺序处理请求；数据库只在内部网络开放。上传的附件保存在 `media_data` 卷（`/app/media`），Caddy 不提供该目录，下载一律经 `GET /api/library/files/{id}/`。备份、关闭 DEBUG、使用真实密钥等要求见 `TECH_STACK.md` 第 9 节。
+
+### 站内日期提醒调度
+
+后端 `DJANGO_TIME_ZONE` 默认 `UTC`，需要中国自然日口径时在部署环境中设置为 `Asia/Shanghai`，重建 backend 后生效。任务待办与提醒使用同一服务端日期。
+
+生产服务器可通过 cron 每天运行一次（替换 `/opt/MyCollabAdvanced` 为实际路径，运行用户须有 Docker 权限）：
+
+```cron
+0 8 * * * cd /opt/MyCollabAdvanced/deploy && docker compose exec -T backend python manage.py send_mission_reminders >> /var/log/mycollab-reminders.log 2>&1
+```
+
+cron 的 08:00 使用宿主机时区；确认宿主机时区与期望调度时间一致，并确保日志路径可写、配置日志轮转及非零退出监控。手动重跑：
+
+```bash
+docker compose -f deploy/docker-compose.yml exec -T backend python manage.py send_mission_reminders
+```
+
+命令输出扫描任务数及新增通知数，失败非零退出。同一任务/截止日/提醒类型/接收人只写一次；漏跑后补发当前适用提醒。无需 Redis 或 Celery。

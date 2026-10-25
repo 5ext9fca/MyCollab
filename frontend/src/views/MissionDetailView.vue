@@ -53,6 +53,7 @@ import {
 } from '../missionMeta'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import MissionDesignLink from '../components/MissionDesignLink.vue'
+import MissionSubscription from '../components/MissionSubscription.vue'
 import MissionSchedule from '../components/MissionSchedule.vue'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 import MissionForm from '../components/MissionForm.vue'
@@ -670,6 +671,7 @@ function formatDate(value: string | null) {
       <section class="section">
         <h3>背景与目标</h3>
         <MissionDesignLink :element="mission.design_element" />
+        <MissionSubscription v-if="mission" :mission-id="mission.id" />
         <MissionSchedule :mission="mission" />
         <MarkdownContent :source="mission.content" />
       </section>

@@ -9,5 +9,6 @@ urlpatterns = [
     path("api/admin/", include("accounts.admin_urls")),
     path("api/library/", include("library.urls")),
     path("api/members/", MemberListView.as_view(), name="member-list"),
+    path("api/", include("notifications.urls")),
     path("api/", include("missions.urls")),
 ]

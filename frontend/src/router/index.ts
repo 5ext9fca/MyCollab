@@ -21,7 +21,9 @@ export const router = createRouter({
       children: [
         { path: 'design/templates', name: 'production-templates', component: () => import('../views/ProductionTemplatesView.vue') },
         { path: 'design/:id?', name: 'design', component: () => import('../views/DesignView.vue') },
-        { path: '', redirect: { name: 'square' } },
+        { path: '', redirect: { name: 'my-work' } },
+        { path: 'my-work', name: 'my-work', component: () => import('../views/MyWorkView.vue') },
+        { path: 'notifications', name: 'notifications', component: () => import('../views/NotificationsView.vue') },
         {
           path: 'missions',
           name: 'square',
@@ -94,7 +96,7 @@ router.beforeEach(async (to) => {
     return { name: 'square' }
   }
   if (to.meta.guestOnly && auth.user) {
-    return { name: 'square' }
+    return { name: 'my-work' }
   }
   return true
 })

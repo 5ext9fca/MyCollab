@@ -6,10 +6,12 @@ import type { Mission } from '../api/types'
 import { PRIORITY_TAG, TYPE_LABELS, TYPE_TAG } from '../missionMeta'
 import StatusTag from './StatusTag.vue'
 
-const props = defineProps<{ mission: Mission }>()
+const props = defineProps<{ mission: Mission; openInDrawer?: boolean }>()
+const emit = defineEmits<{ open: [id: string] }>()
 const router = useRouter()
 
 function open() {
+  if (props.openInDrawer) { emit('open', props.mission.id); return }
   router.push({ name: 'mission-detail', params: { id: props.mission.id } })
 }
 </script>

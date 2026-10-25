@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "accounts",
     "missions",
     "library",
+    "notifications",
 ]
 
 MIDDLEWARE = [
@@ -98,7 +99,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "zh-hans"
-TIME_ZONE = "UTC"
+TIME_ZONE = os.environ.get("DJANGO_TIME_ZONE", "UTC")
 USE_I18N = True
 USE_TZ = True
 
