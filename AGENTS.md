@@ -6,6 +6,7 @@ MyCollab 是一个**单团队 Mission 协作系统**：发布 Mission、认领�
 - 产品规则与数据模型：`PROJECT_STRUCTURE.md`
 - 技术栈与实现约束（MUST 为硬性要求）：`TECH_STACK.md`
 - 命令与本地上手：`README.md`
+- 前端卡片审美：`.cursor/rules/card-aesthetics.mdc`（新增或修改页面时遵循）
 
 已实现功能包括：Mission 全流程、任务下的 Markdown 评论（作者可编辑/删除）、按用户隔离的素材库（文件按用户存放，Markdown 只可引用自己的素材或外链 URL）、用户注册（需管理员审批）、以及 SPA 内自行实现的管理后台（`/manage`，区别于 Django Admin）。
 

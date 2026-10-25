@@ -869,7 +869,7 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
-    <section v-if="view === 'graph' && graph" class="workspace__date-list">
+    <el-card v-if="view === 'graph' && graph" shadow="never" class="workspace__date-list">
       <p v-if="grouped?.hidden.size" class="meta">折叠后的依赖线是隐藏任务关系的汇总，父任务日期不代表全部子任务排期；请展开核对。</p>
       <p class="meta">里程碑目标：<span v-for="item in [...new Map(graphNodes.filter(n => n.milestone_id).map(n => [n.milestone_id, n])).values()]" :key="item.id">{{ item.milestone_name }} {{ item.milestone_due_date ?? '未设日期' }}；</span></p>
       <details><summary>已加载任务的日期与风险列表（支持键盘打开详情）</summary>
@@ -880,7 +880,7 @@ onBeforeUnmount(() => {
         </el-table>
       </details>
       <el-button @click="openPagedList">在分页任务列表中查看当前范围</el-button>
-    </section>
+    </el-card>
     <div class="workspace__legend">
       <span class="meta">状态：</span>
       <el-tag size="small" type="info">待认领</el-tag>
@@ -992,6 +992,20 @@ onBeforeUnmount(() => {
   height: 10px;
   border-radius: 2px;
   flex: none;
+}
+.workspace__date-list {
+  margin-top: 16px;
+}
+.workspace__date-list details {
+  margin-bottom: 16px;
+}
+.workspace__date-list summary {
+  cursor: pointer;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.workspace__date-list details[open] summary {
+  margin-bottom: 12px;
 }
 .workspace__legend {
   display: flex;

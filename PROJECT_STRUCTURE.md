@@ -492,6 +492,8 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除），返回 des
 - URL 保留原 `view=graph` 及焦点/筛选参数，新增 `date_from/date_to/zoom`。旧慢响应受请求代次保护；关闭抽屉清除焦点，保留日期、档位与视口。折叠仅改变显示，不改任务日期。
 - 验证入口：`backend/missions/tests/test_scheduling.py`（日期、权限、冻结、数据库约束、风险、窗口、revision 与依赖/改期并发）；`frontend/src/tests/scheduling.spec.ts`（日期坐标与缺失/裁剪）；`workspaceGraph.integration.spec.ts`（真实 Vue Flow、结束端、父子折叠、只读行为）；`workspace.spec.ts`（URL、筛选、请求代次与抽屉）。
 
+- 工作台甘特图下方的日期与风险列表使用独立 Element Plus 卡片，包含折叠关系说明、里程碑目标、可折叠任务表格及分页列表入口；保留键盘展开列表和打开任务详情的能力。
+
 ## 个人工作中心与站内通知
 
 - `/my-work` 是登录默认入口（保留登录 redirect）：待我验收、当前被退回、即将到期（今天至后 3 天）、已逾期、依赖已解除、需要复核六类动态待办。分类可重叠，不能加总为独立任务数。管理员也只按本人角色计算；认领者的依赖已解除列表要求至少一条显式前置且全 Done，仍展示子任务约束。
