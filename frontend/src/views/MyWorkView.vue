@@ -42,13 +42,20 @@ onUnmounted(() => { generation++; summaryGeneration++; clearInterval(timer); win
 <template>
   <div class="page">
     <h2>我的工作</h2>
+    <el-card class="section-card" shadow="never">
     <p class="meta">按当前任务状态计算；分类可能重叠。服务端日期 {{ summary?.today }} · 获取时间 {{ fetchedAt }}</p>
     <div class="toolbar"><el-button v-for="(label, key) in labels" :key="key" :type="category === key ? 'primary' : 'default'" @click="category = key">{{ label }} {{ summary?.counts[key] ?? '—' }}</el-button></div>
     <p v-if="category === 'unblocked'">前置依赖已完成；仍需检查未完成子任务及提交条件。</p>
+    </el-card>
     <BulkMissionEditor :missions="missions" v-model:selected-ids="selectedIds" :reset-key="resetKey" @changed="refresh" />
     <div v-loading="loading">
       <el-empty v-if="!loading && !missions.length" description="当前分类暂无任务" />
-      <el-checkbox-group v-model="selectedIds" :max="50"><div v-for="mission in missions" :key="mission.id"><el-checkbox :value="mission.id" :label="mission.id">选择 {{ mission.title }}</el-checkbox><el-button link @click="selected = mission.id">打开详情抽屉</el-button><MissionCard :mission="mission" open-in-drawer @open="selected = $event" /><p v-if="mission.unfinished_child_ids?.length" class="meta">仍有 {{ mission.unfinished_child_ids.length }} 个未完成子任务</p></div></el-checkbox-group>
+      <el-checkbox-group v-model="selectedIds" :max="50">
+        <MissionCard v-for="mission in missions" :key="mission.id" :mission="mission" open-in-drawer @open="selected = $event">
+          <template #selection><el-checkbox :value="mission.id" :aria-label="`选择 ${mission.title}`" /></template>
+          <template #details><p v-if="mission.unfinished_child_ids?.length" class="meta">仍有 {{ mission.unfinished_child_ids.length }} 个未完成子任务</p></template>
+        </MissionCard>
+      </el-checkbox-group>
     </div>
     <el-pagination :total="total" :page-size="20" :current-page="page" layout="prev, pager, next" @current-change="page = $event; load()" />
     <MissionDetailDrawer :mission-id="selected" :open="!!selected" @close="selected = null" @changed="refresh" @focus="selected = $event" />

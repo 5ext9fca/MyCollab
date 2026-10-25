@@ -23,11 +23,13 @@ onMounted(load)
 <template>
   <ul class="design-tree">
     <li v-for="item in items" :key="item.id">
+      <el-card class="design-item-card" shadow="never">
       <div class="tree-row">
         <el-button v-if="item.has_children && !query && !kind" text :aria-expanded="expanded.has(item.id)" :aria-label="'展开或折叠' + item.title" @click="toggle(item.id)">{{ expanded.has(item.id) ? '−' : '+' }}</el-button>
-        <router-link :to="{ name: 'design', params: { id: item.id } }">{{ item.title }}</router-link>
+        <router-link class="card-title" :to="{ name: 'design', params: { id: item.id } }">{{ item.title }}</router-link>
         <small>{{ item.kind === 'Asset' ? '资产' : '设计' }}{{ item.archived ? ' · 已归档' : '' }}</small>
       </div>
+      </el-card>
       <DesignTreeBranch v-if="expanded.has(item.id)" :parent="item.id" :archived="archived" />
     </li>
     <li v-if="!items.length && !loading" class="meta">暂无条目</li>
@@ -35,7 +37,9 @@ onMounted(load)
   </ul>
 </template>
 <style scoped>
-.design-tree { list-style: none; padding-left: 12px; }
-.tree-row { display: flex; align-items: center; gap: 6px; padding: 8px 0; }
+.design-tree { list-style: none; padding: 0; margin: 0; }
+.design-tree .design-tree { margin-left: 12px; }
+.design-item-card { margin-bottom: 16px; }
+.tree-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 small { color: #667085; }
 </style>

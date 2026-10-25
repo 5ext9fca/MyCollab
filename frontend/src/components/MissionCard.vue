@@ -17,14 +17,14 @@ function open() {
 </script>
 
 <template>
-  <el-card class="mission-card" shadow="hover" @click="open">
+  <el-card class="mission-card" shadow="never" @click="open">
     <div class="mission-card__layout">
       <div v-if="$slots.selection" class="mission-card__selection" @click.stop>
         <slot name="selection" />
       </div>
       <div class="mission-card__content">
         <div class="mission-card__row">
-          <span class="mission-card__title">{{ mission.title }}</span>
+          <button type="button" class="card-title" @click.stop="open">{{ mission.title }}</button>
           <div class="mission-card__tags">
             <el-tag :type="TYPE_TAG[mission.type]" size="small" disable-transitions>
               {{ TYPE_LABELS[mission.type] }}
@@ -44,6 +44,7 @@ function open() {
           <template v-else> · 待认领</template>
           <template v-if="mission.milestone"> · 里程碑：{{ mission.milestone.name }}</template>
         </div>
+        <slot name="details" />
         <MissionSchedule v-if="mission.planned_start_date || mission.planned_end_date" :mission="mission" />
         <div v-if="mission.tags.length" class="tag-row">
           <el-tag v-for="tag in mission.tags" :key="tag.id" size="small" type="info">
@@ -72,7 +73,8 @@ function open() {
 
 .mission-card__row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 6px;

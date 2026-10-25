@@ -44,3 +44,11 @@
 - 回归入口：frontend/src/tests/myWork.spec.ts、designElements.spec.ts、productionTemplates.spec.ts、bulkUpdates.spec.ts、workspace.spec.ts；新增必要的选择/打开隔离与键盘交互测试。
 - 按顺序运行前端 npm run type-check、npm run test、npm run build。此次没有后端变更，无需重跑后端套件。
 - 完成后同步 PROJECT_STRUCTURE.md 的页面交互规则，并在本文记录验收结果。
+
+## 实现与验收结果
+
+本规格已实现。任务/通知选择框位于卡片左侧；重复详情按钮已移除；设计树和详情功能区、通知、模板列表/详情均按卡片分组；新增 DesignNavigation 统一按钮切换；全局 card-title 复用 Mission 的标题样式并提供原生键盘入口。
+
+卡片审美复查已统一无阴影、区域间距、长标题换行及焦点样式；设计子树置于父卡片之外，选择与展开事件独立于打开详情。全仓复查未再发现“打开详情抽屉”或 shadow="hover"；剩余非条目选择框均为显示/筛选开关。
+
+验证：前端 type-check 通过，19 个测试文件共 99 项测试通过，生产构建通过（保留原有大体积 bundle 提示）。新增 4 项交互测试。后端未修改，未重复运行后端测试。本次未完成浏览器截图验收，小屏布局依据响应式样式和代码检查确认，未宣称实际设备验收。

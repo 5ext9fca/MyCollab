@@ -69,7 +69,7 @@ watch(() => [props.asset.id, props.asset.version, props.asset.progress], load, {
 onBeforeUnmount(() => { seq++; searchSeq++; milestoneSeq++ })
 </script>
 <template>
-  <section v-loading="loading">
+  <el-card class="section-card" shadow="never" v-loading="loading">
     <h3>资产生产步骤</h3>
     <el-alert v-if="error" :title="error" type="error" :closable="false" /><el-button v-if="error" @click="load">重试</el-button>
     <template v-if="production.batch">
@@ -95,6 +95,6 @@ onBeforeUnmount(() => { seq++; searchSeq++; milestoneSeq++ })
         <el-button type="primary" :loading="saving" :disabled="!canGenerate" @click="generate">生成 {{ template.steps.length }} 个待认领 Mission</el-button>
       </template>
     </el-dialog>
-  </section>
+  </el-card>
 </template>
 <style scoped>.production-step { padding: 12px 0; border-bottom: 1px solid #eee; }</style>

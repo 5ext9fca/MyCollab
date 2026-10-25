@@ -25,17 +25,32 @@ onUnmounted(() => { generation++ })
 </script>
 <template>
   <div class="page"><h2>站内通知</h2>
-    <div class="toolbar"><el-select v-model="filter" style="width: 160px"><el-option label="全部" value="all" /><el-option label="未读" value="unread" /><el-option label="已读" value="read" /></el-select>
-    <el-button :disabled="!selected.length || busy" @click="read(selected)">将选中通知标为已读</el-button></div>
+    <el-card class="section-card" shadow="never"><div class="toolbar toolbar--flush"><el-select v-model="filter" style="width: 160px"><el-option label="全部" value="all" /><el-option label="未读" value="unread" /><el-option label="已读" value="read" /></el-select>
+    <el-button :disabled="!selected.length || busy" @click="read(selected)">将选中通知标为已读</el-button></div></el-card>
     <el-empty v-if="!rows.length" description="暂无通知" />
     <el-checkbox-group v-model="selected">
-      <div v-for="row in rows" :key="row.id" class="toolbar">
-        <el-checkbox :value="row.id" :label="row.id"><span class="sr-only">选择通知</span></el-checkbox>
-        <el-button link :disabled="busy" @click="read([row.id], row.mission)">{{ row.read_at ? '已读' : '未读' }} · {{ row.mission_title }} · {{ row.payload.summary }}</el-button>
-        <span class="meta">{{ new Date(row.created_at).toLocaleString() }}</span>
-      </div>
+      <el-card v-for="row in rows" :key="row.id" class="notification-card" shadow="never" @click="read([row.id], row.mission)">
+        <div class="selectable-card-layout">
+          <div class="selectable-card-selection" @click.stop>
+            <el-checkbox :value="row.id" :aria-label="`选择通知：${row.mission_title}`" />
+          </div>
+          <div class="selectable-card-content">
+            <div class="card-heading">
+              <button type="button" class="card-title" :disabled="busy" @click.stop="read([row.id], row.mission)">{{ row.mission_title }}</button>
+              <el-tag :type="row.read_at ? 'info' : 'primary'" size="small">{{ row.read_at ? '已读' : '未读' }}</el-tag>
+            </div>
+            <p class="notification-summary">{{ row.payload.summary }}</p>
+            <span class="meta">{{ new Date(row.created_at).toLocaleString() }}</span>
+          </div>
+        </div>
+      </el-card>
     </el-checkbox-group>
     <el-pagination :total="total" :current-page="page" :page-size="20" layout="prev, pager, next" @current-change="page = $event; load()" />
     <MissionDetailDrawer :mission-id="target" :open="!!target" @close="target = null" @changed="load(); notifyChanged()" @focus="target = $event" />
   </div>
 </template>
+
+<style scoped>
+.notification-card { margin-bottom: 16px; cursor: pointer; }
+.notification-summary { margin: 8px 0; overflow-wrap: anywhere; }
+</style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DesignNavigation from '../components/DesignNavigation.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ApiException } from '../api/client'
@@ -65,7 +66,8 @@ onMounted(load)
 </script>
 <template>
   <div class="page">
-    <div class="page-header"><h2>资产生产模板</h2><router-link :to="{ name: 'design' }">返回设计与资产</router-link><el-button type="primary" @click="edit()">新建模板</el-button></div>
+    <div class="page-header"><h2>资产生产模板</h2><DesignNavigation active="production-templates" /><el-button type="primary" @click="edit()">新建模板</el-button></div>
+    <el-card class="section-card" shadow="never">
     <div class="toolbar"><el-input v-model="query" placeholder="搜索模板" clearable @keyup.enter="filter" @clear="filter" /><el-select v-model="archived" @change="filter"><el-option label="未归档" value="false" /><el-option label="已归档" value="true" /><el-option label="全部" value="all" /></el-select><el-button @click="filter">查询</el-button></div>
     <el-table v-loading="loading" :data="templates" @row-click="(item: ProductionTemplate) => { eventPage = 1; inspect(item) }">
       <el-table-column label="模板"><template #default="{ row }"><el-button link type="primary" @click.stop="eventPage = 1; inspect(row)">{{ row.name }}</el-button></template></el-table-column>
@@ -74,11 +76,12 @@ onMounted(load)
       <el-table-column label="操作"><template #default="{ row }"><el-button v-if="row.allowed_actions.includes('edit')" link @click.stop="edit(row)">编辑</el-button><el-button v-if="row.allowed_actions.includes('archive') || row.allowed_actions.includes('restore')" link :loading="saving" @click.stop="archive(row)">{{ row.archived ? '恢复' : '归档' }}</el-button></template></el-table-column>
     </el-table>
     <el-pagination v-if="total > 20" v-model:current-page="page" :total="total" :page-size="20" layout="prev, pager, next" @current-change="load" />
-    <section v-if="selected"><h3>{{ selected.name }} · 版本 {{ selected.version }}</h3><p>{{ selected.description }}</p>
+    </el-card>
+    <el-card v-if="selected" class="section-card" shadow="never"><h3>{{ selected.name }} · 版本 {{ selected.version }}</h3><p>{{ selected.description }}</p>
       <ol><li v-for="step in selected.steps" :key="step.key"><strong>{{ step.title }}</strong><p>前置步骤：{{ step.prerequisite_keys.map(key => selected!.steps.find(s => s.key === key)?.title ?? key).join('、') || '无，可并行' }}</p><MarkdownContent :source="step.content" /><p>验收标准</p><MarkdownContent :source="step.acceptance_criteria" /></li></ol>
       <h3>活动记录</h3><ul><li v-for="event in events" :key="event.id">{{ event.actor.display_name }} · {{ ({ created: '创建', updated: '修改', archived: '归档', restored: '恢复' } as Record<string, string>)[event.action] ?? event.action }} · {{ new Date(event.created_at).toLocaleString() }}</li></ul>
       <el-pagination v-if="eventTotal > 20" v-model:current-page="eventPage" :total="eventTotal" :page-size="20" layout="prev, pager, next" @current-change="inspect(selected)" />
-    </section>
+    </el-card>
     <el-dialog v-model="dialog" :title="editingId ? '编辑生产模板' : '新建生产模板'" width="min(800px, 95vw)" :close-on-click-modal="!saving">
       <el-form label-position="top" @submit.prevent="save"><el-form-item label="名称"><el-input v-model="form.name" maxlength="200" /></el-form-item><el-form-item label="说明"><el-input v-model="form.description" type="textarea" /></el-form-item><ProductionStepsEditor v-model="form.steps" /><p>模板不保存认领者、里程碑或日期；所有步骤将生成待认领 Mission。</p><el-button type="primary" native-type="submit" :loading="saving">保存模板</el-button></el-form>
     </el-dialog>

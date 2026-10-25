@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DesignNavigation from '../components/DesignNavigation.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -88,19 +89,22 @@ async function changed() { await load(); treeRevision.value++ }
 </script>
 <template>
   <div class="page">
-    <div class="page-header"><h2>设计与资产</h2><router-link :to="{ name: 'production-templates' }">生产模板</router-link><el-button type="primary" @click="openEditor()">新建条目</el-button></div>
+    <div class="page-header"><h2>设计与资产</h2><DesignNavigation active="design" /><el-button type="primary" @click="openEditor()">新建条目</el-button></div>
     <div class="design-layout">
       <aside>
+        <el-card class="section-card" shadow="never"><div class="design-filters">
         <el-input v-model="search" placeholder="搜索设计标题与正文" clearable @keyup.enter="query = search" @clear="query = ''" />
         <el-button @click="query = search">搜索</el-button>
         <el-select v-model="archived" aria-label="归档筛选"><el-option label="未归档" value="false" /><el-option label="全部" value="all" /><el-option label="已归档" value="true" /></el-select>
         <el-select v-model="kind" clearable placeholder="条目类型"><el-option label="设计" value="Design" /><el-option label="资产" value="Asset" /></el-select>
+        </div></el-card>
         <DesignTreeBranch :key="`${treeRevision}:${archived}:${query}:${kind}`" :archived="archived" :query="query" :kind="kind" />
       </aside>
       <main v-loading="loading">
         <el-alert v-if="error" :title="error" type="error" :closable="false" /><el-button v-if="error" @click="load">重试</el-button>
         <el-empty v-if="!id" description="选择设计条目，查看设计依据与执行任务" />
         <template v-if="element">
+          <el-card class="section-card" shadow="never">
           <nav><router-link v-for="ancestor in element.ancestors" :key="ancestor.id" :to="{ name: 'design', params: { id: ancestor.id } }">{{ ancestor.title }} / </router-link></nav>
           <h2>{{ element.title }} <el-tag>{{ element.kind === 'Asset' ? '资产' : '设计' }}</el-tag><el-tag v-if="element.archived" type="info">已归档</el-tag></h2>
           <p class="meta">创建者：{{ element.created_by.display_name }} · 更新于 {{ new Date(element.updated_at).toLocaleString() }} · 版本 {{ element.version }}</p>
@@ -115,14 +119,19 @@ async function changed() { await load(); treeRevision.value++ }
           <h3>直属任务进度</h3>
           <p>{{ element.progress.progress === null ? '暂无有效任务' : `${element.progress.done}/${element.progress.effective_total} 已完成（${Math.round(element.progress.progress * 100)}%）` }} · 受阻 {{ element.progress.blocked }} · 需复核 {{ element.progress.revalidation }}</p>
           <p class="meta">按直接关联的有效 Mission 数量统计，不表示工时或资产验收状态。</p>
+          </el-card>
           <ProductionPanel v-if="element.kind === 'Asset'" :asset="element" @open="selected = $event" @changed="changed" @batch-loaded="hasBatch = $event" />
+          <el-card class="section-card" shadow="never">
           <h3>{{ hasBatch ? '其他关联任务' : '关联任务' }}</h3>
           <ul class="task-list"><li v-for="mission in missions" :key="mission.id"><el-button link type="primary" @click="selected = mission.id">{{ mission.title }}</el-button> <StatusTag :status="mission.status" /><span v-if="mission.is_blocked"> · 受阻</span></li></ul>
           <el-empty v-if="!missions.length" description="暂无关联任务" />
           <el-pagination v-if="total > 20" v-model:current-page="page" :page-size="20" :total="total" layout="prev, pager, next" @current-change="load" />
+          </el-card>
+          <el-card class="section-card" shadow="never">
           <h3>活动记录</h3>
           <ul><li v-for="event in events" :key="event.id">{{ event.actor.display_name }} · {{ actionLabels[event.action] ?? event.action }} · {{ new Date(event.created_at).toLocaleString() }}</li></ul>
           <el-pagination v-if="eventTotal > 20" v-model:current-page="eventPage" :page-size="20" :total="eventTotal" layout="prev, pager, next" @current-change="load" />
+          </el-card>
         </template>
       </main>
     </div>
@@ -139,9 +148,10 @@ async function changed() { await load(); treeRevision.value++ }
   </div>
 </template>
 <style scoped>
-.design-layout { display: grid; grid-template-columns: minmax(220px, 28%) minmax(0, 1fr); gap: 28px; }
-aside { border-right: 1px solid #e5e7eb; padding-right: 16px; }
-aside > * { margin-bottom: 10px; }
+.design-layout { display: grid; grid-template-columns: minmax(220px, 28%) minmax(0, 1fr); gap: 16px; }
+aside, main { min-width: 0; }
+main h2, main nav { overflow-wrap: anywhere; }
+.design-filters { display: flex; flex-direction: column; gap: 12px; }
 .task-list { list-style: none; padding: 0; }
 .task-list li { padding: 8px 0; }
 @media (max-width: 720px) { .design-layout { grid-template-columns: 1fr; } aside { border-right: 0; } }

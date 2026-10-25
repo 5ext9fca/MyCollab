@@ -40,18 +40,27 @@ body {
 }
 
 .mission-card {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   cursor: pointer;
 }
 
-.mission-card__title {
+.card-title {
+  font-family: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  min-width: 0;
   font-size: 16px;
   font-weight: 600;
   color: #1f2329;
   text-decoration: none;
 }
 
-.mission-card__title:hover {
+.card-title:hover {
   color: #409eff;
 }
 
@@ -122,3 +131,13 @@ body {
   color: #6b7280;
   font-size: 13px;
 }
+
+.card-title:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 4px; border-radius: 2px; }
+.card-title:disabled { cursor: wait; }
+.card-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
+.selectable-card-layout { display: flex; align-items: center; gap: 12px; }
+.selectable-card-selection { flex: none; cursor: default; }
+.selectable-card-content { flex: 1; min-width: 0; }
+.section-card { margin-bottom: 16px; }
+.toolbar--flush { margin-bottom: 0; }
+.page-header { flex-wrap: wrap; }

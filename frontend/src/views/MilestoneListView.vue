@@ -99,19 +99,19 @@ onMounted(load)
       <el-button type="primary" @click="openCreate">新建里程碑</el-button>
     </div>
 
-    <div class="toolbar">
+    <el-card class="section-card" shadow="never"><div class="toolbar toolbar--flush">
       <el-select v-model="statusFilter" style="width: 140px" @change="onFilter">
         <el-option v-for="item in statusOptions" :key="item.label" :label="item.label" :value="item.value" />
       </el-select>
       <el-button @click="onFilter">查询</el-button>
-    </div>
+    </div></el-card>
 
     <div v-loading="loading">
       <el-empty v-if="!loading && !milestones.length" description="暂无里程碑" />
-      <el-card v-for="milestone in milestones" :key="milestone.id" class="milestone-card" shadow="hover">
+      <el-card v-for="milestone in milestones" :key="milestone.id" class="milestone-card" shadow="never">
         <div class="milestone-card__row">
-          <router-link :to="{ name: 'milestone-detail', params: { id: milestone.id } }">
-            <strong>{{ milestone.name }}</strong>
+          <router-link class="card-title" :to="{ name: 'milestone-detail', params: { id: milestone.id } }">
+            {{ milestone.name }}
           </router-link>
           <div class="milestone-card__tags">
             <el-tag :type="MILESTONE_STATUS_TAG[milestone.status]" size="small" disable-transitions>
@@ -161,12 +161,13 @@ onMounted(load)
 
 <style scoped>
 .milestone-card {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .milestone-card__row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 6px;
@@ -174,7 +175,8 @@ onMounted(load)
 
 .milestone-card__tags {
   display: flex;
-  gap: 6px;
+  gap: 8px;
+  flex-wrap: wrap;
   align-items: center;
 }
 </style>
