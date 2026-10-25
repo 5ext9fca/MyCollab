@@ -546,3 +546,19 @@ class ProductionBatchItem(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["batch", "step_key"], name="production_batch_step_unique")]
+
+
+class SavedMissionView(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    visibility = models.CharField(max_length=8, choices=[('Private', '个人'), ('Team', '团队')], default='Private')
+    target = models.CharField(max_length=8, choices=[('List', '列表'), ('Overview', '概览'), ('Gantt', '甘特')])
+    definition = models.JSONField(default=dict)
+    version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at', 'id']
+        constraints = [models.UniqueConstraint(fields=['owner', 'name'], name='saved_view_owner_name_unique')]

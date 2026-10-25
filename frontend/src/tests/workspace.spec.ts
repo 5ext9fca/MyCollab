@@ -803,7 +803,7 @@ describe('WorkspaceView', () => {
     const wrapper = mount(WorkspaceView, {
       global: {
         plugins: [router],
-        stubs: {
+        stubs: { SavedViewsBar: true, MissionQueryForm: true,
           ...stubs,
           MilestoneBoard: true,
           DependencyGraph: true,
@@ -906,7 +906,7 @@ describe('WorkspaceView focus lifecycle', () => {
     const wrapper = mount(WorkspaceView, {
       global: {
         plugins: [router],
-        stubs: {
+        stubs: { SavedViewsBar: true, MissionQueryForm: true,
           ...stubs,
           MilestoneBoard: true,
           DependencyGraph: graphStub,

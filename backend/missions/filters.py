@@ -37,6 +37,12 @@ def parse_uuid(value: str, field: str) -> uuid.UUID:
         )
 
 
+def parse_user_id(value, field):
+    if not isinstance(value, str) or not value.isdecimal() or int(value) < 1:
+        raise ValidationFailure('成员 ID 须为正整数。', field_errors={field: ['不是合法成员 ID。']})
+    return int(value)
+
+
 def parse_bool(value: str) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
@@ -128,9 +134,10 @@ def apply_mission_filters(qs, params, user):
     # (F1: "前置任务已不满足，需复核"). Kept separate from ``blocked`` because a
     # Done mission is not "blocked" but still needs a manual re-check.
     revalidation = get("revalidation")
-    if revalidation is not None and parse_bool(revalidation):
+    if revalidation is not None:
         qs = qs.annotate(_has_unresolved_review=Exists(_unresolved_prerequisites_for_outer()))
-        qs = qs.filter(status=MissionStatus.DONE, _has_unresolved_review=True)
+        condition = Q(status=MissionStatus.DONE, _has_unresolved_review=True)
+        qs = qs.filter(condition if parse_bool(revalidation) else ~condition)
 
     # Multi-tag filter: repeat the parameter (?tag=a&tag=b) or use commas
     # (?tag=a,b). Multiple tags are ANDed, so a mission must carry every
@@ -148,7 +155,7 @@ def apply_mission_filters(qs, params, user):
     elif creator == "none":
         qs = qs.filter(creator__isnull=True)
     elif creator:
-        qs = qs.filter(creator_id=parse_uuid(creator, "creator"))
+        qs = qs.filter(creator_id=parse_user_id(creator, "creator"))
 
     for field in ("assignee", "reviewer"):
         raw = get(field)
@@ -159,7 +166,7 @@ def apply_mission_filters(qs, params, user):
         elif raw == "none":
             qs = qs.filter(**{f"{field}__isnull": True})
         else:
-            qs = qs.filter(**{f"{field}_id": parse_uuid(raw, field)})
+            qs = qs.filter(**{f"{field}_id": parse_user_id(raw, field)})
 
     parent = get("parent")
     if parent == "root":

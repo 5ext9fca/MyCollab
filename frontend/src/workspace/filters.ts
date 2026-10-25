@@ -12,7 +12,7 @@ export interface WorkspaceFilters {
   assignee: string
   reviewer: string
   blocked: '' | 'true' | 'false'
-  revalidation: '' | 'true'
+  revalidation: '' | 'true' | 'false'
 }
 
 export type QuickKey = 'mine' | 'blocked' | 'review' | 'revalidation'

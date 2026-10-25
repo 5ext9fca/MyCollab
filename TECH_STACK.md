@@ -250,3 +250,7 @@ Redis、后台任务队列、WebSocket、独立搜索服务与 Kubernetes 不属
 数据库 `notifications` app 保存站内通知与任务订阅。MUST 与任务事件同事务持久化通知，以 recipient/source_key 唯一约束去重；不使用进程内异步任务承担可靠投递。日期提醒复用团队 advisory lock 后锁任务并重新检查，部署侧 cron 每日运行 `send_mission_reminders`，无需增加队列服务。
 
 通知已读是版本规则的明确幂等例外：只允许当前用户明确选择的 1–100 个 ID，整批归属预检后更新，不要求 expected_version。订阅仍要求乐观锁，首次版本 0。前端个人数据随账户切换卸载，通知失败不阻断任务操作。
+
+## 13. 保存视图
+
+保存视图是严格白名单的查询定义，MUST 校验 JSON 形状、枚举、整数用户 ID/UUID 引用和可见范围；相对日期在服务端按 DJANGO_TIME_ZONE 解析。失效引用必须阻止执行，不得删除条件扩大结果。个人视图不提供管理员越权入口。

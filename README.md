@@ -131,7 +131,7 @@ Caddy 在同一域名下按 `/api/*`、`/admin/*`、`/static/*`、其余交给 S
 
 ### 站内日期提醒调度
 
-后端 `DJANGO_TIME_ZONE` 默认 `UTC`，需要中国自然日口径时在部署环境中设置为 `Asia/Shanghai`，重建 backend 后生效。任务待办与提醒使用同一服务端日期。
+后端 `DJANGO_TIME_ZONE` 默认 `UTC`，需要中国自然日口径时在部署环境中设置为 `Asia/Shanghai`，重建 backend 后生效。任务待办、保存视图相对日期和提醒使用同一服务端日期。
 
 生产服务器可通过 cron 每天运行一次（替换 `/opt/MyCollabAdvanced` 为实际路径，运行用户须有 Docker 权限）：
 

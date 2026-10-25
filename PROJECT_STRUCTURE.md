@@ -502,3 +502,11 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除），返回 des
 - `/notifications` 收件箱：GET `/api/notifications/` 按 read=all/unread/read 标准分页；GET `summary/` 返回 unread_count；POST `read/` 接受 1–100 个唯一 ids，全部归属预检、原子幂等已读，其他人/不存在统一 404。只看列表不标已读，点击或明确批量操作才标记。
 - GET/PUT `/api/missions/{id}/subscription/` 仅本人，首次 expected_version=0，后续带版本，并发更新冲突 409；不影响 Mission 版本。管理员不能访问他人私人通知/订阅。
 - `send_mission_reminders` 命令在团队锁与任务行锁内复查当前日期/状态/角色，按任务+截止日+kind 幂等写入。支持重跑、漏跑、改期；不提醒 Done/Cancelled。部署调度见 README，服务端时区由 DJANGO_TIME_ZONE 控制。
+
+## 保存任务视图
+
+- `SavedMissionView` 位于 missions：UUID、去空白 name（1–100）、owner、Private/Team（默认 Private）、List/Overview/Gantt、definition JSON、version、时间；owner/name 唯一。Private 仅作者可见，管理员无私人绕过；Team 全员可读，作者/管理员可改删，不可转让 owner。
+- `/api/saved-views/` GET 标准分页（可筛 visibility）/POST 创建；`/{id}/` GET/PATCH/DELETE，修改与删除要求 expected_version，删除用查询参数。团队事务锁+行锁保护版本与重名校验；不可见返回 404。`/{id}/resolve/` 每次按服务端 today 解析定义并返回 target/query/today/warnings。
+- 定义严格为 filters/ordering/date_window/zoom。filters 支持 q、status/type/priority、tag 数组 AND、creator/assignee/reviewer（整数 ID/me/none）、parent（UUID/root）、milestone/design_element/production_batch（UUID/none）、blocked/revalidation 布尔。未知字段、错误类型/枚举、无效引用拒绝；关闭里程碑和归档设计可用于历史查询。具体成员筛选已修正为整数。
+- ordering 使用 created_at/updated_at/title/status/priority/type 及负号；zoom 仅 Gantt 支持 day/week。日期为 null、absolute 完整 1–366 天窗口，或 relative:this_week（周一至周日）/next_7_days（含今天）。计划区间筛选包含未排期；me 按打开者解析。定义不保存任务结果、页码、选择或画布状态。
+- 引用失效仍保留定义，列表/详情给警告、resolve 返回 400 阻止执行，不丢弃条件扩大查询。任务广场和工作台提供保存、打开、另存为、明确更新、删除与编辑修复。全部生效条件显示摘要并可移除，完整筛选表单可编辑全部白名单；打开重置页码/选择，手动调整不自动写回。父任务筛选 parent 与甘特分组开关 show_parent 分离，旧 parent=false 分组链接继续可读。

@@ -33,6 +33,9 @@ import MilestoneBoard from '../components/MilestoneBoard.vue'
 import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
 import MissionSchedule from '../components/MissionSchedule.vue'
 import StatusTag from '../components/StatusTag.vue'
+import SavedViewsBar from '../components/SavedViewsBar.vue'
+import MissionQueryForm from '../components/MissionQueryForm.vue'
+import { notifyChanged } from '../api/notifications'
 import WorkspaceFilterBar from '../components/WorkspaceFilterBar.vue'
 
 const route = useRoute()
@@ -62,6 +65,8 @@ const relationListMode = ref(false)
 const selectedEdge = ref<WorkspaceEdge | null>(null)
 
 const filters = ref<WorkspaceFilters>(emptyFilters())
+const extraFilters = ref<QueryParams>({})
+const savedViewId = ref('')
 const graphRef = ref<InstanceType<typeof DependencyGraph> | null>(null)
 
 const onlyMine = computed(() => filters.value.assignee === 'me')
@@ -199,6 +204,9 @@ let requestSeq = 0
 function baseParams(): QueryParams {
   const current = filters.value
   return {
+    ...extraFilters.value,
+    date_from: dateFrom.value || undefined,
+    date_to: dateTo.value || undefined,
     design_element: current.design_element || undefined,
     q: current.q || undefined,
     milestone: current.milestone || undefined,
@@ -295,6 +303,11 @@ async function reload(options: { fitGraph?: boolean } = {}) {
 // --- URL <-> state -------------------------------------------------------- //
 function applyQuery() {
   const query = route.query
+  savedViewId.value = readParam(query.saved_view)
+  extraFilters.value = {}
+  for (const key of ['creator', 'tag', 'parent', 'production_batch', 'ordering']) {
+    if (query[key] && !(key === 'parent' && query[key] === 'false')) extraFilters.value[key] = query[key] as string | string[]
+  }
   dateFrom.value = readParam(query.date_from)
   dateTo.value = readParam(query.date_to)
   dateZoom.value = readParam(query.zoom) === 'week' ? 'week' : 'day'
@@ -304,7 +317,7 @@ function applyQuery() {
   columnLimit.value = Number.isFinite(limit) && limit > 0 ? limit : 20
   relatedOnly.value = readParam(query.related) === 'true'
   relationListMode.value = readParam(query.relations) === 'true'
-  showParentRelations.value = readParam(query.parent) !== 'false'
+  showParentRelations.value = readParam(query.show_parent) !== 'false' && readParam(query.parent) !== 'false'
   expandMode.value = readParam(query.expand) === 'all' ? 'all' : 'one'
   const dir = readParam(query.direction)
   direction.value = dir === 'upstream' || dir === 'downstream' ? dir : 'both'
@@ -320,12 +333,14 @@ function applyQuery() {
   next.reviewer = readParam(query.reviewer)
   const blocked = readParam(query.blocked)
   next.blocked = blocked === 'true' || blocked === 'false' ? blocked : ''
-  next.revalidation = readParam(query.revalidation) === 'true' ? 'true' : ''
+  next.revalidation = ['true', 'false'].includes(readParam(query.revalidation)) ? readParam(query.revalidation) as 'true' | 'false' : ''
   filters.value = next
 }
 
 function queryFromState(): Record<string, string> {
   const out: Record<string, string> = {}
+  if (savedViewId.value) out.saved_view = savedViewId.value
+  for (const [key, value] of Object.entries(extraFilters.value)) if (value !== undefined) out[key] = Array.isArray(value) ? value.join(',') : String(value)
   const set = (key: string, value: string) => {
     if (value) out[key] = value
   }
@@ -348,7 +363,7 @@ function queryFromState(): Record<string, string> {
   if (columnLimit.value !== 20) set('limit', String(columnLimit.value))
   if (relatedOnly.value) set('related', 'true')
   if (relationListMode.value) set('relations', 'true')
-  if (!showParentRelations.value) set('parent', 'false')
+  if (!showParentRelations.value) set('show_parent', 'false')
   if (view.value === 'graph') {
     if (expandMode.value === 'all') set('expand', 'all')
     if (direction.value !== 'both') set('direction', direction.value)
@@ -492,6 +507,7 @@ function onLoadMore() {
 }
 
 function onDrawerChanged() {
+  notifyChanged()
   void reload()
 }
 
@@ -527,6 +543,20 @@ function applyDates() {
 function openPagedList() {
   const query = { ...baseParams(), date_from: dateFrom.value, date_to: dateTo.value, status: filters.value.status || 'all' }
   void router.push({ name: 'square', query: Object.fromEntries(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)])) })
+}
+const savedQuery = computed(() => ({ ...baseParams(), zoom: dateZoom.value }))
+function applyAllFilters(query: QueryParams) {
+  const next: Record<string, string | string[]> = { view: view.value }
+  for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== null && value !== '') next[key] = Array.isArray(value) ? value.map(String) : String(value)
+  if (savedViewId.value) next.saved_view = savedViewId.value
+  if (dateZoom.value === 'week') next.zoom = 'week'
+  void router.push({ path: '/workspace', query: next })
+}
+function removeSavedFilter(key: string) {
+  const next = { ...baseParams() }
+  delete next[key]
+  if (key.startsWith('date_')) { delete next.date_from; delete next.date_to }
+  applyAllFilters(next)
 }
 function refresh() {
   void reload({ fitGraph: view.value === 'graph' })
@@ -595,6 +625,8 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <SavedViewsBar :query="savedQuery" :target="view === 'graph' ? 'Gantt' : 'Overview'" @remove="removeSavedFilter" @opened="selectedId = null; drawerOpen = false; collapsedParents = new Set(); reload({ fitGraph: true })" />
+    <MissionQueryForm :query="savedQuery" @apply="applyAllFilters" />
     <WorkspaceFilterBar
       :filters="filters"
       :members="members"
