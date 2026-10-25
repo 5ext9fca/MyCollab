@@ -50,7 +50,13 @@ onUnmounted(() => { generation++ })
     <MissionQueryForm :query="query" @apply="apply" />
     <BulkMissionEditor :missions="missions" v-model:selected-ids="selectedIds" :reset-key="resetKey" @changed="load" />
     <div v-loading="loading"><el-empty v-if="!loading && !missions.length" description="暂无任务" />
-      <el-checkbox-group v-model="selectedIds" :max="50"><div v-for="mission in missions" :key="mission.id"><el-checkbox :value="mission.id" :label="mission.id">选择 {{ mission.title }}</el-checkbox><MissionCard :mission="mission" /></div></el-checkbox-group>
+      <el-checkbox-group v-model="selectedIds" :max="50">
+        <MissionCard v-for="mission in missions" :key="mission.id" :mission="mission">
+          <template #selection>
+            <el-checkbox :value="mission.id" :aria-label="`选择 ${mission.title}`" />
+          </template>
+        </MissionCard>
+      </el-checkbox-group>
     </div>
     <el-pagination :total="total" :page-size="pageSize" :current-page="page" layout="prev, pager, next" @current-change="page = $event; load()" />
   </div>

@@ -516,7 +516,7 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除），返回 des
 
 ## 批量计划编辑
 
-- “仅选择当前页”计数与“批量编辑计划”按钮放在独立卡片内。
+- “仅选择当前页”计数与“批量编辑计划”按钮放在独立卡片内。任务广场的选择框位于各任务卡片内部左侧，具有对应任务的无障碍名称；点击选择框只切换选择，不打开详情。
 - 任务广场（含保存的 List 筛选）和个人工作中心只选择当前页，切页/分类/筛选/打开视图清空选择，最多 50 项。甘特仍只读。
 - POST `/api/missions/bulk-update/` 接收 items（唯一 UUID、正整数 expected_version）与 changes（仅 priority/milestone/planned_start_date/planned_end_date，至少一个）。省略保持，日期/里程碑 null 清空；priority 不能 null。整体格式/枚举/日期/重复项错误 400 且零写入。
 - `missions.services.bulk_update_missions` 按输入顺序逐项调用原 update_mission，每项独立事务；仅发起者/管理员能编辑 Open/InProgress。权限、版本、冻结、里程碑关闭及双向日期依赖校验不变；已成功项不会因后续项失败回滚。未知异常停止且不伪装业务失败，不自动改变执行顺序或未选任务。事件与通知随各项提交。
