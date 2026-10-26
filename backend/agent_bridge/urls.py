@@ -1,8 +1,14 @@
 from django.urls import path
 from . import views
 from . import execution_api as execution
+from . import code_api as code
 
 urlpatterns = [
+    path("code-executions/", code.CodeList.as_view()),
+    path("code-executions/<uuid:pk>/", code.CodeDetail.as_view()),
+    path("code-executions/<uuid:pk>/cancel/", code.CodeCancel.as_view()),
+    path("agent-runner/requests/<uuid:pk>/code-manifest/", code.RunnerCodeManifest.as_view()),
+    path("agent-runner/requests/<uuid:pk>/code-publish/", code.RunnerCodePublish.as_view()),
     path("mission-executions/", execution.ExecutionList.as_view()),
     path("mission-executions/<uuid:pk>/", execution.ExecutionDetail.as_view()),
     path("mission-executions/<uuid:pk>/cancel/", execution.ExecutionCancel.as_view()),

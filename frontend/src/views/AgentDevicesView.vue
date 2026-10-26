@@ -12,7 +12,7 @@ const token = ref('')
 const error = ref('')
 const busy = ref(false)
 const capabilities = ref<AgentCapability[]>(['design_polish', 'template_generate', 'mission_write', 'review_assist'])
-const names: Record<AgentCapability, string> = { design_polish: '设计/资产说明', template_generate: '生产模板', mission_write: 'Mission 编写', review_assist: '验收辅助', image_generate: '图像生成（Codex CLI）', image_edit: '图像编辑（Codex CLI）' }
+const names: Record<AgentCapability, string> = { design_polish: '设计/资产说明', template_generate: '生产模板', mission_write: 'Mission 编写', review_assist: '验收辅助', image_generate: '图像生成（Codex CLI）', image_edit: '图像编辑（Codex CLI）', code_implement: '代码实现（OpenCode）' }
 async function load() {
   try { const [d, r] = await Promise.all([listAgentDevices(), listAssistance(page.value)]); devices.value = d.results; requests.value = r.results; count.value = r.count }
   catch (err) { error.value = err instanceof Error ? err.message : '加载失败' }

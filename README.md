@@ -206,3 +206,11 @@ MYCOLLAB_LIVE_MODEL=deepseek/deepseek-flash .venv/bin/python manage.py test agen
 供应商认证、模型调用、图片下载/转换全部在用户电脑，服务器只做任务交接、元数据校验和选中成果存储。图像 Runner 另需本地 Pillow，配置与 `--select` 命令见 [本地 Runner 说明](local_runner/README.md)。升级部署照常执行 `python manage.py migrate`，无需新队列/GPU服务。
 
 本地 Runner（含图片转换）的回归命令：先安装 `local_runner/requirements.txt` 到本地虚拟环境，再从仓库根目录执行 `local_runner/.venv/bin/python -m unittest discover -s local_runner/tests -v`。后端普通回归不调用模型提供商。
+
+## Mission 规则/代码委派（第三批）
+
+已接入本地 **OpenCode CLI 2.1.3**。在 Runner 配置中预先登记仓库标识、Git 基线、允许修改路径和验证命令，再为设备声明“代码实现”能力。在本人进行中的 Mission 详情/抽屉填写仓库标识、预览并确认委派。
+
+Runner 在隔离副本中生成补丁与本地验证报告；查看后使用 `--publish-code 请求UUID` 明确发布，回到 Mission 引用到草稿并人工提交/验收。不会自动应用到原仓库、推送、创建 PR 或部署。所有模型/Git/依赖认证和执行资源留在本地，服务器没有代码执行环境。
+
+完整配置、安装、人工应用补丁、失败报告与清理步骤见 [本地 Runner 说明](local_runner/README.md)。升级后照常执行后端迁移；本机验证命令由用户授权，不等同于在 OS 沙箱内执行。

@@ -169,6 +169,7 @@ class MissionViewSet(
             source_references=data.get("source_references"),
             build_references=data.get("build_references"),
             execution_candidate_ids=data.get("execution_candidate_ids"),
+            code_execution_ids=data.get("code_execution_ids"),
             expected_version=data["expected_version"],
         )
         return self._detail_response(mission)

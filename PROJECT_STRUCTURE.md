@@ -601,7 +601,7 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 
 `local_runner/` 是用户电脑上的 Python 标准库客户端，首个适配器为 OpenCode CLI 2.1.3。每次以私有非交互会话、临时工作目录与专用禁止工具的配置运行；模型供应商认证和调用全部留在本地。Runner 主动轮询并续租，断线或取消尽力终止进程，最多重传同一结果三次，不自动重新调用模型。安装与真实验证记录见 `local_runner/README.md`。
 
-第一批文本辅助不生成图像文件；第二批图像流程见下节。仓库操作、构建测试、自动提交或自动验收仍未引入。后端不包含供应商 SDK/网络调用或常驻执行器，不新增 Redis/Celery/WebSocket。
+第一批文本辅助不生成图像文件；第二批图像流程见下节。第三批本地代码副本与验证流程见后文；自动提交或自动验收仍未引入。后端不包含供应商 SDK/网络调用或常驻执行器，不新增 Redis/Celery/WebSocket。
 
 ## 第二批：Mission 图像委派与成果版本
 
@@ -616,3 +616,18 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - 已关联候选的 LibraryFile 禁止删除，避免执行/提交证据断链。`cleanup_assistance` 清理 30 天前图像请求的原始输入/result，但保留执行、候选、文件、提交关联；文本请求仍按原规则清理。
 - `local_runner/codex_image.py` 使用 Codex CLI 0.164.0 原生图像工具、独立临时目录与本机登录，禁用 shell、浏览器、应用/插件、hooks 和多 Agent，忽略用户配置但保留本机认证，不改变全局配置。仅从 JSON `thread.started` 对应的本机原生输出目录读取有界普通文件；不信任模型回复中的路径。Pillow 13.0.0 仅安装在本地 Runner，转换和去除元数据后生成私人预览。`--select REQUEST_ID --keys ...` 才确认选择并上传；失败只重传同一文件。安装和手工清理见 `local_runner/README.md`。
 - 验证入口：`agent_bridge.tests.test_images`（PostgreSQL 状态/权限/版本/并发/清理）、`test_image_roundtrip`（真实 HTTP 与确定性本地适配器生成→编辑→选择→上传→人工提交验收）、`local_runner/tests/test_images.py`、`frontend/src/tests/missionExecution.spec.ts`。真实 Codex 生成/编辑记录见 Runner 文档，普通测试不调用付费模型。
+
+## 第三批：Mission 规则/代码委派（OpenCode）
+
+- 当前认领者可在 InProgress Mission 的完整详情/抽屉选择本人代码设备、填写本地仓库标识与要求，预览后委派。代码执行不要求关联 Asset。仓库标识只允许 1–64 位字母数字、短横线、下划线；本机路径、Git 地址、验证命令、凭据均不上传。未知标识在本地明确失败。
+- `AssistanceRequest` 增加 `code_implement`，沿用设备单 running、用户最多三个活动请求及短轮询。代码运行总时限 30 分钟、租约 180 秒/心跳 30 秒；本地实现与验证结束后进入 `awaiting_selection`，最长 24 小时等候人工发布，终态不会自动重新派发。
+- `CodeExecution` 关联 request、mission、actor、mission_version、repository_key、递增 version、previous；manifest 只含基线 SHA、补丁/报告摘要和字节数。人工发布后才存本人 LibraryFile 补丁和结构化 report、published_at。唯一约束 `(mission, repository_key, version)`；代码写服务在 `missions/code_services.py`，公开入口由 `missions/services.py` 导出，事务内使用团队/设备/请求锁复核权限、状态与版本。
+- Session+CSRF：`GET/POST /api/code-executions/`（列表必传 mission、分页）、`GET /api/code-executions/{id}/`、`POST /api/code-executions/{id}/cancel/`。有效团队成员可查看历史，只有发起者可取消，已被提交轮次引用的成果不可取消。创建携带 device_id、mission_id、repository_key、expected_version、instructions、idempotency_key、可选 previous_id。
+- Runner 独立 Bearer：`POST /api/agent-runner/requests/{id}/code-manifest/`（attempt_id、manifest）和 `code-publish/`（multipart attempt_id、patch、report）；继续复用 claim/heartbeat 与固定失败码 result。设备令牌不能调用通用业务写接口。清单无文件正文；本地 `--publish-code` 才发实际成果，重复同内容幂等，不重复调用模型。
+- 补丁最多 2 MiB、UTF-8 文本 Git diff，报告最多 128 KiB、最多 200 个变更文件/20 项验证。共享 `agent_bridge/code_protocol.py` 校验字段、基线、摘要、路径、差异文件清单与验证状态/退出码。服务器不执行补丁或复跑测试。补丁保存为 `changes.patch.txt`，复用现有安全文本附件类型；用户可下载后用 Git 检查/应用。
+- `SubmissionCodeExecution` 固定人工提交轮次与执行的关联；submit 新增可选 `code_execution_ids`（最多 20）。只接受本任务/本人、已发布、当前 Mission 版本的成果；仍需原有人工验证说明或源码/构建证据，依赖/子任务/验收规则不变。本地测试失败不伪装成功，也不替代验收者判断。已关联代码成果的素材不能删除，历史清理只清空老请求输入/result，保留补丁与报告。
+- `MissionCodePanel.vue` 提供输入预览、离线等待、取消、新版本和历史；`CodeReport.vue` 显示基线、变更摘要/文件、真实本地测试结果、补丁下载，并明确服务器未验证。引用按钮重新检查执行版本，仅填入提交草稿和关联 ID，提交历史继续显示报告，不自动提交、推送、PR、合并或部署。
+- 本地 `code_workspace.py` 从已配置 Git 基线导出独立副本，不包含未提交/未跟踪内容，不共享原仓库可写 Git 元数据；排除常见认证/Agent 配置，拒绝符号链接、子模块、特殊文件与不规范路径。源码导出上限 100 MiB/20000 条目；逐项核对 Git blob 摘要和完整文件清单，导出属性改变基线时拒绝。输出只支持文本补丁。原仓库及其脏改动不受影响。
+- `opencode_code.py` 独立于首批纯文本 Agent，锁定 OpenCode 2.1.3；显式同步 cwd 与 PWD 为隔离副本，只允许读取和白名单文件修改，拒绝外部目录、shell、集成和子 Agent，禁用格式化。`code_verification.py` 在候选的另一个副本中以 shell=False 运行本地 argv，验证命令不由服务器/模型决定，真实退出码/超时进入报告，最多 1 MiB/项的原始日志只留本地。独立目录不是 OS 沙箱；用户选择的验证代码仍以本机权限执行。
+- `code_execution.py` 管理本地补丁与 report.json、清单发布、显式 `--publish-code` 及同内容重传；`--list-repositories` 只输出本地标识和验证名称。无验证项显示未配置，工具缺失为未运行，失败/超时如实记录。来源是 local_runner，不能冒充服务器独立验证。
+- 测试入口：`agent_bridge.tests.test_code`、`test_code_roundtrip`（真实 HTTP 与确定性模型）、`local_runner/tests/test_code_*.py`、`frontend/src/tests/missionCode.spec.ts`。真实 OpenCode 隔离示例验收及安装说明见 `local_runner/README.md`。

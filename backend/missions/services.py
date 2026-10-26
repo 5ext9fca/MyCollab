@@ -746,6 +746,7 @@ def submit_mission(
     source_references=None,
     build_references=None,
     execution_candidate_ids=None,
+    code_execution_ids=None,
     expected_version,
 ) -> Mission:
     _acquire_team_lock()
@@ -790,6 +791,17 @@ def submit_mission(
         for item in candidates
     ):
         raise ValidationFailure("执行成果不属于当前任务/认领者、尚未完成或任务版本已变化。")
+    from .models import CodeExecution, SubmissionCodeExecution
+    code_ids = code_execution_ids or []
+    if not isinstance(code_ids, list) or len(code_ids) > 20 or len(set(code_ids)) != len(code_ids):
+        raise ValidationFailure("最多选择 20 项不重复的代码成果。")
+    code_results = list(CodeExecution.objects.filter(pk__in=code_ids).select_related('request', 'patch'))
+    if len(code_results) != len(code_ids) or any(
+        item.mission_id != mission.pk or item.actor_id != actor.pk or not item.patch_id
+        or item.patch.owner_id != actor.pk or item.request.status != 'succeeded'
+        or item.mission_version != mission.version for item in code_results
+    ):
+        raise ValidationFailure("代码成果未完成、不属于当前任务/本人或版本已过期。")
     submission = MissionSubmission.objects.create(
         mission=mission,
         submitted_by=actor,
@@ -798,6 +810,9 @@ def submit_mission(
         reviewer_snapshot=mission.reviewer,
         outcome=SubmissionOutcome.PENDING,
     )
+    SubmissionCodeExecution.objects.bulk_create([
+        SubmissionCodeExecution(submission=submission, execution=item) for item in code_results
+    ])
     _build_source_references(submission, source_references)
     _build_build_references(submission, build_references)
     SubmissionExecutionArtifact.objects.bulk_create([
@@ -1686,4 +1701,8 @@ def bulk_update_missions(*, actor, payload):
 from .execution_services import (  # noqa: E402,F401
     create_execution, publish_execution_candidates, select_execution_candidates,
     upload_execution_candidate, complete_execution, cancel_execution, execution_reference,
+)
+
+from .code_services import (
+    create_code_execution, stage_code_execution, publish_code_execution, cancel_code_execution,
 )

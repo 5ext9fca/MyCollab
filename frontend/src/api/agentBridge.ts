@@ -3,7 +3,7 @@ import type { Paginated } from './types'
 
 export type AssistanceKind = 'design_polish' | 'template_generate' | 'mission_write' | 'review_assist'
 export type ImageKind = 'image_generate' | 'image_edit'
-export type AgentCapability = AssistanceKind | ImageKind
+export type AgentCapability = AssistanceKind | ImageKind | 'code_implement'
 export interface AgentDevice {
   id: string; name: string; capabilities: AgentCapability[]; expires_at: string
   revoked_at: string | null; last_seen_at: string | null

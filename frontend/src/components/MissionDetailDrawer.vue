@@ -9,6 +9,8 @@
  */
 import AssistancePanel from './AssistancePanel.vue'
 import MissionExecutionPanel from './MissionExecutionPanel.vue'
+import MissionCodePanel from './MissionCodePanel.vue'
+import CodeReport from './CodeReport.vue'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -431,6 +433,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
             <MissionSchedule :mission="mission" />
             <MarkdownContent :source="mission.content" />
             <MissionExecutionPanel :key="mission.id" :mission="mission" />
+            <MissionCodePanel :key="`code-${mission.id}`" :mission="mission" />
             <h4>验收标准</h4>
             <MarkdownContent :source="mission.acceptance_criteria" />
           </el-tab-pane>
@@ -536,6 +539,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
                 </el-tag>
               </div>
               <MarkdownContent :source="item.description" />
+              <CodeReport v-for="artifact in item.code_artifacts" :key="artifact.execution_id" :report="artifact.report" :patch-url="artifact.patch_url" />
             <el-card v-if="item.execution_artifacts?.length" shadow="never"><h4>本轮图像成果</h4><p v-for="artifact in item.execution_artifacts" :key="artifact.candidate_id"><a class="app-link" :href="artifact.url">{{ artifact.name }} · 版本 {{ artifact.version }}</a></p></el-card>
               <div v-if="item.build_references.length" class="meta">
                 构建：

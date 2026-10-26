@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from common.exceptions import ConflictError, NotFound, PermissionDenied, ValidationFailure
+from common.exceptions import ConflictError, DomainError, NotFound, PermissionDenied, ValidationFailure
 from library.references import assert_markdown_references_allowed
 from missions.models import Comment, DesignElement, Mission, ProductionTemplate
 from missions.services import allowed_actions, design_allowed_actions, template_allowed_actions, _validate_template_steps
@@ -19,6 +19,7 @@ from missions.services import allowed_actions, design_allowed_actions, template_
 from .models import AgentDevice, AssistanceRequest
 from . import protocol
 from .image_protocol import IMAGE_KINDS
+from .code_protocol import CODE_KIND
 
 ACTIVE = ("queued", "running", "awaiting_selection")
 
@@ -50,8 +51,8 @@ def create_device(actor, *, name, capabilities, expires_days=30):
     active_user(actor)
     active_user(get_user_model().objects.select_for_update().get(pk=actor.pk))
     validate(protocol.text, name, 100, True)
-    if not isinstance(capabilities, list) or not capabilities or any(c not in protocol.KINDS + IMAGE_KINDS for c in capabilities):
-        raise ValidationFailure("请选择支持的文本辅助能力。")
+    if not isinstance(capabilities, list) or not capabilities or any(c not in protocol.KINDS + IMAGE_KINDS + (CODE_KIND,) for c in capabilities):
+        raise ValidationFailure("请选择支持的本地 Agent 能力。")
     if type(expires_days) is not int or not 1 <= expires_days <= 90:
         raise ValidationFailure("有效期须为 1–90 天。")
     if AgentDevice.objects.filter(owner=actor, revoked_at=None, expires_at__gt=timezone.now()).count() >= 10:
@@ -220,7 +221,13 @@ def create_request(actor, *, device_id, kind, idempotency_key, draft, instructio
 
 
 def stale_reason(request):
-    from common.exceptions import DomainError
+    if request.kind == CODE_KIND:
+        try:
+            from missions.code_services import assert_code_current
+            assert_code_current(request.code_execution)
+            return ''
+        except DomainError as exc:
+            return exc.message
     try:
         if request.kind in IMAGE_KINDS:
             from missions.execution_services import assert_execution_current
@@ -314,12 +321,12 @@ def _finish(device_id, request_id, attempt_id, *, result=None, error=""):
         return ConflictError("请求已结束，拒绝迟到或不同的回传。", code="request_terminal")
     if result is None:
         # 只接收固定错误码，避免本地异常、认证响应或环境变量泄漏。
-        if error not in ("model_timeout", "model_unavailable", "invalid_result", "local_configuration", "local_failure"):
+        if error not in ("model_timeout", "model_unavailable", "invalid_result", "local_configuration", "local_failure", "no_changes"):
             raise ValidationFailure("本地错误须使用已定义的脱敏错误码。")
         request.status, request.error = "failed", error
     else:
-        if request.kind in IMAGE_KINDS:
-            raise ValidationFailure("图像成果必须通过候选清单与选中上传接口回传。")
+        if request.kind in IMAGE_KINDS or request.kind == CODE_KIND:
+            raise ValidationFailure("图像或代码成果必须通过对应的清单与人工发布接口回传。")
         if error:
             raise ValidationFailure("结果和错误不能同时提交。")
         validate(protocol.validate_result, request.kind, result)
@@ -339,6 +346,9 @@ def cancel(actor, request_id):
     request = AssistanceRequest.objects.filter(pk=request_id, owner=actor).first()
     if not request:
         raise NotFound()
+    if request.kind == CODE_KIND:
+        from missions.services import cancel_code_execution
+        return cancel_code_execution(actor=actor, execution_id=request.code_execution.pk)
     if request.kind in IMAGE_KINDS:
         from missions.services import cancel_execution
         return cancel_execution(actor=actor, execution_id=request.execution.pk)

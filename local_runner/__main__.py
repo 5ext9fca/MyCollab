@@ -58,6 +58,20 @@ class BridgeClient:
                 raise ValueError('服务器响应过大。')
             return json.loads(raw)
 
+    def publish_code(self, path, attempt_id, patch, report):
+        boundary = 'mycollab' + uuid4().hex
+        body = (f'--{boundary}\r\nContent-Disposition: form-data; name="attempt_id"\r\n\r\n{attempt_id}\r\n').encode()
+        for name, data in (('patch', patch), ('report', report)):
+            body += (f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"; filename="{name}.txt"\r\nContent-Type: text/plain\r\n\r\n').encode() + data + b'\r\n'
+        body += f'--{boundary}--\r\n'.encode()
+        req = Request(self.url + '/api/agent-runner/' + path, data=body, headers={
+            'Authorization': 'Bearer ' + self.token, 'Content-Type': 'multipart/form-data; boundary=' + boundary}, method='POST')
+        with self.opener.open(req, timeout=60) as response:
+            raw = response.read(512 * 1024 + 1)
+            if len(raw) > 512 * 1024:
+                raise ValueError('服务器响应过大。')
+            return json.loads(raw)
+
 
 def execute(client, request, model, executable):
     endpoint = f"requests/{request['id']}/"
@@ -101,11 +115,27 @@ def main():
     parser.add_argument("--once", action="store_true", help="只领取一次，用于接入验证")
     parser.add_argument('--select', metavar='REQUEST_ID', help='明确选择本地候选并上传；不会调用模型')
     parser.add_argument('--keys', nargs='+', help='选择预览中的候选编号，例如 candidate_1')
+    parser.add_argument('--publish-code', metavar='REQUEST_ID', help='人工审查后发布已有补丁与报告；不调用模型')
+    parser.add_argument('--list-repositories', action='store_true', help='只列出本地仓库标识及允许的验证摘要')
     args = parser.parse_args()
     if os.name == "posix" and args.config.stat().st_mode & 0o077:
         parser.error("配置文件必须仅本人可读写，请先 chmod 600。")
     config = json.loads(args.config.read_text())
+    if sum(bool(value) for value in (args.select, args.publish_code, args.list_repositories)) > 1:
+        parser.error('选择图片、发布代码和列出仓库不能同时使用。')
+    if args.list_repositories:
+        from .code_workspace import configuration
+        for key in config.get('repositories', {}):
+            repository = configuration(config, key)
+            print(key + '：' + ('、'.join(item['label'] for item in repository['verification']) or '未配置验证'))
+        return
     client = BridgeClient(config["server"], config["device_token"])
+    if args.publish_code:
+        if args.keys:
+            parser.error('--keys 只用于图像选择。')
+        from .code_execution import publish
+        publish(client, config, args.publish_code)
+        return
     if args.select:
         from .images import select
         if not args.keys:
@@ -119,7 +149,10 @@ def main():
         try:
             request = client.post("claim/", {})
             if request:
-                if request.get('kind') in ('image_generate', 'image_edit'):
+                if request.get('kind') == 'code_implement':
+                    from .code_execution import execute_code
+                    execute_code(client, request, config)
+                elif request.get('kind') in ('image_generate', 'image_edit'):
                     from .images import execute_image
                     execute_image(client, request, config)
                 else:

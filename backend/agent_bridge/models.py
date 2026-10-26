@@ -11,6 +11,7 @@ class AssistanceKind(models.TextChoices):
     REVIEW = "review_assist", "验收辅助"
     IMAGE_GENERATE = "image_generate", "图像生成"
     IMAGE_EDIT = "image_edit", "图像编辑"
+    CODE = "code_implement", "代码实现"
 
 
 class AgentDevice(models.Model):

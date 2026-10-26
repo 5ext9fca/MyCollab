@@ -625,3 +625,31 @@ class SubmissionExecutionArtifact(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["submission", "candidate"], name="submission_candidate_unique")]
+
+
+class CodeExecution(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request = models.OneToOneField('agent_bridge.AssistanceRequest', on_delete=models.PROTECT, related_name='code_execution')
+    mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name='code_executions')
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    mission_version = models.PositiveIntegerField()
+    repository_key = models.CharField(max_length=64)
+    version = models.PositiveIntegerField()
+    previous = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL)
+    manifest = models.JSONField(default=dict)
+    report = models.JSONField(null=True, blank=True)
+    patch = models.ForeignKey('library.LibraryFile', null=True, blank=True, on_delete=models.PROTECT, related_name='code_executions')
+    created_at = models.DateTimeField(auto_now_add=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at', 'id']
+        constraints = [models.UniqueConstraint(fields=['mission', 'repository_key', 'version'], name='code_execution_version_unique')]
+
+
+class SubmissionCodeExecution(models.Model):
+    submission = models.ForeignKey(MissionSubmission, on_delete=models.CASCADE, related_name='code_artifacts')
+    execution = models.ForeignKey(CodeExecution, on_delete=models.PROTECT, related_name='submission_references')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['submission', 'execution'], name='submission_code_execution_unique')]

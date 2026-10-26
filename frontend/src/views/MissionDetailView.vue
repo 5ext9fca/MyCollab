@@ -59,6 +59,9 @@ import MarkdownEditor from '../components/MarkdownEditor.vue'
 import MissionForm from '../components/MissionForm.vue'
 import AssistancePanel from '../components/AssistancePanel.vue'
 import MissionExecutionPanel from '../components/MissionExecutionPanel.vue'
+import MissionCodePanel from '../components/MissionCodePanel.vue'
+import CodeReport from '../components/CodeReport.vue'
+import type { CodeExecution } from '../api/codeExecutions'
 import type { ExecutionCandidate } from '../api/executions'
 import StatusTag from '../components/StatusTag.vue'
 
@@ -226,6 +229,7 @@ const submitForm = reactive({
   source_references: [] as SubmissionSourceInput[],
   build_references: [] as SubmissionBuildInput[],
   execution_candidate_ids: [] as string[],
+  code_execution_ids: [] as string[],
 })
 
 function openSubmit() {
@@ -234,6 +238,7 @@ function openSubmit() {
   submitForm.source_references = []
   submitForm.build_references = []
   submitForm.execution_candidate_ids = []
+  submitForm.code_execution_ids = []
   submitDialogVisible.value = true
 }
 
@@ -244,6 +249,14 @@ function adoptExecution(candidates: ExecutionCandidate[]) {
     submitForm.execution_candidate_ids.push(candidate.id)
     submitForm.description += `\n![${candidate.name.replace(/[\[\]<>]/g, '')}](${candidate.url})\n`
   }
+}
+
+function adoptCodeExecution(execution: CodeExecution) {
+  if (!execution.patch_url || !execution.report) return
+  if (!submitDialogVisible.value) openSubmit()
+  if (submitForm.code_execution_ids.includes(execution.id)) return
+  submitForm.code_execution_ids.push(execution.id)
+  submitForm.description += `\n[代码补丁：${execution.repository_key} · 版本 ${execution.version}](${execution.patch_url})\n基线：${execution.report.base_commit}\n`
 }
 
 function addSourceRow() {
@@ -295,6 +308,7 @@ async function confirmSubmit() {
             source_references: sources,
             build_references: builds,
             execution_candidate_ids: submitForm.execution_candidate_ids,
+            code_execution_ids: submitForm.code_execution_ids,
           },
           mission.value!.version,
         ),
@@ -710,10 +724,12 @@ function formatDate(value: string | null) {
       </section>
 
       <MissionExecutionPanel :key="mission.id" :mission="mission" can-adopt @adopt="adoptExecution" />
+      <MissionCodePanel :key="`code-${mission.id}`" :mission="mission" can-adopt @adopt="adoptCodeExecution" />
 
       <section v-if="currentSubmission" class="section">
         <h3>最新成果</h3>
         <MarkdownContent :source="currentSubmission.description" />
+        <CodeReport v-for="artifact in currentSubmission.code_artifacts" :key="artifact.execution_id" :report="artifact.report" :patch-url="artifact.patch_url" />
         <el-card v-if="currentSubmission.execution_artifacts?.length" shadow="never"><h4>本轮图像成果</h4><p v-for="artifact in currentSubmission.execution_artifacts" :key="artifact.candidate_id"><a class="app-link" :href="artifact.url">{{ artifact.name }} · 版本 {{ artifact.version }}</a></p></el-card>
       </section>
 
@@ -819,6 +835,7 @@ function formatDate(value: string | null) {
               </el-tag>
             </div>
             <MarkdownContent :source="item.description" />
+            <CodeReport v-for="artifact in item.code_artifacts" :key="artifact.execution_id" :report="artifact.report" :patch-url="artifact.patch_url" />
             <el-card v-if="item.execution_artifacts?.length" shadow="never"><h4>本轮图像成果</h4><p v-for="artifact in item.execution_artifacts" :key="artifact.candidate_id"><a class="app-link" :href="artifact.url">{{ artifact.name }} · 版本 {{ artifact.version }}</a></p></el-card>
             <div v-if="item.verification_description" class="submission__block">
               <strong>人工验证说明</strong>
@@ -942,6 +959,7 @@ function formatDate(value: string | null) {
         </el-form-item>
         <el-form-item label="人工验证说明（Markdown，无源码/构建时必填）">
           <el-card v-if="submitForm.execution_candidate_ids.length" shadow="never"><p>已关联 {{ submitForm.execution_candidate_ids.length }} 项图像成果。请填写人工验证说明后确认提交。</p><el-button @click="submitForm.execution_candidate_ids = []">清除成果关联</el-button></el-card>
+          <el-card v-if="submitForm.code_execution_ids.length" shadow="never"><p>已关联 {{ submitForm.code_execution_ids.length }} 项代码成果。本地报告不等于独立验收，请填写人工验证说明。</p><el-button @click="submitForm.code_execution_ids = []">清除代码成果关联</el-button></el-card>
           <MarkdownEditor v-model="submitForm.verification_description" :rows="3" />
         </el-form-item>
 

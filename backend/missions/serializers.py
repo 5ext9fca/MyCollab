@@ -304,6 +304,7 @@ class BuildReferenceSerializer(serializers.Serializer):
 
 
 class SubmitSerializer(serializers.Serializer):
+    code_execution_ids = serializers.ListField(child=serializers.UUIDField(), max_length=20, required=False, default=list)
     execution_candidate_ids = serializers.ListField(child=serializers.UUIDField(), max_length=20, required=False, default=list)
     description = serializers.CharField(required=False, allow_blank=True, default="")
     verification_description = serializers.CharField(required=False, allow_blank=True, default="")
@@ -367,6 +368,14 @@ class SubmissionBuildReferenceSerializer(serializers.ModelSerializer):
 
 
 class MissionSubmissionSerializer(serializers.ModelSerializer):
+    code_artifacts = serializers.SerializerMethodField()
+
+    def get_code_artifacts(self, obj):
+        return [{'execution_id': str(link.execution_id), 'repository_key': link.execution.repository_key,
+            'version': link.execution.version, 'patch_url': link.execution.patch.url,
+            'manifest': link.execution.manifest, 'report': link.execution.report}
+            for link in obj.code_artifacts.select_related('execution__patch')]
+
     execution_artifacts = serializers.SerializerMethodField()
 
     def get_execution_artifacts(self, obj):
@@ -398,6 +407,7 @@ class MissionSubmissionSerializer(serializers.ModelSerializer):
             "source_references",
             "build_references",
             "execution_artifacts",
+            "code_artifacts",
         ]
 
 
