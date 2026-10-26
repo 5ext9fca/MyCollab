@@ -201,7 +201,7 @@ MYCOLLAB_LIVE_MODEL=deepseek/deepseek-flash .venv/bin/python manage.py test agen
 
 ## Mission 图像委派（第二批）
 
-已支持通过本人本地 **Codex CLI 0.164.0** 生成或编辑 Mission 关联资产。认领进行中的 Mission，关联 Asset，再在详情页或抽屉的“美术资产委派”中预览并确认。Runner 本地生成候选，用户在本地预览、明确选择后才上传；回到完整详情引用到提交草稿、填写人工验证说明并提交，由验收者确认。
+已支持通过本人本地 **Codex CLI 0.164.0** 生成或编辑 Mission 关联资产。认领进行中的 Mission，关联 Asset，再从详情页或抽屉的“Agent 交互记录”进入独立 Agent 交互页，在“美术资产委派”中预览并确认。Runner 本地生成候选，用户在本地预览、明确选择后才上传；回到完整详情引用到提交草稿、填写人工验证说明并提交，由验收者确认。
 
 供应商认证、模型调用、图片下载/转换全部在用户电脑，服务器只做任务交接、元数据校验和选中成果存储。图像 Runner 另需本地 Pillow，配置与 `--select` 命令见 [本地 Runner 说明](local_runner/README.md)。升级部署照常执行 `python manage.py migrate`，无需新队列/GPU服务。
 
@@ -209,7 +209,7 @@ MYCOLLAB_LIVE_MODEL=deepseek/deepseek-flash .venv/bin/python manage.py test agen
 
 ## Mission 规则/代码委派（第三批）
 
-已接入本地 **OpenCode CLI 2.1.3**。在 Runner 配置中预先登记仓库标识、Git 基线、允许修改路径和验证命令，再为设备声明“代码实现”能力。在本人进行中的 Mission 详情/抽屉填写仓库标识、预览并确认委派。
+已接入本地 **OpenCode CLI 2.1.3**。在 Runner 配置中预先登记仓库标识、Git 基线、允许修改路径和验证命令，再为设备声明“代码实现”能力。从本人进行中的 Mission 详情/抽屉进入独立 Agent 交互页，填写仓库标识、预览并确认委派。
 
 Runner 在隔离副本中生成补丁与本地验证报告；查看后使用 `--publish-code 请求UUID` 明确发布，回到 Mission 引用到草稿并人工提交/验收。不会自动应用到原仓库、推送、创建 PR 或部署。所有模型/Git/依赖认证和执行资源留在本地，服务器没有代码执行环境。
 
@@ -217,6 +217,6 @@ Runner 在隔离副本中生成补丁与本地验证报告；查看后使用 `--
 
 ## 执行中对话与权限审批
 
-本机仓库配置 `repositories.<标识>.interactive: true` 后，OpenCode 代码执行支持同会话追问与单次文件编辑审批。在 Mission 的代码执行历史展开“私有对话与权限审批”操作；仅执行发起人可见，审批超时默认拒绝。未启用的仓库、图像和文本适配器继续原流程。
+本机仓库配置 `repositories.<标识>.interactive: true` 后，OpenCode 代码执行支持同会话追问与单次文件编辑审批。在独立 Agent 交互页的代码执行历史展开“私有对话与权限审批”操作；仅执行发起人可见，审批超时默认拒绝。未启用的仓库、图像和文本适配器继续原流程。
 
 本机 Runner 使用随机认证的环回私有 OpenCode 服务，服务器不与模型提供商通信、不保存供应商凭据。仅能批准原本位于本地白名单的编辑，不能开启 shell 或扩大工作目录权限。仍须本机审查发布补丁、网页人工提交与验收。升级后执行数据库迁移；详细配置、限制和验收记录见 [local_runner/README.md](local_runner/README.md)。

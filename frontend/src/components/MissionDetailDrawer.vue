@@ -431,7 +431,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
             <MissionSubscription v-if="mission" :mission-id="mission.id" />
             <MissionSchedule :mission="mission" />
             <MarkdownContent :source="mission.content" />
-            <AgentPanel v-if="open" :key="mission.id" :mission="mission" />
+            <AgentPanel records-only v-if="open" :key="mission.id" :mission="mission" />
             <h4>验收标准</h4>
             <MarkdownContent :source="mission.acceptance_criteria" />
           </el-tab-pane>

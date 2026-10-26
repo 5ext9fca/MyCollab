@@ -722,7 +722,7 @@ function formatDate(value: string | null) {
         <MarkdownContent :source="mission.acceptance_criteria" />
       </section>
 
-      <AgentPanel :key="mission.id" :mission="mission" can-adopt @adopt-images="adoptExecution" @adopt-code="adoptCodeExecution" />
+      <AgentPanel records-only :key="mission.id" :mission="mission" can-adopt @adopt-images="adoptExecution" @adopt-code="adoptCodeExecution" />
 
       <section v-if="currentSubmission" class="section">
         <h3>最新成果</h3>

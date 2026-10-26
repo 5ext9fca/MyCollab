@@ -9,7 +9,7 @@ import { cancelExecution, createExecution, getExecution, listExecutions } from '
 import type { ExecutionCandidate, ExecutionInput, MissionExecution } from '../api/executions'
 import type { LibraryFile, Mission } from '../api/types'
 
-const props = defineProps<{ mission: Mission; canAdopt?: boolean }>()
+const props = defineProps<{ mission: Mission; canAdopt?: boolean; recordsOnly?: boolean }>()
 const emit = defineEmits<{ adopt: [candidates: ExecutionCandidate[]] }>()
 const auth = useAuthStore()
 const eligible = computed(() => props.mission.status === 'InProgress' && props.mission.assignee?.id === auth.user?.id)
@@ -103,7 +103,7 @@ watch([() => props.mission.id, eligible], async () => {
   files.value = []; filePage.value = 0; referenceIds.value = []; error.value = ''; assetId.value = assets.value[0]?.id ?? ''
   await load()
   if (disposed || version !== generation) return
-  if (eligible.value) {
+  if (eligible.value && !props.recordsOnly) {
     try { const result = await listAgentDevices()
       if (disposed || version !== generation) return
       devices.value = result.results; deviceId.value = validDevices.value[0]?.id ?? ''; await loadFiles() } catch (err) { fail(err) }
@@ -113,10 +113,10 @@ onBeforeUnmount(() => { disposed = true; generation++; clearTimeout(timer) })
 </script>
 <template>
   <el-card shadow="never" class="execution-panel">
-    <h3>美术资产委派</h3>
-    <p>本地设备生成和预览图片。仅在本地明确选择后上传；成果仍需人工提交、验收。</p>
+    <h3>{{ recordsOnly ? '图像交互记录' : '美术资产委派' }}</h3>
+    <p v-if="!recordsOnly">本地设备生成和预览图片。仅在本地明确选择后上传；成果仍需人工提交、验收。</p>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <details v-if="eligible" ref="formDetails"><summary>创建图像委派</summary>
+    <details v-if="eligible && !recordsOnly" ref="formDetails"><summary>创建图像委派</summary>
       <p v-if="!assets.length">请先为 Mission 关联未归档的 Asset。</p>
       <p v-if="!validDevices.length">暂无声明所选图像能力的设备，请在 <router-link class="app-link" to="/agent-devices">本地 Agent 设备</router-link> 中绑定。</p>
       <el-form v-if="validDevices.length && assets.length" label-position="top">
@@ -130,18 +130,19 @@ onBeforeUnmount(() => { disposed = true; generation++; clearTimeout(timer) })
       </el-form>
       <el-card v-if="prepared" shadow="never" class="preview"><h4>将发送到所选本地设备的材料</h4><pre>{{ preview }}</pre><p>设备离线时等待连接；服务器不会代为调用模型。</p><el-button type="primary" :loading="busy" @click="create">确认委派</el-button></el-card>
     </details>
-    <p v-else>只有当前认领者可委派进行中的 Mission。</p>
+    <p v-else-if="!recordsOnly">只有当前认领者可委派进行中的 Mission。</p>
     <h4>执行与成果历史</h4><el-button @click="load">刷新执行记录</el-button>
     <el-empty v-if="!history.length" description="暂无图像执行" :image-size="48" />
-    <el-card v-for="item in history" :key="item.id" shadow="never" class="execution-item">
+    <el-card v-for="item in history" :key="item.id" :id="`execution-${item.id}`" shadow="never" class="execution-item">
       <h4>{{ mission.assets?.find(a => a.id === item.asset_id)?.title ?? '历史资产' }} · 版本 {{ item.version }}</h4>
       <p>{{ labels[item.status] }} · {{ new Date(item.created_at).toLocaleString() }} · 有效期至 {{ new Date(item.expires_at).toLocaleString() }}</p>
       <p v-if="item.stale_reason || item.error">{{ item.stale_reason || item.error }}</p>
       <p v-if="item.status === 'cancelled'">{{ item.stopped_at ? '本地已确认停止或未开始' : '等待本地确认停止；取消不保证供应商立即停止' }}</p>
       <p v-if="item.status === 'awaiting_selection'">请在本地 Runner 打开的预览中检查候选，再用 --select {{ item.request_id }} --keys 候选编号 明确选择。有效期至 {{ new Date(item.expires_at).toLocaleString() }}。</p>
+      <router-link v-if="recordsOnly" class="app-link" :to="`/missions/${mission.id}/agent?kind=image`">打开 Agent 交互</router-link>
       <div class="candidates"><figure v-for="candidate in item.candidates" :key="candidate.id"><template v-if="candidate.url"><img :src="candidate.url" :alt="candidate.name" loading="lazy"><a class="app-link" :href="candidate.url" target="_blank" rel="noopener">{{ candidate.name }}</a></template><figcaption v-else>{{ candidate.key }} · {{ candidate.width }} × {{ candidate.height }} · 仅本地候选</figcaption></figure></div>
-      <el-button v-if="item.actor_id === auth.user?.id && active.includes(item.status)" @click="cancel(item.id)">取消执行</el-button>
-      <el-button v-if="eligible && item.actor_id === auth.user?.id && !active.includes(item.status)" @click="retry(item)">以新版本再次委派</el-button>
+      <el-button v-if="!recordsOnly && item.actor_id === auth.user?.id && active.includes(item.status)" @click="cancel(item.id)">取消执行</el-button>
+      <el-button v-if="!recordsOnly && eligible && item.actor_id === auth.user?.id && !active.includes(item.status)" @click="retry(item)">以新版本再次委派</el-button>
       <el-button v-if="canAdopt && eligible && item.actor_id === auth.user?.id && item.status === 'succeeded' && item.mission_version === mission.version" @click="adopt(item)">引用到提交草稿</el-button>
       <router-link v-if="!canAdopt && item.status === 'succeeded'" class="app-link" :to="`/missions/${mission.id}`">到完整详情提交成果</router-link>
     </el-card>

@@ -36,6 +36,22 @@ async function render() {
   await flushPromises()
 }
 describe('统一 Agent 面板', () => {
+  it('原委托位置仅保留记录和成果引用，不加载设备或挂载交互操作', async () => {
+    wrapper = mount(AgentPanel, { props: { mission, canAdopt: true, recordsOnly: true }, global: { plugins: [ElementPlus], stubs: { RouterLink: true } } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Agent 交互记录')
+    expect(wrapper.text()).not.toContain('创建代码委派')
+    expect(wrapper.text()).not.toContain('私有对话与权限审批')
+    expect(wrapper.text()).not.toContain('取消代码执行')
+    expect(listAgentDevices).not.toHaveBeenCalled()
+    wrapper.findComponent(MissionCodePanel).vm.$emit('adopt', execution)
+    expect(wrapper.emitted('adoptCode')).toEqual([[execution]])
+    await wrapper.findAll('input[type="radio"]')[1]!.setValue(true)
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('创建图像委派')
+    expect(listLibraryFiles).not.toHaveBeenCalled()
+    expect(listAgentDevices).not.toHaveBeenCalled()
+  })
   it('类型切换只挂载一类，停止旧轮询；重新打开读取当前记录', async () => {
     await render()
     expect(listCodeExecutions).toHaveBeenCalledTimes(1)

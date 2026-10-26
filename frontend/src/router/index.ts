@@ -19,6 +19,7 @@ export const router = createRouter({
       component: AppLayout,
       meta: { requiresAuth: true },
       children: [
+        { path: 'missions/:id/agent', name: 'agent-interaction', component: () => import('../views/AgentInteractionView.vue'), props: true },
         { path: 'agent-devices', name: 'agent-devices', component: () => import('../views/AgentDevicesView.vue') },
         { path: 'design/templates', name: 'production-templates', component: () => import('../views/ProductionTemplatesView.vue') },
         { path: 'design/:id?', name: 'design', component: () => import('../views/DesignView.vue') },

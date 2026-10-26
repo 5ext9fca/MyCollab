@@ -635,13 +635,13 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 
 ## 统一 Agent Panel（轻量入口）
 
-- `components/AgentPanel.vue` 在 Mission 完整详情和抽屉统一代码、图像委派入口，按类型挂载 `MissionCodePanel` 或 `MissionExecutionPanel`；历史仍按类型分页。抽屉关闭后卸载面板，重新打开读取当前状态。
+- `views/AgentInteractionView.vue` 提供登录后访问的 `/missions/:id/agent` 独立交互页，读取当前 Mission，集中创建委派、取消、再次委派、私有对话与审批。`components/AgentPanel.vue` 按类型挂载 `MissionCodePanel` 或 `MissionExecutionPanel`；历史仍按类型分页。Mission 完整详情和抽屉使用 `recordsOnly` 模式，只保留交互记录、成果查看、完整详情的成果引用及独立交互页入口，不加载设备或参考素材、不挂载对话或创建/取消/重试操作。抽屉关闭后卸载面板，重新打开读取当前状态。独立页加载失败可重试，切换 Mission 或离开页面忽略旧响应；`?kind=image` 可直接进入图像类型。
 - 继续复用已有 AgentDevice、AssistanceRequest、CodeExecution、MissionExecution 与原 API，不增加数据表、服务依赖或服务器模型通信。只有当前 InProgress Mission 的认领者可创建，设备须属于本人、未撤销、未到期且声明对应能力；图像还须有未归档的关联 Asset。没有可用能力时隐藏创建表单，保留历史和设备管理说明。
 - 创建前展示 Mission/Asset 版本、要求、仓库标识或参考素材快照；确认失败重发同一幂等键，明确新版本关联原执行。切换类型不会自动发起、取消或恢复执行。凭据、供应商配置、仓库路径与验证命令仍留本地。
 - 活跃历史约 15 秒轮询，失败以 15/30/60 秒退避；终态、切换类型/Mission、关闭抽屉和卸载时停止旧轮询，忽略过期响应。生命周期状态不代表百分比或模型耗时；最近联系不代表实时在线。
 - 展示创建/到期时间、失效原因、取消停止确认与本地发布提示；图像选中上传或代码人工发布后，才可引用到完整详情的提交草稿。抽屉保留完整详情入口。CodeReport 如实展示本地验证失败/超时/未运行，服务器不复跑。
-- 设计、模板、Mission 编写、验收继续使用原 AssistancePanel 表单上下文与逐字段采纳；设备页继续注册/撤销。聊天、流式工具事件、审批与 descriptor 能力发现尚未实现，不是轻量入口的前置条件。
-- 前端回归新增 `src/tests/agentPanel.spec.ts`，覆盖类型切换、卸载停止轮询、失败退避、终态停止、旧 Mission 响应隔离及成果事件转发，领域流程继续由 missionCode/missionExecution/agentBridge 测试覆盖。
+- 设计、模板、Mission 编写、验收继续使用原 AssistancePanel 表单上下文与逐字段采纳；设备页继续注册/撤销。代码执行私有对话与单次审批见下节；流式工具事件与 descriptor 能力发现尚未实现。
+- 前端回归新增 `src/tests/agentPanel.spec.ts`，覆盖类型切换、卸载停止轮询、失败退避、终态停止、旧 Mission 响应隔离及成果事件转发、原位置仅显示记录；`agentInteractionView.spec.ts` 覆盖独立页加载、失败重试和旧响应隔离。领域流程继续由 missionCode/missionExecution/agentBridge 测试覆盖。
 
 验证记录：统一面板使用组件测试验收，后端 Agent 交接与本地 Runner 使用确定性闭环回归；本次未新增真实供应商调用。浏览器工具未提供可用浏览器，实际页面验收未完成，不能将组件测试等同于人工浏览器验收。
 
@@ -651,7 +651,7 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - 浏览器 Session + CSRF：`GET /api/assistance-requests/{id}/interaction/?after=N` 分页读取私有事件，POST 同路径发送 followup 或 permission_reply。只允许原请求所有者访问，团队可读成果权限不延伸到对话。响应禁止缓存。
 - Runner Bearer：`POST /api/agent-runner/requests/{id}/interaction/open/` 声明当前 attempt 的会话 nonce 与能力；`exchange/` 批量上报最多 20 个事件、100 个命令确认并领取待处理指令，可请求关闭。关闭前须处理完已排队指令。两条写接口均校验设备、租约、业务版本、attempt 和会话 nonce；同一事件/命令 UUID 内容不一致返回冲突。
 - 每次最多 100 条命令、1000 条事件、累计 1 MiB 事件，单事件 8 KiB；消息最多 4000 字符且受体积限制。事件只接受普通回复、审批请求/结束，禁止原始 Agent 事件透传。命令和审批最多 120 秒有效；过期或终态不可恢复，ACK 的 applied 仅表示本地已处理该指令，不表示 Mission 完成。
-- 网页 `AgentConversation.vue` 从代码历史中按本人权限展开，5 秒轮询，失败退避至 60 秒，分页按游标合并，关闭后卸载停止请求。普通文本渲染，不执行消息 HTML。发送结果未知时重发同一个 command_id；审批仅提供一次批准或拒绝，绑定操作摘要。
+- 网页 `AgentConversation.vue` 在独立 Agent 交互页的代码历史中按本人权限展开，5 秒轮询，失败退避至 60 秒，分页按游标合并，关闭后卸载停止请求。普通文本渲染，不执行消息 HTML。发送结果未知时重发同一个 command_id；审批仅提供一次批准或拒绝，绑定操作摘要。
 - 本地仓库配置 `interactive: true` 才启用 `opencode_interactive.py`。`opencode_server.py` 启动 OpenCode 2.1.3 随机端口/临时密码的环回私有服务；`interaction.py` 持久记录去重、验证白名单/相对路径/符号链接、绑定原生待决操作，并将一次批准映射为 `once`。只将原先允许的 edit 收紧为 ask，不放开 shell、外部目录、集成或配置写入。原生权限请求变更、审批超时、会话取消均不批准新操作。
 - 供应商通信与认证全部留本机；MyCollab 仍仅短轮询和数据库交接，不增加模型 SDK、WebSocket 或后台任务依赖。交互结束后继续原补丁/报告验证和人工发布链。图像与文本适配器尚未声明交互支持，不冒充可用。
 - `cleanup_assistance` 清除超过七天且不再 running 的交互记录，保留任务成果和提交关联。本地会话记录由用户管理，当前不支持崩溃恢复或跨设备迁移。
