@@ -22,7 +22,12 @@ watch(() => props.resetKey, () => emit('update:selectedIds', []))
     <template #before-items>
       <el-card class="section-card" shadow="never"><div class="toolbar toolbar--flush">
         <el-checkbox :model-value="items.length > 0 && selected.length === items.length" :indeterminate="selected.length > 0 && selected.length < items.length" :disabled="busy || loading || !items.length || items.length > maxSelection" @change="select($event ? items.map(item => item.id) : [])">本页全选</el-checkbox>
-        <span>仅选择当前页 {{ selected.length }}/{{ maxSelection }}</span>
+        <el-card class="selection-summary" shadow="never" :body-style="{ padding: '8px 12px' }">
+          <div class="selection-summary__content" role="status" aria-live="polite">
+            <span class="meta">本页已选</span>
+            <strong>{{ selected.length }} / {{ maxSelection }}</strong>
+          </div>
+        </el-card>
         <slot name="actions" :selected="selected" :selected-ids="selected.map(item => item.id)" :disabled="busy || loading || !selected.length" />
       </div></el-card>
     </template>
@@ -33,3 +38,8 @@ watch(() => props.resetKey, () => emit('update:selectedIds', []))
     </template>
   </CardList>
 </template>
+
+<style scoped>
+.selection-summary__content { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.selection-summary strong { font-variant-numeric: tabular-nums; }
+</style>

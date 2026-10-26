@@ -1,0 +1,17 @@
+---
+description: 项目前端超链接的统一样式与交互规则
+alwaysApply: true
+---
+
+# 超链接审美
+
+本规则适用于本项目新增或修改的前端页面与组件，与卡片审美规则共同执行。
+
+- **超链接统一使用先前提取的通用超链接样式**：复用 `frontend/src/style.css` 中的 `app-link`；卡片标题链接使用 `app-link app-link--title`。
+- `router-link`、`a` 及表现为文字链接的操作按钮均沿用该样式，不遗留浏览器默认裸链接，不另建重复的局部链接样式。
+- `app-link--title` 只增加标题字号与字重，不能代替基础类 `app-link`。普通引用链接仅使用基础类。
+- 悬停、键盘焦点、换行与深浅色主题统一由公共样式负责，不在页面中硬编码链接颜色或移除焦点提示。
+- 页面导航使用 `router-link`，外链使用 `a`；执行操作使用带 `type="button"` 的按钮，文字链接样式不改变其语义。常规操作按钮继续使用项目的按钮组件。
+- Markdown 等动态生成内容中的超链接也须在现有安全渲染链路中复用公共样式，不得绕过清洗或直接注入未处理的 HTML。
+
+示例：`<router-link class="app-link app-link--title" :to="target">标题</router-link>`；普通引用使用 `<a class="app-link" :href="url">引用名称</a>`。

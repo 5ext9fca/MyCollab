@@ -23,6 +23,7 @@ MyCollab 是一个**单团队 Mission 协作系统**：发布 Mission、认领�
 - [需求规格与文档同步](.cursor/rules/documentation.mdc)
 - [提交与推送规范](.cursor/rules/git-workflow.mdc)
 - [前端卡片审美](.cursor/rules/card-aesthetics.mdc)
+- [前端超链接审美](.cursor/rules/link-aesthetics.mdc)
 
 ## 维护方式
 
