@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BlockedLink from './BlockedLink.vue'
 /** F5 mission card shared by the board and the graph node. */
 import { computed } from 'vue'
 
@@ -86,7 +87,7 @@ function onKey(event: KeyboardEvent) {
     :aria-label="cardLabel"
     :title="node.title"
     @click.stop="onSelect"
-    @keydown="onKey"
+    @keydown.self="onKey"
   >
     <div class="ws-card__head">
       <span class="ws-card__head-left">
@@ -111,9 +112,7 @@ function onKey(event: KeyboardEvent) {
       <el-tag :type="PRIORITY_TAG[node.priority]" size="small" disable-transitions>
         {{ node.priority }}
       </el-tag>
-      <el-tag v-if="node.is_blocked" type="warning" size="small" disable-transitions>
-        受阻
-      </el-tag>
+      <BlockedLink v-if="node.is_blocked" :mission-id="node.id" />
       <el-tag v-if="node.requires_revalidation" type="danger" size="small" disable-transitions>
         需复核
       </el-tag>
@@ -153,7 +152,7 @@ function onKey(event: KeyboardEvent) {
     </div>
 
     <div v-if="!compact" class="ws-card__foot">
-      <el-button link type="primary" size="small" @click.stop="emit('focus', node.id)">
+      <el-button class="app-link app-link--action" link type="primary" size="small" @click.stop="emit('focus', node.id)">
         查看依赖
       </el-button>
     </div>

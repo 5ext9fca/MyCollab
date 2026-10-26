@@ -6,7 +6,7 @@ import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
 import * as api from '../api/missions'
 import type { Mission, MissionSubmission } from '../api/types'
 
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }), useRoute: () => ({ hash: '' }) }))
 vi.mock('element-plus', () => ({ ElMessage: { warning: vi.fn(), error: vi.fn(), success: vi.fn() }, ElMessageBox: {} }))
 vi.mock('../api/auth', () => ({ listTeamMembers: vi.fn().mockResolvedValue([]) }))
 vi.mock('../api/comments', () => ({ listComments: vi.fn().mockResolvedValue({ results: [], count: 0 }) }))
@@ -19,6 +19,8 @@ const global = {
   renderStubDefaultSlot: true,
   directives: { loading: () => {} },
   stubs: {
+    RouterLink: { props: ['to'], template: '<a :href="`/missions/${to.params.id}`"><slot /></a>' },
+    ElAlert: { template: '<div><slot /></div>' },
     ElButton: { props: ['disabled'], template: '<button :disabled="disabled"><slot /></button>' },
     ElDialog: { props: ['modelValue'], template: '<section v-if="modelValue" class="dialog"><slot /><slot name="footer" /></section>' },
     MarkdownEditor: { props: ['modelValue'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
@@ -118,4 +120,19 @@ describe('完整任务详情的验收操作', () => {
     expect(drawerLabels.length).toBeGreaterThan(0)
     for (const label of drawerLabels) expect(detailLabels).toContain(label)
   })
+})
+
+
+it('受阻原因逐项链接到对应前置任务', async () => {
+  mission.is_blocked = true
+  mission.blocking_mission_ids = ['first', 'second']
+  vi.mocked(api.listDependencies).mockResolvedValue({ prerequisites: [
+    { id: 'first', title: '前置一', status: 'Open', dependency_id: 'd1' },
+    { id: 'second', title: '前置二', status: 'InProgress', dependency_id: 'd2' },
+  ], dependents: [], has_unresolved_prerequisites: true } as never)
+  const wrapper = await setup()
+  expect(wrapper.findAll('.action-link-row a').map(a => [a.text(), a.attributes('href')])).toEqual([
+    ['前置一', '/missions/first'], ['前置二', '/missions/second'],
+  ])
+  expect(wrapper.get('#dependencies').attributes('tabindex')).toBe('-1')
 })

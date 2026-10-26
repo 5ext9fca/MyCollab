@@ -27,13 +27,19 @@ async function change(mode: 'Follow' | 'Mute') {
 }
 </script>
 <template>
-  <div class="meta">
+  <el-card shadow="never" class="subscription-card">
     <template v-if="data">
-      <span>{{ data.effective_following ? '已关注' : '未关注普通动态' }}</span>
-      <el-button link :disabled="busy" @click="change('Follow')">关注</el-button>
-      <el-button link :disabled="busy" @click="change('Mute')">静音普通动态</el-button>
+      <span class="subscription-status">{{ data.effective_following ? '已关注' : '未关注普通动态' }}</span>
+      <el-button class="app-link app-link--action" link :disabled="busy" @click="change('Follow')">关注</el-button>
+      <el-button class="app-link app-link--action" link :disabled="busy" @click="change('Mute')">静音普通动态</el-button>
       <p>静音普通动态，职责提醒仍保留。</p>
     </template>
-    <el-button v-if="error" link @click="load">{{ error }}</el-button>
-  </div>
+    <el-button class="app-link app-link--action" v-if="error" link @click="load">{{ error }}</el-button>
+  </el-card>
 </template>
+
+<style scoped>
+.subscription-card { margin: 12px 0; --el-card-padding: 12px; }
+.subscription-card :deep(.el-card__body) { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.subscription-card p { flex-basis: 100%; margin: 0; color: var(--el-text-color-secondary); font-size: 13px; }
+</style>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import BlockedLink from '../components/BlockedLink.vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { listTeamMembers } from '../api/auth'
@@ -63,6 +64,15 @@ import StatusTag from '../components/StatusTag.vue'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
+const route = useRoute()
+async function focusDependencies() {
+  if (route.hash !== '#dependencies' || loading.value) return
+  await nextTick()
+  const section = document.getElementById('dependencies')
+  section?.scrollIntoView?.({ block: 'start' })
+  section?.focus({ preventScroll: true })
+}
+watch(() => route.hash, focusDependencies)
 
 const mission = ref<Mission | null>(null)
 const events = ref<MissionEvent[]>([])
@@ -173,6 +183,7 @@ async function load() {
     }
   } finally {
     loading.value = false
+    await focusDependencies()
   }
 }
 
@@ -566,16 +577,12 @@ function formatDate(value: string | null) {
         <el-tag :type="PRIORITY_TAG[mission.priority]" size="small" disable-transitions>
           {{ mission.priority }}
         </el-tag>
-        <el-tag v-if="mission.is_blocked" type="warning" size="small" disable-transitions>
-          受阻
-        </el-tag>
-        <router-link
+        <BlockedLink v-if="mission.is_blocked" :mission-id="mission.id" />
+        <router-link class="app-link app-link--action"
           v-if="mission.milestone"
           :to="{ name: 'milestone-detail', params: { id: mission.milestone.id } }"
         >
-          <el-tag size="small" type="success" disable-transitions>
-            里程碑：{{ mission.milestone.name }}（{{ MILESTONE_STATUS_LABELS[mission.milestone.status] }}）
-          </el-tag>
+          里程碑：{{ mission.milestone.name }}（{{ MILESTONE_STATUS_LABELS[mission.milestone.status] }}）
         </router-link>
         <el-tag v-for="tag in mission.tags" :key="tag.id" size="small" type="info">
           {{ tag.name }}
@@ -584,7 +591,7 @@ function formatDate(value: string | null) {
 
       <div v-if="mission.parent" class="meta" style="margin-bottom: 12px">
         父任务：
-        <router-link :to="{ name: 'mission-detail', params: { id: mission.parent } }">
+        <router-link class="app-link app-link--action" :to="{ name: 'mission-detail', params: { id: mission.parent } }">
           {{ mission.parent }}
         </router-link>
       </div>
@@ -598,7 +605,9 @@ function formatDate(value: string | null) {
         title="存在未完成的前置任务，暂时无法提交或验收通过"
       >
         <template #default>
-          受阻于：{{ blockingMissions.map((item) => item.title).join('、') }}
+          <div class="action-link-row">受阻于：
+            <router-link v-for="item in blockingMissions" :key="item.id" class="app-link app-link--action" :to="{ name: 'mission-detail', params: { id: item.id } }">{{ item.title }}</router-link>
+          </div>
         </template>
       </el-alert>
       <el-alert
@@ -706,7 +715,7 @@ function formatDate(value: string | null) {
         <h3>任务树（子任务）</h3>
         <el-empty v-if="!children.length" description="没有子任务" :image-size="60" />
         <div v-else class="link-list">
-          <router-link
+          <router-link class="app-link app-link--action"
             v-for="child in children"
             :key="child.id"
             :to="{ name: 'mission-detail', params: { id: child.id } }"
@@ -716,18 +725,18 @@ function formatDate(value: string | null) {
         </div>
       </section>
 
-      <section class="section">
+      <section id="dependencies" class="section" tabindex="-1">
         <h3>前置依赖</h3>
         <el-empty v-if="!prerequisites.length" description="没有前置依赖" :image-size="60" />
         <ul v-else class="edge-list">
           <li v-for="edge in prerequisites" :key="edge.dependency_id">
-            <router-link :to="{ name: 'mission-detail', params: { id: edge.id } }">
+            <router-link class="app-link app-link--action" :to="{ name: 'mission-detail', params: { id: edge.id } }">
               {{ edge.title }}
             </router-link>
             <el-tag size="small" :type="edge.status === 'Done' ? 'success' : 'warning'">
               {{ edge.status }}
             </el-tag>
-            <el-button
+            <el-button class="app-link app-link--action"
               v-if="allowed.includes('manage_dependencies')"
               link
               type="danger"
@@ -766,7 +775,7 @@ function formatDate(value: string | null) {
         <h3>下游任务</h3>
         <el-empty v-if="!dependents.length" description="没有下游任务" :image-size="60" />
         <div v-else class="link-list">
-          <router-link
+          <router-link class="app-link app-link--action"
             v-for="item in dependents"
             :key="item.id"
             :to="{ name: 'mission-detail', params: { id: item.id } }"
@@ -780,7 +789,7 @@ function formatDate(value: string | null) {
         <h3>未完成子任务</h3>
         <el-empty v-if="!unfinishedChildren.length" description="子任务均已完成" :image-size="60" />
         <div v-else class="link-list">
-          <router-link
+          <router-link class="app-link app-link--action"
             v-for="child in unfinishedChildren"
             :key="child.id"
             :to="{ name: 'mission-detail', params: { id: child.id } }"
@@ -813,7 +822,7 @@ function formatDate(value: string | null) {
               <ul class="edge-list">
                 <li v-for="ref in item.source_references" :key="ref.id">
                   {{ ref.provider }} · {{ ref.repository }} @ {{ ref.revision }}
-                  <a v-if="ref.browse_url" :href="ref.browse_url" target="_blank" rel="noopener noreferrer">查看</a>
+                  <a class="app-link app-link--action" v-if="ref.browse_url" :href="ref.browse_url" target="_blank" rel="noopener noreferrer">查看</a>
                 </li>
               </ul>
             </div>
@@ -823,7 +832,7 @@ function formatDate(value: string | null) {
                 <li v-for="build in item.build_references" :key="build.id">
                   {{ build.provider }} · {{ build.build_id }} · {{ build.platform }} ·
                   {{ BUILD_STATUS_LABELS[build.status] }}
-                  <a v-if="build.artifact_url" :href="build.artifact_url" target="_blank" rel="noopener noreferrer">下载</a>
+                  <a class="app-link app-link--action" v-if="build.artifact_url" :href="build.artifact_url" target="_blank" rel="noopener noreferrer">下载</a>
                   <el-tag
                     v-if="item.verified_build_reference === build.id"
                     size="small"
@@ -872,8 +881,8 @@ function formatDate(value: string | null) {
                 {{ new Date(comment.updated_at).toLocaleString() }}
               </span>
               <span v-if="comment.can_edit" class="comment__actions">
-                <el-button link type="primary" @click="startEditComment(comment)">编辑</el-button>
-                <el-button link type="danger" @click="removeComment(comment)">删除</el-button>
+                <el-button class="app-link app-link--action" link type="primary" @click="startEditComment(comment)">编辑</el-button>
+                <el-button class="app-link app-link--action" link type="danger" @click="removeComment(comment)">删除</el-button>
               </span>
             </div>
             <template v-if="editingCommentId === comment.id">
@@ -949,7 +958,7 @@ function formatDate(value: string | null) {
             <el-input v-model="source.repository" placeholder="仓库" style="width: 180px" />
             <el-input v-model="source.revision" placeholder="revision / changelist" style="width: 180px" />
             <el-input v-model="source.browse_url" placeholder="浏览链接（可选）" style="width: 200px" />
-            <el-button link type="danger" @click="submitForm.source_references.splice(index, 1)">
+            <el-button class="app-link app-link--action" link type="danger" @click="submitForm.source_references.splice(index, 1)">
               删除
             </el-button>
           </div>
@@ -978,7 +987,7 @@ function formatDate(value: string | null) {
             </el-select>
             <el-input v-model="build.source_revision" placeholder="对应源码版本（可选）" style="width: 180px" />
             <el-input v-model="build.artifact_url" placeholder="产物链接（可选）" style="width: 180px" />
-            <el-button link type="danger" @click="submitForm.build_references.splice(index, 1)">
+            <el-button class="app-link app-link--action" link type="danger" @click="submitForm.build_references.splice(index, 1)">
               删除
             </el-button>
           </div>

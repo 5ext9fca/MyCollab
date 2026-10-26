@@ -77,7 +77,7 @@ function hasMore(status: MissionStatus): boolean {
             @select="emit('select', $event)"
             @focus="emit('focus', $event)"
           />
-          <el-button
+          <el-button class="app-link app-link--action"
             v-if="hasMore(status)"
             link
             type="primary"

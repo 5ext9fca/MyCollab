@@ -71,7 +71,7 @@ async function submit() {
     <p>待处理 {{ rows.length }} 个任务；预览不保证最终校验通过。</p>
     <ul><li v-for="mission in rows" :key="mission.id">{{ mission.title }} · {{ mission.status }} · {{ mission.priority }} · {{ mission.milestone?.name || '无里程碑' }} · {{ mission.planned_start_date || '未设开始' }} — {{ mission.planned_end_date || '未设结束' }} · 版本 {{ mission.version }}</li></ul>
     <el-alert v-if="uncertain" title="失败或结果不确定：先读取最新任务，再重新预览确认。不会自动重发。" type="warning" :closable="false" />
-    <div v-for="result in results" :key="result.id" class="toolbar"><router-link :to="`/missions/${result.id}`">{{ result.id }}</router-link><span>{{ result.success ? '成功' : result.error?.message }} {{ result.error?.code }}</span></div>
+    <div v-for="result in results" :key="result.id" class="toolbar"><router-link class="app-link app-link--action" :to="`/missions/${result.id}`">{{ result.id }}</router-link><span>{{ result.success ? '成功' : result.error?.message }} {{ result.error?.code }}</span></div>
     <template #footer><el-button v-if="uncertain" :loading="refreshing" @click="refreshRows">读取最新任务</el-button><el-button v-if="preview" :disabled="busy" @click="preview = false">返回修改</el-button><el-button v-if="!preview" :disabled="uncertain || !rows.length || refreshing || busy" @click="prepare">预览变更</el-button><el-button v-else type="primary" :loading="busy" @click="submit">确认逐项执行</el-button></template>
   </el-dialog>
 </template>

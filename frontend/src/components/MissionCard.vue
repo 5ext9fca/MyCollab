@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BlockedLink from './BlockedLink.vue'
 import MissionSchedule from './MissionSchedule.vue'
 import { useRouter } from 'vue-router'
 
@@ -32,9 +33,7 @@ function open() {
             <el-tag :type="PRIORITY_TAG[mission.priority]" size="small" disable-transitions>
               {{ mission.priority }}
             </el-tag>
-            <el-tag v-if="mission.is_blocked" type="warning" size="small" disable-transitions>
-              受阻
-            </el-tag>
+            <BlockedLink v-if="mission.is_blocked" :mission-id="mission.id" />
             <StatusTag :status="mission.status" />
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { defineComponent } from 'vue'
 import { expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -25,5 +26,21 @@ it('跨页面跳转及返回时菜单跟随当前页面，详情保持所属栏�
     }
     router.back(); await flushPromises()
     expect(wrapper.find('.el-menu-item.is-active').text()).toBe('设计与资产')
+  } finally { wrapper.unmount() }
+})
+
+
+it('切换任务详情重新挂载，同任务锚点变化保留页面状态', async () => {
+  const opened: string[] = []
+  const Detail = defineComponent({ props: ['id'], setup(props) { opened.push(props.id); return {} }, template: '<div>任务详情</div>' })
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/missions/:id', name: 'mission-detail', component: Detail, props: true }] })
+  await router.push('/missions/first')
+  const wrapper = mount(AppLayout, { global: { plugins: [router, ElementPlus], stubs: { ThemeSelect: true } } })
+  try {
+    await flushPromises()
+    await router.push('/missions/second'); await flushPromises()
+    expect(opened).toEqual(['first', 'second'])
+    await router.push('/missions/second#dependencies'); await flushPromises()
+    expect(opened).toEqual(['first', 'second'])
   } finally { wrapper.unmount() }
 })

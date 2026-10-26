@@ -65,9 +65,7 @@ async function onSubmit() {
       </el-form>
       <div class="login-footer">
         <span>还没有账号？</span>
-        <el-button link type="primary" @click="router.push({ name: 'register' })">
-          申请注册
-        </el-button>
+        <router-link class="app-link app-link--action" :to="{ name: 'register' }">申请注册</router-link>
       </div>
     </el-card>
   </div>

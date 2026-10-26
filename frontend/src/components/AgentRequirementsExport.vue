@@ -93,7 +93,7 @@ onBeforeUnmount(() => { disposed = true; sequence++; clearTimeout(timer) })
       <el-button v-if="item" :disabled="busy" @click="refresh">刷新状态</el-button>
       <el-button v-if="markdown" :disabled="busy || outdated || !!item?.stale_reason" @click="download">下载 Markdown</el-button>
     </div>
-    <el-card v-if="devices !== null" shadow="never" class="device-link-card"><router-link class="app-link" to="/agent-devices">管理本地 Agent 设备</router-link></el-card>
+    <router-link v-if="devices !== null" class="app-link app-link--action" to="/agent-devices">管理本地 Agent 设备</router-link>
     <p v-if="item">{{ labels[item.status] }} · 来源版本 {{ sourceVersion }}。再次导出会创建新的整理请求。</p>
     <el-alert v-if="pending" title="请求是否创建尚未确认；再次导出会重发同一请求，不重复调用模型。" type="warning" :closable="false" />
     <el-alert v-if="outdated || item?.stale_reason" :title="item?.stale_reason || 'Mission 版本已变化，请重新导出。'" type="warning" :closable="false" />
@@ -107,7 +107,6 @@ onBeforeUnmount(() => { disposed = true; sequence++; clearTimeout(timer) })
 <style scoped>
 .requirements-export { margin: 16px 0; }
 .requirements-export :deep(.el-card__body) { display: grid; gap: 12px; }
-.device-link-card { justify-self: start; --el-card-padding: 8px 12px; }
 summary { cursor: pointer; }
 h3, p { margin: 0; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }

@@ -97,7 +97,7 @@ async function remove(row: SavedView) {
       <template #footer><el-button :loading="busy" @click="save">确认保存</el-button></template>
     </el-dialog>
     <el-dialog v-model="manage" title="保存筛选" width="680px">
-      <div v-for="row in rows" :key="row.id" class="toolbar"><span>{{ row.name }} · {{ row.owner_name }} · {{ row.visibility === 'Team' ? '团队' : '个人' }}</span><el-button @click="open(row)">打开</el-button><el-button v-if="canWrite(row)" link @click="edit(row)">编辑 / 修复</el-button><el-button v-if="canWrite(row)" type="danger" link @click="remove(row)">删除</el-button><p v-for="warning in row.warnings" :key="warning">{{ warning }}</p></div>
+      <div v-for="row in rows" :key="row.id" class="toolbar"><span>{{ row.name }} · {{ row.owner_name }} · {{ row.visibility === 'Team' ? '团队' : '个人' }}</span><el-button @click="open(row)">打开</el-button><el-button class="app-link app-link--action" v-if="canWrite(row)" link @click="edit(row)">编辑 / 修复</el-button><el-button class="app-link app-link--action" v-if="canWrite(row)" type="danger" link @click="remove(row)">删除</el-button><p v-for="warning in row.warnings" :key="warning">{{ warning }}</p></div>
       <el-empty v-if="!rows.length" description="暂无保存筛选" /><el-pagination :total="total" :page-size="20" :current-page="page" layout="prev, pager, next" @current-change="page = $event; load()" />
     </el-dialog>
   </section>

@@ -116,7 +116,7 @@ onMounted(load)
       </el-table-column>
       <el-table-column label="文件名" min-width="200">
         <template #default="{ row }">
-          <a :href="row.url" target="_blank" rel="noopener">{{ row.original_name }}</a>
+          <a class="app-link app-link--action" :href="row.url" target="_blank" rel="noopener">{{ row.original_name }}</a>
         </template>
       </el-table-column>
       <el-table-column label="类型" prop="content_type" width="180" />
@@ -128,8 +128,8 @@ onMounted(load)
       </el-table-column>
       <el-table-column label="操作" width="180">
         <template #default="{ row }">
-          <el-button link type="primary" @click="onCopy(row)">复制 Markdown</el-button>
-          <el-button link type="danger" @click="onDelete(row)">删除</el-button>
+          <el-button class="app-link app-link--action" link type="primary" @click="onCopy(row)">复制 Markdown</el-button>
+          <el-button class="app-link app-link--action" link type="danger" @click="onDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>

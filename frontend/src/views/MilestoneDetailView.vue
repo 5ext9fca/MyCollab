@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BlockedLink from '../components/BlockedLink.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -226,7 +227,7 @@ onMounted(load)
         <el-empty v-if="!missions.length" description="暂无关联任务" :image-size="60" />
         <div v-else class="mission-links">
           <div v-for="item in missions" :key="item.id" class="mission-link">
-            <router-link :to="{ name: 'mission-detail', params: { id: item.id } }">
+            <router-link class="app-link app-link--action" :to="{ name: 'mission-detail', params: { id: item.id } }">
               {{ item.title }}
             </router-link>
             <el-tag :type="TYPE_TAG[item.type]" size="small" disable-transitions>
@@ -235,7 +236,7 @@ onMounted(load)
             <el-tag :type="PRIORITY_TAG[item.priority]" size="small" disable-transitions>
               {{ item.priority }}
             </el-tag>
-            <el-tag v-if="item.is_blocked" type="warning" size="small" disable-transitions>受阻</el-tag>
+            <BlockedLink v-if="item.is_blocked" :mission-id="item.id" />
             <StatusTag :status="item.status" />
           </div>
         </div>

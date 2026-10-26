@@ -37,6 +37,6 @@ onMounted(() => search())
   <el-select :model-value="modelValue || ''" filterable remote clearable :remote-method="search" :loading="loading" :placeholder="filter ? '设计或资产筛选' : kind === 'Asset' ? '上级资产（可空）' : '设计依据（可空）'" style="min-width: 200px" @update:model-value="emit('update:modelValue', $event || null)">
     <el-option v-if="filter" label="无设计或资产关联" value="none" />
     <el-option v-for="item in options" :key="item.id" :value="item.id" :label="item.title + (item.archived ? '（已归档）' : '')" :disabled="!filter && item.archived && item.id !== modelValue" />
-    <template #footer><el-button v-if="more" link :loading="loading" @click="loadMore">加载更多</el-button></template>
+    <template #footer><el-button class="app-link app-link--action" v-if="more" link :loading="loading" @click="loadMore">加载更多</el-button></template>
   </el-select>
 </template>

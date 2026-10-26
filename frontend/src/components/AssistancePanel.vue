@@ -117,7 +117,7 @@ onUnmounted(() => { disposed = true; clearTimeout(timer) })
   <el-card shadow="never" class="assistance-panel">
     <h3>本地 Agent 辅助</h3>
     <p>仅发送你确认的文本。模型调用与凭据保留在本地；建议需逐字段采纳并手动保存。</p>
-    <router-link class="app-link" to="/agent-devices">管理本地设备与请求记录</router-link>
+    <router-link class="app-link app-link--action" to="/agent-devices">管理本地设备与请求记录</router-link>
     <el-select v-model="deviceId" aria-label="本地设备" placeholder="选择本人设备" :disabled="!!active"><el-option v-for="d in devices" :key="d.id" :value="d.id" :label="d.name" /></el-select>
     <el-alert type="info" :closable="false" :title="`最近联系：${lastContact}。联系记录不代表实时在线；请求由本地设备领取。`" />
     <el-input v-model="instructions" type="textarea" :rows="2" maxlength="10000" aria-label="辅助要求" placeholder="填写目标与补充要求" />

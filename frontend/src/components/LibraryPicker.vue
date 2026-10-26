@@ -96,7 +96,7 @@ async function onDelete(file: LibraryFile) {
           </div>
         </div>
         <el-button size="small" type="primary" @click="onInsert(file)">插入</el-button>
-        <el-button size="small" type="danger" link @click="onDelete(file)">删除</el-button>
+        <el-button class="app-link app-link--action" size="small" type="danger" link @click="onDelete(file)">删除</el-button>
       </div>
     </div>
   </el-dialog>

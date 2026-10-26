@@ -73,10 +73,10 @@ onMounted(load)
     <el-card class="section-card" shadow="never">
     <div class="toolbar"><el-input v-model="query" placeholder="搜索模板" clearable @keyup.enter="filter" @clear="filter" /><el-select v-model="archived" @change="filter"><el-option label="未归档" value="false" /><el-option label="已归档" value="true" /><el-option label="全部" value="all" /></el-select><el-button @click="filter">查询</el-button></div>
     <el-table v-loading="loading" :data="templates" @row-click="(item: ProductionTemplate) => { eventPage = 1; inspect(item) }">
-      <el-table-column label="模板"><template #default="{ row }"><el-button link type="primary" @click.stop="eventPage = 1; inspect(row)">{{ row.name }}</el-button></template></el-table-column>
+      <el-table-column label="模板"><template #default="{ row }"><el-button class="app-link app-link--action" link type="primary" @click.stop="eventPage = 1; inspect(row)">{{ row.name }}</el-button></template></el-table-column>
       <el-table-column label="步骤数"><template #default="{ row }">{{ row.steps.length }}</template></el-table-column>
       <el-table-column prop="version" label="版本" />
-      <el-table-column label="操作"><template #default="{ row }"><el-button v-if="row.allowed_actions.includes('edit')" link @click.stop="edit(row)">编辑</el-button><el-button v-if="row.allowed_actions.includes('archive') || row.allowed_actions.includes('restore')" link :loading="saving" @click.stop="archive(row)">{{ row.archived ? '恢复' : '归档' }}</el-button></template></el-table-column>
+      <el-table-column label="操作"><template #default="{ row }"><el-button class="app-link app-link--action" v-if="row.allowed_actions.includes('edit')" link @click.stop="edit(row)">编辑</el-button><el-button class="app-link app-link--action" v-if="row.allowed_actions.includes('archive') || row.allowed_actions.includes('restore')" link :loading="saving" @click.stop="archive(row)">{{ row.archived ? '恢复' : '归档' }}</el-button></template></el-table-column>
     </el-table>
     <el-pagination v-if="total > 20" v-model:current-page="page" :total="total" :page-size="20" layout="prev, pager, next" @current-change="load" />
     </el-card>

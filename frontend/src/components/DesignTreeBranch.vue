@@ -33,7 +33,7 @@ onMounted(load)
       </el-card>
     </li>
     <li v-if="!items.length && !loading" class="meta">暂无条目</li>
-    <li v-if="more"><el-button link :loading="loading" @click="load">{{ page ? '加载更多' : '加载条目' }}</el-button></li>
+    <li v-if="more"><el-button class="app-link app-link--action" link :loading="loading" @click="load">{{ page ? '加载更多' : '加载条目' }}</el-button></li>
   </ul>
 </template>
 <style scoped>

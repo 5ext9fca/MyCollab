@@ -68,11 +68,11 @@ async function onLogout() {
       <div class="app-header__user">
         <ThemeSelect />
         <span class="meta">{{ auth.user?.display_name }}</span>
-        <el-button link type="primary" @click="onLogout">退出</el-button>
+        <el-button class="app-link app-link--action" link type="primary" @click="onLogout">退出</el-button>
       </div>
     </el-header>
     <el-main>
-      <router-view :key="auth.user?.id" />
+      <router-view :key="`${auth.user?.id}:${String(route.name)}:${JSON.stringify(route.params)}`" />
     </el-main>
   </el-container>
 </template>

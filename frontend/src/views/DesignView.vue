@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BlockedLink from '../components/BlockedLink.vue'
 import DesignNavigation from '../components/DesignNavigation.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -146,7 +147,7 @@ async function changed() { await load(); treeRevision.value++ }
           <MarkdownContent :source="element.content" />
           <h3>{{ element.kind === 'Design' ? '引用资产' : '引用此资产的设计' }}</h3>
           <div class="design-references">
-            <router-link v-for="reference in (element.kind === 'Design' ? element.assets : element.referencing_designs)" :key="reference.id" class="app-link app-link--title" :to="{ name: 'design', params: { id: reference.id } }">{{ reference.title }}{{ reference.archived ? '（已归档）' : '' }}</router-link>
+            <router-link v-for="reference in (element.kind === 'Design' ? element.assets : element.referencing_designs)" :key="reference.id" class="app-link app-link--action" :to="{ name: 'design', params: { id: reference.id } }">{{ reference.title }}{{ reference.archived ? '（已归档）' : '' }}</router-link>
           </div>
           <p v-if="!(element.kind === 'Design' ? element.assets : element.referencing_designs)?.length" class="meta">暂无引用</p>
           <h3>直属任务进度</h3>
@@ -157,16 +158,16 @@ async function changed() { await load(); treeRevision.value++ }
             <h3>{{ element.kind === 'Design' ? '设计依赖' : '资产依赖' }}</h3>
             <p class="meta">前置依赖表示当前条目的先后约束，与父子组成关系独立；不会自动改变任务依赖或状态。通过编辑条目维护。</p>
             <h4>前置依赖</h4>
-            <div class="design-references"><router-link v-for="item in element.prerequisites" :key="item.id" class="app-link app-link--title" :to="{ name: 'design', params: { id: item.id } }">{{ item.title }}{{ item.archived ? '（已归档）' : '' }}</router-link></div>
+            <div class="design-references"><router-link v-for="item in element.prerequisites" :key="item.id" class="app-link app-link--action" :to="{ name: 'design', params: { id: item.id } }">{{ item.title }}{{ item.archived ? '（已归档）' : '' }}</router-link></div>
             <p v-if="!element.prerequisites?.length" class="meta">无前置依赖</p>
             <h4>依赖此条目</h4>
-            <div class="design-references"><router-link v-for="item in element.dependents" :key="item.id" class="app-link app-link--title" :to="{ name: 'design', params: { id: item.id } }">{{ item.title }}{{ item.archived ? '（已归档）' : '' }}</router-link></div>
+            <div class="design-references"><router-link v-for="item in element.dependents" :key="item.id" class="app-link app-link--action" :to="{ name: 'design', params: { id: item.id } }">{{ item.title }}{{ item.archived ? '（已归档）' : '' }}</router-link></div>
             <p v-if="!element.dependents?.length" class="meta">暂无条目依赖它</p>
           </el-card>
           <ProductionPanel v-if="element.kind === 'Asset'" :asset="element" @open="selected = $event" @changed="changed" @batch-loaded="hasBatch = $event" />
           <el-card class="section-card" shadow="never">
           <h3>{{ hasBatch ? '其他关联任务' : '关联任务' }}</h3>
-          <ul class="task-list"><li v-for="mission in missions" :key="mission.id"><button type="button" class="app-link app-link--title" @click="selected = mission.id">{{ mission.title }}</button> <StatusTag :status="mission.status" /><span v-if="mission.is_blocked"> · 受阻</span></li></ul>
+          <ul class="task-list"><li v-for="mission in missions" :key="mission.id"><button type="button" class="app-link app-link--title" @click="selected = mission.id">{{ mission.title }}</button> <StatusTag :status="mission.status" /><BlockedLink v-if="mission.is_blocked" :mission-id="mission.id" /></li></ul>
           <el-empty v-if="!missions.length" description="暂无关联任务" />
           <el-pagination v-if="total > 20" v-model:current-page="page" :page-size="20" :total="total" layout="prev, pager, next" @current-change="load" />
           </el-card>

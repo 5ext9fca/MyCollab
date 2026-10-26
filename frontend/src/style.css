@@ -184,3 +184,28 @@ a { color: var(--el-color-primary); }
 .login-card { max-width: 100%; }
 
 .list-pagination { flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+
+/* 操作链接自身构成专属紧凑卡片，仅承载该入口文本。 */
+.app-link.app-link--action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-bg-color);
+  white-space: normal;
+  vertical-align: middle;
+  font-size: 13px;
+}
+.app-link--action > span { white-space: normal; overflow-wrap: anywhere; }
+.app-link--action:hover { border-color: var(--el-color-primary-light-5); background: var(--el-fill-color-light); }
+.app-link--action:disabled, .app-link--action.is-disabled { color: var(--el-text-color-disabled); cursor: not-allowed; }
+.app-link--action.el-button--danger { color: var(--el-color-danger); }
+.app-link--action.app-link--warning { color: var(--app-warning-text); }
+.action-link-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+#dependencies { scroll-margin-top: 16px; }

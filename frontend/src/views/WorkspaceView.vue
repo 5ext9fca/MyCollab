@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BlockedLink from '../components/BlockedLink.vue'
 /**
  * F5 workspace page (WorkspacePage).
  *
@@ -691,7 +692,7 @@ onBeforeUnmount(() => {
       >
         只看相关
       </el-checkbox>
-      <el-button v-if="relatedOnly" link type="primary" size="small" @click="onToggleRelated">
+      <el-button class="app-link app-link--action" v-if="relatedOnly" link type="primary" size="small" @click="onToggleRelated">
         返回完整范围
       </el-button>
       <el-checkbox v-model="showParentRelations" @change="onGraphOptionChange">
@@ -703,7 +704,7 @@ onBeforeUnmount(() => {
 
     <el-alert v-if="error" type="error" :closable="false" show-icon class="workspace__error">
       {{ error }}
-      <el-button link type="primary" @click="refresh">重试</el-button>
+      <el-button class="app-link app-link--action" link type="primary" @click="refresh">重试</el-button>
     </el-alert>
 
     <el-alert
@@ -770,7 +771,7 @@ onBeforeUnmount(() => {
           </el-table-column>
           <el-table-column label="操作" width="120">
             <template #default="{ row }">
-              <el-button link type="primary" size="small" @click="onFocus(row.edge.mission_id)">
+              <el-button class="app-link app-link--action" link type="primary" size="small" @click="onFocus(row.edge.mission_id)">
                 定位依赖任务
               </el-button>
             </template>
@@ -806,7 +807,7 @@ onBeforeUnmount(() => {
               · {{ selectedEdgeInfo.satisfied ? '已满足' : '尚未满足' }}
               <template v-if="selectedEdgeInfo.crossMilestone"> · 跨里程碑</template>
             </div>
-            <el-button link type="primary" size="small" @click="onFocus(selectedEdgeInfo.targetId)">
+            <el-button class="app-link app-link--action" link type="primary" size="small" @click="onFocus(selectedEdgeInfo.targetId)">
               打开依赖任务
             </el-button>
           </el-alert>
@@ -874,8 +875,8 @@ onBeforeUnmount(() => {
       <p class="meta">里程碑目标：<span v-for="item in [...new Map(graphNodes.filter(n => n.milestone_id).map(n => [n.milestone_id, n])).values()]" :key="item.id">{{ item.milestone_name }} {{ item.milestone_due_date ?? '未设日期' }}；</span></p>
       <details><summary>已加载任务的日期与风险列表（支持键盘打开详情）</summary>
         <el-table :data="graphNodes" empty-text="没有匹配任务">
-          <el-table-column label="任务"><template #default="{ row }"><el-button link type="primary" @click="onSelect(row.id)">{{ row.title }}</el-button></template></el-table-column>
-          <el-table-column label="状态与认领者"><template #default="{ row }"><StatusTag :status="row.status" /> {{ row.assignee?.display_name ?? '未认领' }}<span v-if="row.is_blocked"> · 受阻</span></template></el-table-column>
+          <el-table-column label="任务"><template #default="{ row }"><el-button class="app-link app-link--action" link type="primary" @click="onSelect(row.id)">{{ row.title }}</el-button></template></el-table-column>
+          <el-table-column label="状态与认领者"><template #default="{ row }"><StatusTag :status="row.status" /> {{ row.assignee?.display_name ?? '未认领' }}<BlockedLink v-if="row.is_blocked" :mission-id="row.id" /></template></el-table-column>
           <el-table-column label="日期与风险"><template #default="{ row }"><MissionSchedule :mission="row" /><span v-if="row.unloaded_prerequisite_count">{{ row.unloaded_prerequisite_count }} 项前置未加载，请打开详情查看</span></template></el-table-column>
         </el-table>
       </details>

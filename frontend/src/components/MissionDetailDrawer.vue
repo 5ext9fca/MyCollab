@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BlockedLink from './BlockedLink.vue'
 /**
  * F5 detail drawer: shows a mission's own data, its three relation kinds
  * (prerequisites / dependents / parent+children) separately, submission
@@ -337,7 +338,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
           <el-tag size="small" type="info" disable-transitions>#{{ mission.id.slice(0, 8) }}</el-tag>
           <el-tag size="small" disable-transitions>{{ mission.type }}</el-tag>
           <el-tag size="small" disable-transitions>{{ mission.priority }}</el-tag>
-          <el-tag v-if="mission.is_blocked" type="warning" size="small" disable-transitions>受阻</el-tag>
+          <BlockedLink v-if="mission.is_blocked" :mission-id="mission.id" />
           <el-tag v-if="mission.needs_dependency_review" type="danger" size="small" disable-transitions>需复核</el-tag>
           <el-tag v-if="mission.milestone" type="success" size="small" disable-transitions>
             {{ mission.milestone.name }}（{{ MILESTONE_STATUS_LABELS[mission.milestone.status] }}）
@@ -448,10 +449,10 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
                 <el-tag size="small" :type="edge.status === 'Done' ? 'success' : 'warning'">
                   {{ edge.status }}
                 </el-tag>
-                <el-button link type="primary" size="small" @click="emit('focus', edge.id)">
+                <el-button class="app-link app-link--action" link type="primary" size="small" @click="emit('focus', edge.id)">
                   定位
                 </el-button>
-                <el-button
+                <el-button class="app-link app-link--action"
                   v-if="allowed.includes('manage_dependencies')"
                   link
                   type="danger"
@@ -490,7 +491,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
             <ul v-else class="drawer__list">
               <li v-for="item in dependents" :key="item.id">
                 <span>{{ item.title }}</span>
-                <el-button link type="primary" size="small" @click="emit('focus', item.id)">
+                <el-button class="app-link app-link--action" link type="primary" size="small" @click="emit('focus', item.id)">
                   定位
                 </el-button>
               </li>
@@ -508,7 +509,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
             <ul v-else class="drawer__list">
               <li v-for="child in children" :key="child.id">
                 <span>{{ child.title }}（{{ child.status }}）</span>
-                <el-button link type="primary" size="small" @click="emit('focus', child.id)">
+                <el-button class="app-link app-link--action" link type="primary" size="small" @click="emit('focus', child.id)">
                   定位
                 </el-button>
               </li>
