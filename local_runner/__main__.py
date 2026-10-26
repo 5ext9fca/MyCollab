@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import random
+import sys
 import time
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
@@ -72,15 +73,32 @@ def execute(client, request, model, executable):
     print("结果未能回传；服务器租约将过期，未重新执行模型。", flush=True)
 
 
-def main():
+def run_cli(argv=None):
     parser = argparse.ArgumentParser(description="MyCollab 本地 OpenCode 文本辅助 Runner")
-    parser.add_argument("--config", required=True, type=Path)
+    parser.add_argument("--config", type=Path, default=Path("~/.config/MyCollab/mycollab-runner.json"),
+                        help="配置文件（默认：~/.config/MyCollab/mycollab-runner.json）")
     parser.add_argument("--once", action="store_true", help="只领取一次，用于接入验证")
-    args = parser.parse_args()
-    if os.name == "posix" and args.config.stat().st_mode & 0o077:
-        parser.error("配置文件必须仅本人可读写，请先 chmod 600。")
-    config = json.loads(args.config.read_text())
-    client = BridgeClient(config["server"], config["device_token"])
+    args = parser.parse_args(argv)
+    path = args.config.expanduser()
+    try:
+        if os.name == "posix" and path.stat().st_mode & 0o077:
+            parser.error("配置文件必须仅本人可读写，请先 chmod 600。")
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        parser.error(f"配置文件不存在：{path}。请创建配置文件，或使用 --config 指定路径。")
+    except OSError:
+        parser.error(f"无法读取配置文件：{path}。请检查文件及访问权限。")
+    except (ValueError, UnicodeError):
+        parser.error(f"配置文件不是有效的 UTF-8 JSON：{path}。")
+    if not isinstance(config, dict) or any(not isinstance(config.get(key), str) or not config[key].strip()
+                                          for key in ("server", "device_token", "model")):
+        parser.error("配置必须包含非空字符串 server、device_token 和 model。")
+    if "opencode" in config and (not isinstance(config["opencode"], str) or not config["opencode"].strip()):
+        parser.error("opencode 必须是非空的可执行文件路径或名称。")
+    try:
+        client = BridgeClient(config["server"], config["device_token"])
+    except ValueError:
+        parser.error("服务器地址无效：请使用 HTTPS 站点根地址（本机开发允许 HTTP），不得包含凭据、查询或片段。")
     delay = 15
     while True:
         try:
@@ -102,5 +120,14 @@ def main():
         time.sleep(delay + random.uniform(0, 3))
 
 
+def main(argv=None):
+    try:
+        run_cli(argv)
+    except KeyboardInterrupt:
+        print("\nRunner 已停止；未回传的请求将由服务器租约过期处理。", file=sys.stderr, flush=True)
+        return 130
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

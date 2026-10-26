@@ -8,7 +8,7 @@
 2. 安装 **OpenCode CLI 2.1.3**。适配器按此版本验证，其他版本会拒绝执行，需重新验证权限与协议后再升级支持范围。
 3. 在用户电脑运行 `opencode auth login` 完成供应商登录；用 `opencode auth list`、`opencode models --standalone` 检查可用模型。不要把供应商凭据填写到 MyCollab。
 4. 登录 MyCollab 的「本地 Agent」页面，创建设备，选择四类文本能力。设备凭据只展示一次，可设置 1–90 天有效期；服务器仅存摘要。
-5. 在仓库以外保存如下本机 JSON 配置，并执行 `chmod 600 /实际路径/mycollab-runner.json`。文件不能提交 Git。
+5. 创建目录 `mkdir -p ~/.config/MyCollab`，将如下本机 JSON 配置保存为 `~/.config/MyCollab/mycollab-runner.json`，并执行 `chmod 600 ~/.config/MyCollab/mycollab-runner.json`。文件不能提交 Git。
 
 ```json
 {
@@ -24,8 +24,10 @@
 从仓库根目录启动：
 
 ```bash
-python3 -m local_runner --config /实际路径/mycollab-runner.json
+python3 -m local_runner
 ```
+
+默认读取 `~/.config/MyCollab/mycollab-runner.json`；可用 `--config /实际路径/mycollab-runner.json` 覆盖，路径支持 `~` 展开。配置缺失、格式错误或权限过宽时会给出提示并退出，不自动生成或覆盖凭据文件。
 
 `--once` 只领取一次，可用于接入检查。日常使用保持 Runner 运行，然后在设计/资产、模板、Mission 或验收表单中选择设备、预览上下文并生成候选。逐字段采纳后仍需点击原表单保存或人工验收。
 
@@ -39,6 +41,7 @@ Runner 不修改用户 OpenCode 全局配置，也不搬运供应商凭据。Ope
 
 ## 断线、取消与排错
 
+- 按 Ctrl-C 停止轮询或当前模型调用，终止并回收模型子进程（POSIX 下终止进程组），清理临时目录，不打印异常堆栈，以退出码 130 退出。进程终止清理期间忽略重复 Ctrl-C；未回传的请求由服务器租约过期处理，不自动重跑模型。
 - 空闲短轮询退避至约 60 秒，加入抖动；每设备只领取一个执行。运行约每 30 秒续租，服务器租约 180 秒、请求总时限 15 分钟。
 - 取消或无法续租时尽力终止本地进程组。取消不能保证供应商退费；页面会区分等待停止和已确认停止。
 - 模型执行不自动重试。回传失败最多重传三次**同一结果**，不重新调用模型；之后服务器租约过期，由用户决定重新请求。

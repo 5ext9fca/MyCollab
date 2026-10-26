@@ -61,7 +61,7 @@ Agent 需求文档必须返回 markdown 字段：按给定章节整理完整且�
 """ + json.dumps(request["input"], ensure_ascii=False)
 
 
-def terminate(process):
+def _terminate(process):
     if process.poll() is not None:
         return
     if os.name == "posix":
@@ -76,6 +76,21 @@ def terminate(process):
         else:
             process.kill()
         process.wait()
+
+
+def terminate(process):
+    # 清理期间忽略重复 Ctrl-C，确保终止和回收子进程后再退出。
+    previous = None
+    if threading.current_thread() is threading.main_thread():
+        previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        try:
+            _terminate(process)
+        except ProcessLookupError:
+            process.wait()
+    finally:
+        if previous is not None:
+            signal.signal(signal.SIGINT, previous)
 
 
 def run(request, *, model, executable="opencode", heartbeat=lambda: True, timeout=780):
@@ -154,5 +169,10 @@ def run(request, *, model, executable="opencode", heartbeat=lambda: True, timeou
             raise LocalFailure("invalid_result") from exc
         finally:
             terminate(process)
+            try:
+                if not process.stdin.closed:
+                    process.stdin.close()
+            except OSError:
+                pass
             process.stdout.close()
             reader.join(timeout=3)

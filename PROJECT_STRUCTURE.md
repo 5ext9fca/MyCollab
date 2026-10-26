@@ -599,7 +599,7 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 
 `/agent-devices`（AgentDevicesView）管理绑定、撤销、有效期、最近联系及本人请求历史。`api/agentBridge.ts` 只访问 MyCollab；不接收供应商密钥。公共辅助面板仅在活动请求存在时轮询；网络状态不明重发同一幂等键；采纳前重新读取过期状态。生成期间表单变化须明确比较后逐字段合并。设计、模板、Mission 编辑冲突不自动换用新版本覆盖，需比较服务器内容后确认。
 
-`local_runner/` 是用户电脑上的 Python 标准库客户端，首个适配器为 OpenCode CLI 2.1.3。每次以私有非交互会话、临时工作目录与专用禁止工具的配置运行；模型供应商认证和调用全部留在本地。Runner 主动轮询并续租，断线或取消尽力终止进程，最多重传同一结果三次，不自动重新调用模型。安装与真实验证记录见 `local_runner/README.md`。
+`local_runner/` 是用户电脑上的 Python 标准库客户端，首个适配器为 OpenCode CLI 2.1.3。每次以私有非交互会话、临时工作目录与专用禁止工具的配置运行；模型供应商认证和调用全部留在本地。Runner 主动轮询并续租，断线或取消尽力终止进程，最多重传同一结果三次，不自动重新调用模型。默认配置路径为 `~/.config/MyCollab/mycollab-runner.json`，`--config` 可覆盖并展开 `~`；缺失、无效或权限过宽的配置以明确提示退出。Ctrl-C 清理模型进程和临时目录后以 130 退出，不输出异常堆栈；未回传请求沿用租约过期机制，不新增服务端接口、数据模型或权限。安装与真实验证记录见 `local_runner/README.md`。
 
 本批不包含图像文件产出、仓库操作、构建测试、自动提交或自动验收；第二、三批继续由 NEW_FUNCTION.md 规划。后端不包含供应商 SDK/网络调用或常驻执行器，不新增 Redis/Celery/WebSocket。
 
