@@ -79,4 +79,20 @@ describe('Mission 图像委派', () => {
     expect(w.emitted('adopt')).toHaveLength(1)
     expect(w.text()).toContain('资产已变化')
   })
+  it('只提供设备声明的图像操作，编辑必须选择参考图', async () => {
+    vi.mocked(listAgentDevices).mockResolvedValue(paginated([{ id: 'edit-device', name: '编辑设备', capabilities: ['image_edit'], expires_at: '2099-01-01', revoked_at: null, last_seen_at: null }]))
+    const w = await render()
+    expect(w.text()).not.toContain('生成图片')
+    expect(w.text()).toContain('编辑参考图')
+    await w.find('textarea').setValue('修改颜色')
+    await click(w, '预览委派内容')
+    expect(w.text()).toContain('编辑至少选择 1 张')
+    expect(createExecution).not.toHaveBeenCalled()
+  })
+  it('没有未归档资产时保留历史但不提供创建表单', async () => {
+    const w = await render({ ...mission, assets: [] })
+    expect(w.find('textarea').exists()).toBe(false)
+    expect(w.text()).toContain('请先为 Mission 关联未归档的 Asset')
+  })
+
 })

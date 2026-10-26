@@ -21,17 +21,25 @@ const formDetails = ref<HTMLDetailsElement>()
 const active = ['queued', 'running', 'awaiting_selection']
 const labels: Record<CodeExecution['status'], string> = { queued: '等待本地设备', running: '本地实现/验证中', awaiting_selection: '等待本地审查发布', succeeded: '补丁与报告已发布', failed: '失败', cancelled: '已取消', expired: '已过期' }
 let timer: ReturnType<typeof setTimeout> | undefined
+let failures = 0, loadSequence = 0
 let generation = 0, disposed = false
 function fail(err: unknown) { error.value = err instanceof Error ? err.message : '操作失败' }
 async function load() {
-  const version = generation
+  if (disposed) return
+  const version = generation, sequence = ++loadSequence
   clearTimeout(timer)
   try {
     const result = await listCodeExecutions(props.mission.id, page.value)
-    if (disposed || version !== generation) return
+    if (disposed || version !== generation || sequence !== loadSequence) return
+    failures = 0
     history.value = result.results; count.value = result.count
     if (history.value.some(e => active.includes(e.status))) timer = setTimeout(load, 15000)
-  } catch (err) { if (!disposed && version === generation) fail(err) }
+  } catch (err) {
+    if (!disposed && version === generation && sequence === loadSequence) {
+      fail(err)
+      timer = setTimeout(load, Math.min(60000, 15000 * 2 ** failures++))
+    }
+  }
 }
 function prepare() {
   error.value = ''; prepared.value = null
@@ -39,12 +47,13 @@ function prepare() {
     error.value = '请选择可用设备、填写本地仓库标识与实现要求。仓库标识不能是路径或命令。'; return
   }
   prepared.value = { mission_id: props.mission.id, expected_version: props.mission.version, device_id: deviceId.value, repository_key: repositoryKey.value, instructions: instructions.value, previous_id: previousId.value, idempotency_key: crypto.randomUUID() }
-  preview.value = JSON.stringify({ mission: { title: props.mission.title, content: props.mission.content, acceptance_criteria: props.mission.acceptance_criteria }, repository_key: repositoryKey.value, instructions: instructions.value }, null, 2)
+  preview.value = JSON.stringify({ mission: { id: props.mission.id, title: props.mission.title, content: props.mission.content, acceptance_criteria: props.mission.acceptance_criteria, version: props.mission.version }, repository_key: repositoryKey.value, instructions: instructions.value }, null, 2)
 }
 async function create() {
-  if (!prepared.value || !eligible.value) return
+  const version = generation
+  if (busy.value || !prepared.value || !eligible.value) return
   error.value = ''; busy.value = true
-  try { await createCodeExecution(prepared.value); prepared.value = null; preview.value = ''; previousId.value = null; page.value = 1; await load() }
+  try { await createCodeExecution(prepared.value); if (disposed || version !== generation) return; prepared.value = null; preview.value = ''; previousId.value = null; page.value = 1; await load() }
   catch (err) { fail(err) } finally { busy.value = false }
 }
 async function cancel(item: CodeExecution) { try { await cancelCodeExecution(item.id); await load() } catch (err) { fail(err) } }
@@ -55,15 +64,22 @@ function retry(item: CodeExecution) {
 async function adopt(item: CodeExecution) {
   try {
     const current = await getCodeExecution(item.id)
-    if (!eligible.value || current.actor_id !== auth.user?.id || current.status !== 'succeeded' || !current.patch_url || !current.report || current.mission_version !== props.mission.version || current.stale_reason) throw new Error('代码成果不可引用，请刷新任务并检查版本。')
+    if (disposed || current.mission_id !== props.mission.id || !eligible.value || current.actor_id !== auth.user?.id || current.status !== 'succeeded' || !current.patch_url || !current.report || current.mission_version !== props.mission.version || current.stale_reason) throw new Error('代码成果不可引用，请刷新任务并检查版本。')
     emit('adopt', current)
   } catch (err) { fail(err) }
 }
 watch([deviceId, repositoryKey, instructions, () => props.mission.version], () => { prepared.value = null; preview.value = '' })
 watch([() => props.mission.id, eligible], async () => {
-  generation++; history.value = []; page.value = 1; prepared.value = null; preview.value = ''; error.value = ''; previousId.value = null
+  const version = ++generation
+  clearTimeout(timer)
+  devices.value = []; deviceId.value = ''; instructions.value = ''
+  failures = 0
+  history.value = []; page.value = 1; prepared.value = null; preview.value = ''; error.value = ''; previousId.value = null
   await load()
-  if (eligible.value) try { devices.value = (await listAgentDevices()).results; deviceId.value = validDevices.value[0]?.id ?? '' } catch (err) { fail(err) }
+  if (disposed || version !== generation) return
+  if (eligible.value) try { const result = await listAgentDevices()
+      if (disposed || version !== generation) return
+      devices.value = result.results; deviceId.value = validDevices.value[0]?.id ?? '' } catch (err) { fail(err) }
 }, { immediate: true })
 onBeforeUnmount(() => { disposed = true; generation++; clearTimeout(timer) })
 </script>
@@ -73,8 +89,8 @@ onBeforeUnmount(() => { disposed = true; generation++; clearTimeout(timer) })
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <details v-if="eligible" ref="formDetails"><summary>创建代码委派</summary>
       <p v-if="!validDevices.length">暂无声明代码实现能力的设备，请先在 <router-link class="app-link" to="/agent-devices">本地 Agent 设备</router-link> 中绑定。</p>
-      <el-form label-position="top">
-        <el-form-item label="本地设备"><el-select v-model="deviceId"><el-option v-for="d in validDevices" :key="d.id" :value="d.id" :label="`${d.name}（${d.last_seen_at && Date.now() - Date.parse(d.last_seen_at) < 120000 ? '最近在线' : '离线/待连接'}）`" /></el-select></el-form-item>
+      <el-form v-if="validDevices.length" label-position="top">
+        <el-form-item label="本地设备"><el-select v-model="deviceId"><el-option v-for="d in validDevices" :key="d.id" :value="d.id" :label="`${d.name}（${d.last_seen_at ? '最近联系：' + new Date(d.last_seen_at).toLocaleString() : '尚未联系'}）`" /></el-select></el-form-item>
         <el-form-item label="本地仓库标识"><el-input v-model="repositoryKey" maxlength="64" placeholder="例如 game-rules；不是路径或 URL" /></el-form-item>
         <p>标识对应本地 Runner 已配置的仓库、基线、允许修改范围与验证命令。可在本机使用 --list-repositories 核对；服务器不会下发命令或读取本机配置。</p>
         <el-form-item label="实现要求"><el-input v-model="instructions" type="textarea" :rows="3" maxlength="10000" /></el-form-item>
@@ -87,8 +103,9 @@ onBeforeUnmount(() => { disposed = true; generation++; clearTimeout(timer) })
     <h4>代码执行历史</h4><el-button @click="load">刷新代码记录</el-button>
     <el-empty v-if="!history.length" description="暂无代码执行" :image-size="48" />
     <el-card v-for="item in history" :key="item.id" shadow="never" class="execution-item">
-      <h4>{{ item.repository_key }} · 版本 {{ item.version }}</h4><p>{{ labels[item.status] }} · {{ new Date(item.created_at).toLocaleString() }}</p>
+      <h4>{{ item.repository_key }} · 版本 {{ item.version }}</h4><p>{{ labels[item.status] }} · {{ new Date(item.created_at).toLocaleString() }} · 有效期至 {{ new Date(item.expires_at).toLocaleString() }}</p>
       <p v-if="item.error || item.stale_reason">{{ item.stale_reason || (item.error === 'no_changes' ? '未产生代码差异，请检查任务与本地基线。' : item.error) }}</p>
+      <p v-if="item.status === 'cancelled'">{{ item.stopped_at ? '本地已确认停止或未开始' : '等待本地确认停止；取消不保证供应商立即停止' }}</p>
       <p v-if="item.status === 'awaiting_selection'">请在本机检查补丁与报告，再用 --publish-code {{ item.request_id }} 明确发布。有效期至 {{ new Date(item.expires_at).toLocaleString() }}。</p>
       <CodeReport v-if="item.report" :report="item.report" :patch-url="item.patch_url" />
       <el-button v-if="item.actor_id === auth.user?.id && active.includes(item.status)" @click="cancel(item)">取消代码执行</el-button>

@@ -8,8 +8,7 @@
  * offers the quick, state-machine-safe actions plus a link to the full page.
  */
 import AssistancePanel from './AssistancePanel.vue'
-import MissionExecutionPanel from './MissionExecutionPanel.vue'
-import MissionCodePanel from './MissionCodePanel.vue'
+import AgentPanel from './AgentPanel.vue'
 import CodeReport from './CodeReport.vue'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -432,8 +431,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
             <MissionSubscription v-if="mission" :mission-id="mission.id" />
             <MissionSchedule :mission="mission" />
             <MarkdownContent :source="mission.content" />
-            <MissionExecutionPanel :key="mission.id" :mission="mission" />
-            <MissionCodePanel :key="`code-${mission.id}`" :mission="mission" />
+            <AgentPanel v-if="open" :key="mission.id" :mission="mission" />
             <h4>验收标准</h4>
             <MarkdownContent :source="mission.acceptance_criteria" />
           </el-tab-pane>

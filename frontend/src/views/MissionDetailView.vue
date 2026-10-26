@@ -58,8 +58,7 @@ import MissionSchedule from '../components/MissionSchedule.vue'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 import MissionForm from '../components/MissionForm.vue'
 import AssistancePanel from '../components/AssistancePanel.vue'
-import MissionExecutionPanel from '../components/MissionExecutionPanel.vue'
-import MissionCodePanel from '../components/MissionCodePanel.vue'
+import AgentPanel from '../components/AgentPanel.vue'
 import CodeReport from '../components/CodeReport.vue'
 import type { CodeExecution } from '../api/codeExecutions'
 import type { ExecutionCandidate } from '../api/executions'
@@ -723,8 +722,7 @@ function formatDate(value: string | null) {
         <MarkdownContent :source="mission.acceptance_criteria" />
       </section>
 
-      <MissionExecutionPanel :key="mission.id" :mission="mission" can-adopt @adopt="adoptExecution" />
-      <MissionCodePanel :key="`code-${mission.id}`" :mission="mission" can-adopt @adopt="adoptCodeExecution" />
+      <AgentPanel :key="mission.id" :mission="mission" can-adopt @adopt-images="adoptExecution" @adopt-code="adoptCodeExecution" />
 
       <section v-if="currentSubmission" class="section">
         <h3>最新成果</h3>

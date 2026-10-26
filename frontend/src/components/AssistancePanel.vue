@@ -41,7 +41,7 @@ let disposed = false
 const active = computed(() => item.value && ['queued', 'running'].includes(item.value.status))
 const changed = computed(() => !!item.value && (JSON.stringify(props.draft) !== JSON.stringify(original.value) || (props.currentComment ?? '') !== originalComment.value))
 const device = computed(() => devices.value.find(d => d.id === deviceId.value))
-const offline = computed(() => !device.value?.last_seen_at || Date.now() - Date.parse(device.value.last_seen_at) > 120000)
+const lastContact = computed(() => device.value?.last_seen_at ? new Date(device.value.last_seen_at).toLocaleString() : '尚未联系')
 const labels: Record<string, string> = { title: '标题', content: '说明', name: '模板名称', description: '模板说明', steps: '生产步骤', acceptance_criteria: '验收标准', type: '任务类型', priority: '优先级', tags: '标签', comment: '验收意见草稿', questions: '待澄清问题', summary: '修改摘要', criteria: '逐项分析', missing_materials: '缺失材料', checks: '建议核对步骤' }
 const statuses: Record<string, string> = { queued: '等待本地设备', running: '本地处理中', succeeded: '候选已返回，尚未保存', failed: '生成失败', expired: '请求过期，请明确重试', cancelled: '已取消' }
 const assessments: Record<string, string> = { supported: '材料支持', contradicted: '材料存在矛盾', insufficient: '证据不足' }
@@ -119,7 +119,7 @@ onUnmounted(() => { disposed = true; clearTimeout(timer) })
     <p>仅发送你确认的文本。模型调用与凭据保留在本地；建议需逐字段采纳并手动保存。</p>
     <router-link class="app-link" to="/agent-devices">管理本地设备与请求记录</router-link>
     <el-select v-model="deviceId" aria-label="本地设备" placeholder="选择本人设备" :disabled="!!active"><el-option v-for="d in devices" :key="d.id" :value="d.id" :label="d.name" /></el-select>
-    <el-alert v-if="offline" type="warning" :closable="false" title="设备未联系或可能离线；请求会等待，不会交给服务器执行。" />
+    <el-alert type="info" :closable="false" :title="`最近联系：${lastContact}。联系记录不代表实时在线；请求由本地设备领取。`" />
     <el-input v-model="instructions" type="textarea" :rows="2" maxlength="10000" aria-label="辅助要求" placeholder="填写目标与补充要求" />
     <ElementMultiSelect v-model="designIds" kind="Design" label="交给 Agent 的设计说明" />
     <ElementMultiSelect v-model="assetIds" kind="Asset" label="交给 Agent 的资产说明" />

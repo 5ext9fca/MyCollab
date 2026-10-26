@@ -631,3 +631,16 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - `opencode_code.py` 独立于首批纯文本 Agent，锁定 OpenCode 2.1.3；显式同步 cwd 与 PWD 为隔离副本，只允许读取和白名单文件修改，拒绝外部目录、shell、集成和子 Agent，禁用格式化。`code_verification.py` 在候选的另一个副本中以 shell=False 运行本地 argv，验证命令不由服务器/模型决定，真实退出码/超时进入报告，最多 1 MiB/项的原始日志只留本地。独立目录不是 OS 沙箱；用户选择的验证代码仍以本机权限执行。
 - `code_execution.py` 管理本地补丁与 report.json、清单发布、显式 `--publish-code` 及同内容重传；`--list-repositories` 只输出本地标识和验证名称。无验证项显示未配置，工具缺失为未运行，失败/超时如实记录。来源是 local_runner，不能冒充服务器独立验证。
 - 测试入口：`agent_bridge.tests.test_code`、`test_code_roundtrip`（真实 HTTP 与确定性模型）、`local_runner/tests/test_code_*.py`、`frontend/src/tests/missionCode.spec.ts`。真实 OpenCode 隔离示例验收及安装说明见 `local_runner/README.md`。
+
+
+## 统一 Agent Panel（轻量入口）
+
+- `components/AgentPanel.vue` 在 Mission 完整详情和抽屉统一代码、图像委派入口，按类型挂载 `MissionCodePanel` 或 `MissionExecutionPanel`；历史仍按类型分页。抽屉关闭后卸载面板，重新打开读取当前状态。
+- 继续复用已有 AgentDevice、AssistanceRequest、CodeExecution、MissionExecution 与原 API，不增加数据表、服务依赖或服务器模型通信。只有当前 InProgress Mission 的认领者可创建，设备须属于本人、未撤销、未到期且声明对应能力；图像还须有未归档的关联 Asset。没有可用能力时隐藏创建表单，保留历史和设备管理说明。
+- 创建前展示 Mission/Asset 版本、要求、仓库标识或参考素材快照；确认失败重发同一幂等键，明确新版本关联原执行。切换类型不会自动发起、取消或恢复执行。凭据、供应商配置、仓库路径与验证命令仍留本地。
+- 活跃历史约 15 秒轮询，失败以 15/30/60 秒退避；终态、切换类型/Mission、关闭抽屉和卸载时停止旧轮询，忽略过期响应。生命周期状态不代表百分比或模型耗时；最近联系不代表实时在线。
+- 展示创建/到期时间、失效原因、取消停止确认与本地发布提示；图像选中上传或代码人工发布后，才可引用到完整详情的提交草稿。抽屉保留完整详情入口。CodeReport 如实展示本地验证失败/超时/未运行，服务器不复跑。
+- 设计、模板、Mission 编写、验收继续使用原 AssistancePanel 表单上下文与逐字段采纳；设备页继续注册/撤销。聊天、流式工具事件、审批与 descriptor 能力发现尚未实现，不是轻量入口的前置条件。
+- 前端回归新增 `src/tests/agentPanel.spec.ts`，覆盖类型切换、卸载停止轮询、失败退避、终态停止、旧 Mission 响应隔离及成果事件转发，领域流程继续由 missionCode/missionExecution/agentBridge 测试覆盖。
+
+验证记录：统一面板使用组件测试验收，后端 Agent 交接与本地 Runner 使用确定性闭环回归；本次未新增真实供应商调用。浏览器工具未提供可用浏览器，实际页面验收未完成，不能将组件测试等同于人工浏览器验收。
