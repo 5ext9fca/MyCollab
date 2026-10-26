@@ -173,6 +173,7 @@ export interface MissionSubmission {
   reviewed_at: string | null
   review_comment: string
   verified_build_reference: string | null
+  execution_artifacts?: { candidate_id: string; execution_id: string; asset_id: string; version: number; name: string; sha256: string; url: string }[]
   source_references: SubmissionSourceReference[]
   build_references: SubmissionBuildReference[]
 }
@@ -284,6 +285,7 @@ export interface SubmissionBuildInput {
 }
 
 export interface SubmitPayload {
+  execution_candidate_ids?: string[]
   description: string
   verification_description?: string
   source_references?: SubmissionSourceInput[]

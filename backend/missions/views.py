@@ -168,6 +168,7 @@ class MissionViewSet(
             verification_description=data.get("verification_description", ""),
             source_references=data.get("source_references"),
             build_references=data.get("build_references"),
+            execution_candidate_ids=data.get("execution_candidate_ids"),
             expected_version=data["expected_version"],
         )
         return self._detail_response(mission)

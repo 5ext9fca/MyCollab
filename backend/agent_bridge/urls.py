@@ -1,7 +1,16 @@
 from django.urls import path
 from . import views
+from . import execution_api as execution
 
 urlpatterns = [
+    path("mission-executions/", execution.ExecutionList.as_view()),
+    path("mission-executions/<uuid:pk>/", execution.ExecutionDetail.as_view()),
+    path("mission-executions/<uuid:pk>/cancel/", execution.ExecutionCancel.as_view()),
+    path("agent-runner/requests/<uuid:pk>/candidates/", execution.RunnerManifest.as_view()),
+    path("agent-runner/requests/<uuid:pk>/selection/", execution.RunnerSelection.as_view()),
+    path("agent-runner/requests/<uuid:pk>/candidates/<str:key>/upload/", execution.RunnerUpload.as_view()),
+    path("agent-runner/requests/<uuid:pk>/complete/", execution.RunnerComplete.as_view()),
+    path("agent-runner/requests/<uuid:pk>/references/<uuid:file_id>/", execution.RunnerReference.as_view()),
     path("agent-devices/", views.DeviceList.as_view()),
     path("agent-devices/<uuid:pk>/revoke/", views.DeviceRevoke.as_view()),
     path("assistance-requests/", views.RequestList.as_view()),

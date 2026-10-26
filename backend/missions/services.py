@@ -745,6 +745,7 @@ def submit_mission(
     verification_description: str = "",
     source_references=None,
     build_references=None,
+    execution_candidate_ids=None,
     expected_version,
 ) -> Mission:
     _acquire_team_lock()
@@ -775,6 +776,20 @@ def submit_mission(
     _assert_prerequisites_done(mission)
     _assert_children_done(mission)
 
+    from .models import ExecutionCandidate, SubmissionExecutionArtifact
+    candidate_ids = execution_candidate_ids or []
+    if not isinstance(candidate_ids, list) or len(candidate_ids) > 20 or len(set(candidate_ids)) != len(candidate_ids):
+        raise ValidationFailure("最多选择 20 项不重复的执行成果。")
+    candidates = list(ExecutionCandidate.objects.filter(pk__in=candidate_ids).select_related('execution__request', 'execution__asset', 'file'))
+    if len(candidates) != len(candidate_ids) or any(
+        item.execution.mission_id != mission.pk or item.execution.actor_id != actor.pk or not item.file_id
+        or item.file.owner_id != actor.pk or item.execution.request.status != 'succeeded'
+        or item.execution.mission_version != mission.version
+        or item.execution.asset.archived or item.execution.asset.version != item.execution.asset_version
+        or not mission.assets.filter(pk=item.execution.asset_id).exists()
+        for item in candidates
+    ):
+        raise ValidationFailure("执行成果不属于当前任务/认领者、尚未完成或任务版本已变化。")
     submission = MissionSubmission.objects.create(
         mission=mission,
         submitted_by=actor,
@@ -785,6 +800,9 @@ def submit_mission(
     )
     _build_source_references(submission, source_references)
     _build_build_references(submission, build_references)
+    SubmissionExecutionArtifact.objects.bulk_create([
+        SubmissionExecutionArtifact(submission=submission, candidate=item) for item in candidates
+    ])
 
     mission.current_submission = submission
     mission.status = MissionStatus.SUBMITTED
@@ -1663,3 +1681,9 @@ def bulk_update_missions(*, actor, payload):
                 'error': {'code': exc.code, 'message': exc.message, 'field_errors': exc.field_errors}})
     succeeded = sum(item['success'] for item in results)
     return {'results': results, 'succeeded_count': succeeded, 'failed_count': len(results) - succeeded}
+
+# 委派写入口保持统一，具体实现独立成模块以隔离模型交接与任务状态机。
+from .execution_services import (  # noqa: E402,F401
+    create_execution, publish_execution_candidates, select_execution_candidates,
+    upload_execution_candidate, complete_execution, cancel_execution, execution_reference,
+)

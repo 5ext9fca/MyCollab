@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import random
 import time
+from uuid import uuid4
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -34,6 +35,28 @@ class BridgeClient:
             if len(raw) > 512 * 1024:
                 raise ValueError("服务器响应过大。")
             return json.loads(raw) if raw else None
+
+    def reference(self, path, payload):
+        req = Request(self.url + '/api/agent-runner/' + path, data=json.dumps(payload).encode(),
+            headers={'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json'}, method='POST')
+        with self.opener.open(req, timeout=30) as response:
+            raw = response.read(20 * 1024 * 1024 + 1)
+            if len(raw) > 20 * 1024 * 1024:
+                raise ValueError('参考图片过大。')
+            return raw
+
+    def upload(self, path, attempt_id, data):
+        boundary = 'mycollab' + uuid4().hex
+        body = (f'--{boundary}\r\nContent-Disposition: form-data; name="attempt_id"\r\n\r\n{attempt_id}\r\n'
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="candidate.png"\r\n'
+            'Content-Type: image/png\r\n\r\n').encode() + data + f'\r\n--{boundary}--\r\n'.encode()
+        req = Request(self.url + '/api/agent-runner/' + path, data=body, headers={
+            'Authorization': 'Bearer ' + self.token, 'Content-Type': 'multipart/form-data; boundary=' + boundary}, method='POST')
+        with self.opener.open(req, timeout=60) as response:
+            raw = response.read(512 * 1024 + 1)
+            if len(raw) > 512 * 1024:
+                raise ValueError('服务器响应过大。')
+            return json.loads(raw)
 
 
 def execute(client, request, model, executable):
@@ -73,20 +96,34 @@ def execute(client, request, model, executable):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MyCollab 本地 OpenCode 文本辅助 Runner")
+    parser = argparse.ArgumentParser(description="MyCollab 本地文本与图像 Runner")
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--once", action="store_true", help="只领取一次，用于接入验证")
+    parser.add_argument('--select', metavar='REQUEST_ID', help='明确选择本地候选并上传；不会调用模型')
+    parser.add_argument('--keys', nargs='+', help='选择预览中的候选编号，例如 candidate_1')
     args = parser.parse_args()
     if os.name == "posix" and args.config.stat().st_mode & 0o077:
         parser.error("配置文件必须仅本人可读写，请先 chmod 600。")
     config = json.loads(args.config.read_text())
     client = BridgeClient(config["server"], config["device_token"])
+    if args.select:
+        from .images import select
+        if not args.keys:
+            parser.error('--select 必须显式提供 --keys，不默认选择候选。')
+        select(client, config, args.select, args.keys)
+        return
+    if args.keys:
+        parser.error('--keys 只能与 --select 一起使用。')
     delay = 15
     while True:
         try:
             request = client.post("claim/", {})
             if request:
-                execute(client, request, config["model"], config.get("opencode", "opencode"))
+                if request.get('kind') in ('image_generate', 'image_edit'):
+                    from .images import execute_image
+                    execute_image(client, request, config)
+                else:
+                    execute(client, request, config.get("model", ""), config.get("opencode", "opencode"))
                 delay = 15
             else:
                 delay = min(60, delay * 1.5)

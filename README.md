@@ -198,3 +198,11 @@ python3 -m unittest discover -s local_runner/tests -v
 cd backend
 MYCOLLAB_LIVE_MODEL=deepseek/deepseek-flash .venv/bin/python manage.py test agent_bridge.tests.test_live_opencode --noinput
 ```
+
+## Mission 图像委派（第二批）
+
+已支持通过本人本地 **Codex CLI 0.164.0** 生成或编辑 Mission 关联资产。认领进行中的 Mission，关联 Asset，再在详情页或抽屉的“美术资产委派”中预览并确认。Runner 本地生成候选，用户在本地预览、明确选择后才上传；回到完整详情引用到提交草稿、填写人工验证说明并提交，由验收者确认。
+
+供应商认证、模型调用、图片下载/转换全部在用户电脑，服务器只做任务交接、元数据校验和选中成果存储。图像 Runner 另需本地 Pillow，配置与 `--select` 命令见 [本地 Runner 说明](local_runner/README.md)。升级部署照常执行 `python manage.py migrate`，无需新队列/GPU服务。
+
+本地 Runner（含图片转换）的回归命令：先安装 `local_runner/requirements.txt` 到本地虚拟环境，再从仓库根目录执行 `local_runner/.venv/bin/python -m unittest discover -s local_runner/tests -v`。后端普通回归不调用模型提供商。

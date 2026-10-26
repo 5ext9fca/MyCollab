@@ -601,4 +601,18 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 
 `local_runner/` 是用户电脑上的 Python 标准库客户端，首个适配器为 OpenCode CLI 2.1.3。每次以私有非交互会话、临时工作目录与专用禁止工具的配置运行；模型供应商认证和调用全部留在本地。Runner 主动轮询并续租，断线或取消尽力终止进程，最多重传同一结果三次，不自动重新调用模型。安装与真实验证记录见 `local_runner/README.md`。
 
-本批不包含图像文件产出、仓库操作、构建测试、自动提交或自动验收；第二、三批继续由 NEW_FUNCTION.md 规划。后端不包含供应商 SDK/网络调用或常驻执行器，不新增 Redis/Celery/WebSocket。
+第一批文本辅助不生成图像文件；第二批图像流程见下节。仓库操作、构建测试、自动提交或自动验收仍未引入。后端不包含供应商 SDK/网络调用或常驻执行器，不新增 Redis/Celery/WebSocket。
+
+## 第二批：Mission 图像委派与成果版本
+
+- 当前认领者可在 InProgress Mission 的完整详情页及抽屉中手动选择本人图像设备、已关联且未归档的 Asset、生成/编辑、要求和本人参考图。管理员不能代替认领者委派。浏览器预览输入后才创建执行；编辑至少一张参考图，最多四张、每张 20 MiB、合计 40 MiB。只下载明确授权的参考，不抓取 Markdown 外链。
+- `AssistanceRequest` 增加 `image_generate/image_edit` 和 `awaiting_selection`，与文本共用设备、领取、attempt、租约及用户三个活动请求配额。设备只运行一个任务；等待本地选择不占运行槽。运行总限时 30 分钟、心跳 30 秒/租约 180 秒，候选等待选择 24 小时。超时、断线、取消、撤销均不自动重新生成。
+- `MissionExecution` 保存 request、mission、asset、actor、Mission/Asset 基础版本、同任务资产递增 version、previous、授权 reference_files 和不可覆盖的 selected_ids。`ExecutionCandidate` 保存有界清单与 SHA-256、尺寸、大小，选中上传后关联本人 LibraryFile。唯一约束分别保护 `(mission, asset, version)` 和 `(execution, key)`。`SubmissionExecutionArtifact` 将候选固定关联到人工提交轮次，历史不可替换。
+- 所有业务写入口由 `missions/services.py` 导出，图像实现集中于 `missions/execution_services.py`；视图仅解析/认证/调用。创建、选中、上传及完成使用事务、团队锁及设备/请求锁，重复相同操作幂等。权限、有效账号、设备、任务状态/认领者/版本、资产版本/关联和授权参考均重新检查；过期后拒绝迟到上传。
+- Session+CSRF API：`GET/POST /api/mission-executions/`（列表必传 `mission`，分页）、`GET /api/mission-executions/{id}/`、`POST /api/mission-executions/{id}/cancel/`。有效团队成员可查看历史；只有发起者取消；已关联提交的执行不可取消。创建字段见 `agent_bridge/execution_api.py:ExecutionCreate`，含幂等 UUID、两个版本及可选 previous_id。
+- Runner Bearer API：继续使用 `claim/heartbeat/result`（图像 result 只接受固定失败码）；`POST /api/agent-runner/requests/{id}/references/{file_id}/` 仅运行期间读取本次授权参考；`candidates/` 发布元数据；`selection/` 确认选择集合；`candidates/{key}/upload/` multipart 上传；`complete/` 确认已选成果全部入库。每个请求必须带 attempt_id；设备凭据不能访问通用 Mission/素材写接口。
+- 最多四个候选，服务器不收未选图片或缩略图。上传仅限清单对应的静态、8 位 RGB/RGBA 非交错 PNG，单张 20 MiB、最多 16 × 1024 × 1024 像素。服务器有界检查块 CRC、压缩流/行长度、尺寸和摘要，不重建像素、不转换图片。转换、生成和下载均由本地完成。部分上传不标记成功，明确选中后已入库文件保留。
+- `MissionExecutionPanel.vue` 显示输入预览、离线等待、取消、候选版本/局部上传及已上传图片；候选选择始终在本地。完整详情的“引用到提交草稿”重新检查执行及资产版本，仅填入 Markdown 与候选 ID。`submit` 增加可选 `execution_candidate_ids`（最多 20 个），仅接受当前任务/认领者、已成功且版本有效的成果；原人工验证说明、依赖、子任务与人工验收规则保持有效。提交历史显示本轮图像成果链接和版本。
+- 已关联候选的 LibraryFile 禁止删除，避免执行/提交证据断链。`cleanup_assistance` 清理 30 天前图像请求的原始输入/result，但保留执行、候选、文件、提交关联；文本请求仍按原规则清理。
+- `local_runner/codex_image.py` 使用 Codex CLI 0.164.0 原生图像工具、独立临时目录与本机登录，禁用 shell、浏览器、应用/插件、hooks 和多 Agent，忽略用户配置但保留本机认证，不改变全局配置。仅从 JSON `thread.started` 对应的本机原生输出目录读取有界普通文件；不信任模型回复中的路径。Pillow 13.0.0 仅安装在本地 Runner，转换和去除元数据后生成私人预览。`--select REQUEST_ID --keys ...` 才确认选择并上传；失败只重传同一文件。安装和手工清理见 `local_runner/README.md`。
+- 验证入口：`agent_bridge.tests.test_images`（PostgreSQL 状态/权限/版本/并发/清理）、`test_image_roundtrip`（真实 HTTP 与确定性本地适配器生成→编辑→选择→上传→人工提交验收）、`local_runner/tests/test_images.py`、`frontend/src/tests/missionExecution.spec.ts`。真实 Codex 生成/编辑记录见 Runner 文档，普通测试不调用付费模型。

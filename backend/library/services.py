@@ -12,7 +12,7 @@ from pathlib import Path
 from django.conf import settings
 from django.db import transaction
 
-from common.exceptions import NotFound, PermissionDenied, ValidationFailure
+from common.exceptions import ConflictError, NotFound, PermissionDenied, ValidationFailure
 
 from .models import LibraryFile
 
@@ -89,6 +89,8 @@ def delete_library_file(*, actor, file_id) -> None:
 
     if record.owner_id != actor.pk:
         raise PermissionDenied("只有文件所有者可以删除该文件。")
+    if record.execution_candidates.exists():
+        raise ConflictError("文件已关联委派成果，须保留执行与提交历史，不能删除。")
 
     storage = record.file.storage
     stored_name = record.file.name

@@ -9,6 +9,8 @@ class AssistanceKind(models.TextChoices):
     TEMPLATE = "template_generate", "生产模板"
     MISSION = "mission_write", "Mission 编写"
     REVIEW = "review_assist", "验收辅助"
+    IMAGE_GENERATE = "image_generate", "图像生成"
+    IMAGE_EDIT = "image_edit", "图像编辑"
 
 
 class AgentDevice(models.Model):
@@ -30,6 +32,7 @@ class AssistanceRequest(models.Model):
     class Status(models.TextChoices):
         QUEUED = "queued", "等待本地设备"
         RUNNING = "running", "本地处理中"
+        AWAITING_SELECTION = "awaiting_selection", "等待本地选择"
         SUCCEEDED = "succeeded", "候选已返回"
         FAILED = "failed", "失败"
         CANCELLED = "cancelled", "已取消"
@@ -44,7 +47,7 @@ class AssistanceRequest(models.Model):
     base_version = models.PositiveIntegerField(null=True, blank=True)
     submission_id = models.UUIDField(null=True, blank=True)
     input = models.JSONField(default=dict)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.QUEUED)
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.QUEUED)
     attempt_id = models.UUIDField(null=True, blank=True)
     lease_expires_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField()

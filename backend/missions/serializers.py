@@ -304,6 +304,7 @@ class BuildReferenceSerializer(serializers.Serializer):
 
 
 class SubmitSerializer(serializers.Serializer):
+    execution_candidate_ids = serializers.ListField(child=serializers.UUIDField(), max_length=20, required=False, default=list)
     description = serializers.CharField(required=False, allow_blank=True, default="")
     verification_description = serializers.CharField(required=False, allow_blank=True, default="")
     source_references = SourceReferenceSerializer(many=True, required=False, default=list)
@@ -366,6 +367,13 @@ class SubmissionBuildReferenceSerializer(serializers.ModelSerializer):
 
 
 class MissionSubmissionSerializer(serializers.ModelSerializer):
+    execution_artifacts = serializers.SerializerMethodField()
+
+    def get_execution_artifacts(self, obj):
+        return [{'candidate_id': str(link.candidate_id), 'execution_id': str(link.candidate.execution_id),
+            'asset_id': str(link.candidate.execution.asset_id), 'version': link.candidate.execution.version,
+            'name': link.candidate.name, 'sha256': link.candidate.sha256, 'url': link.candidate.file.url}
+            for link in obj.execution_artifacts.select_related('candidate__file', 'candidate__execution')]
     submitted_by = UserBriefSerializer(read_only=True)
     reviewer_snapshot = UserBriefSerializer(read_only=True)
     reviewed_by = UserBriefSerializer(read_only=True)
@@ -389,6 +397,7 @@ class MissionSubmissionSerializer(serializers.ModelSerializer):
             "verified_build_reference",
             "source_references",
             "build_references",
+            "execution_artifacts",
         ]
 
 

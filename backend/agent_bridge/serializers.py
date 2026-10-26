@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .models import AgentDevice, AssistanceRequest
 from . import protocol, services
+from .image_protocol import IMAGE_KINDS
 
 
 class StrictSerializer(serializers.Serializer):
@@ -13,7 +14,7 @@ class StrictSerializer(serializers.Serializer):
 
 class DeviceCreateSerializer(StrictSerializer):
     name = serializers.CharField(max_length=100)
-    capabilities = serializers.ListField(child=serializers.ChoiceField(choices=protocol.KINDS), min_length=1, max_length=4)
+    capabilities = serializers.ListField(child=serializers.ChoiceField(choices=protocol.KINDS + IMAGE_KINDS), min_length=1, max_length=6)
     expires_days = serializers.IntegerField(min_value=1, max_value=90, default=30)
 
 

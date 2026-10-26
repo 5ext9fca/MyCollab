@@ -18,8 +18,9 @@ from missions.services import allowed_actions, design_allowed_actions, template_
 
 from .models import AgentDevice, AssistanceRequest
 from . import protocol
+from .image_protocol import IMAGE_KINDS
 
-ACTIVE = ("queued", "running")
+ACTIVE = ("queued", "running", "awaiting_selection")
 
 
 def digest(value):
@@ -49,7 +50,7 @@ def create_device(actor, *, name, capabilities, expires_days=30):
     active_user(actor)
     active_user(get_user_model().objects.select_for_update().get(pk=actor.pk))
     validate(protocol.text, name, 100, True)
-    if not isinstance(capabilities, list) or not capabilities or any(c not in protocol.KINDS for c in capabilities):
+    if not isinstance(capabilities, list) or not capabilities or any(c not in protocol.KINDS + IMAGE_KINDS for c in capabilities):
         raise ValidationFailure("请选择支持的文本辅助能力。")
     if type(expires_days) is not int or not 1 <= expires_days <= 90:
         raise ValidationFailure("有效期须为 1–90 天。")
@@ -71,6 +72,7 @@ def revoke_device(actor, device_id):
         device.save(update_fields=["revoked_at"])
         device.requests.filter(status="queued").update(status="cancelled", stopped_at=timezone.now(), updated_at=timezone.now())
         device.requests.filter(status="running").update(status="cancelled", updated_at=timezone.now())
+        device.requests.filter(status="awaiting_selection").update(status="cancelled", updated_at=timezone.now())
     return device
 
 
@@ -220,6 +222,10 @@ def create_request(actor, *, device_id, kind, idempotency_key, draft, instructio
 def stale_reason(request):
     from common.exceptions import DomainError
     try:
+        if request.kind in IMAGE_KINDS:
+            from missions.execution_services import assert_execution_current
+            assert_execution_current(request.execution)
+            return ""
         check_target(request.owner, request.kind, request.object_id, request.base_version, request.submission_id)
         for comment in request.input.get("comments", []):
             if not Comment.objects.filter(pk=comment["id"], mission_id=request.object_id, updated_at=comment["updated_at"]).exists():
@@ -239,7 +245,7 @@ def stale_reason(request):
 
 @transaction.atomic
 def claim(device_id):
-    device = AgentDevice.objects.select_for_update().select_related("owner").get(pk=device_id)
+    device = AgentDevice.objects.select_for_update(of=("self",)).select_related("owner").get(pk=device_id)
     device_available(device)
     device.last_seen_at = timezone.now()
     device.save(update_fields=["last_seen_at"])
@@ -261,7 +267,7 @@ def claim(device_id):
 
 
 def locked_attempt(device_id, request_id, attempt_id):
-    device = AgentDevice.objects.select_for_update().select_related("owner").get(pk=device_id)
+    device = AgentDevice.objects.select_for_update(of=("self",)).select_related("owner").get(pk=device_id)
     device_available(device)
     device.last_seen_at = timezone.now()
     device.save(update_fields=["last_seen_at"])
@@ -312,6 +318,8 @@ def _finish(device_id, request_id, attempt_id, *, result=None, error=""):
             raise ValidationFailure("本地错误须使用已定义的脱敏错误码。")
         request.status, request.error = "failed", error
     else:
+        if request.kind in IMAGE_KINDS:
+            raise ValidationFailure("图像成果必须通过候选清单与选中上传接口回传。")
         if error:
             raise ValidationFailure("结果和错误不能同时提交。")
         validate(protocol.validate_result, request.kind, result)
@@ -327,8 +335,18 @@ def _finish(device_id, request_id, attempt_id, *, result=None, error=""):
     return request
 
 
-@transaction.atomic
 def cancel(actor, request_id):
+    request = AssistanceRequest.objects.filter(pk=request_id, owner=actor).first()
+    if not request:
+        raise NotFound()
+    if request.kind in IMAGE_KINDS:
+        from missions.services import cancel_execution
+        return cancel_execution(actor=actor, execution_id=request.execution.pk)
+    return _cancel_request(actor, request_id)
+
+
+@transaction.atomic
+def _cancel_request(actor, request_id):
     request = AssistanceRequest.objects.select_for_update().filter(pk=request_id, owner=actor).first()
     if not request:
         raise NotFound()
