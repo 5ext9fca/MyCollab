@@ -13,9 +13,9 @@ import MissionQuickFilters from '../components/MissionQuickFilters.vue'
 import MissionQueryForm from '../components/MissionQueryForm.vue'
 const router = useRouter(), route = useRoute()
 const missions = ref<Mission[]>([]), total = ref(0), loading = ref(false), page = ref(1)
-const pageSize = 20
+const pageSize = ref(20)
 const selectedIds = ref<string[]>([])
-const resetKey = computed(() => JSON.stringify([route.query, page.value]))
+const resetKey = computed(() => JSON.stringify([route.query, page.value, pageSize.value]))
 const query = computed<QueryParams>(() => {
   const result: QueryParams = {}
   for (const key of Object.keys(filterLabels)) if (route.query[key]) result[key] = route.query[key] as string | string[]
@@ -28,7 +28,8 @@ let generation = 0
 async function load() {
   const token = ++generation
   loading.value = true
-  try { const data = await listMissions({ ...query.value, page: page.value, page_size: pageSize }); if (token === generation) { missions.value = data.results; total.value = data.count } }
+  selectedIds.value = []; missions.value = []
+  try { const data = await listMissions({ ...query.value, page: page.value, page_size: pageSize.value }); if (token === generation) { missions.value = data.results; total.value = data.count } }
   catch (e) { if (token === generation) ElMessage.error(e instanceof Error ? e.message : '加载失败') }
   finally { if (token === generation) loading.value = false }
 }
@@ -58,6 +59,6 @@ onUnmounted(() => { generation++ })
         </MissionCard>
       </el-checkbox-group>
     </div>
-    <el-pagination :total="total" :page-size="pageSize" :current-page="page" layout="prev, pager, next" @current-change="page = $event; load()" />
+    <el-pagination class="list-pagination" :total="total" :page-size="pageSize" :current-page="page"  :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" @size-change="pageSize = $event; page = 1; load()" @current-change="page = $event; load()" />
   </div>
 </template>

@@ -42,7 +42,12 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         mode = self.request.query_params.get('read', 'all')
         if mode not in ('all', 'unread', 'read'):
             raise ValidationFailure('无效的已读筛选。')
-        return qs if mode == 'all' else qs.filter(read_at__isnull=mode == 'unread')
+        if mode != 'all':
+            qs = qs.filter(read_at__isnull=mode == 'unread')
+        ordering = self.request.query_params.get('ordering', '-created_at')
+        if ordering not in ('created_at', '-created_at'):
+            raise ValidationFailure('无效的通知排序。')
+        return qs.order_by(ordering, 'id')
 
     @action(detail=False)
     def summary(self, request):

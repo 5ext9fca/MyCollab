@@ -6,7 +6,7 @@ export interface WorkSummary { today: string; counts: Record<WorkCategory, numbe
 export interface Notification { id: string; mission: string; mission_title: string; mission_status: string; payload: { summary: string }; read_at: string | null; created_at: string }
 export interface Subscription { subscription: { id: string; mode: 'Follow' | 'Mute'; version: number } | null; effective_following: boolean; mandatory_reminders: boolean }
 export const workSummary = () => request<WorkSummary>('GET', '/api/my-work/summary/')
-export const workMissions = (category: WorkCategory, page: number) => request<Paginated<Mission>>('GET', `/api/my-work/missions/${buildQuery({ category, page })}`)
+export const workMissions = (category: WorkCategory, page: number, query: QueryParams = {}) => request<Paginated<Mission>>('GET', `/api/my-work/missions/${buildQuery({ ...query, category, page })}`)
 export const listNotifications = (query: QueryParams) => request<Paginated<Notification>>('GET', `/api/notifications/${buildQuery(query)}`)
 export const notificationSummary = () => request<{ unread_count: number }>('GET', '/api/notifications/summary/')
 export const readNotifications = (ids: string[]) => request<{ changed_count: number }>('POST', '/api/notifications/read/', { ids })

@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from notifications.models import Notification
 from .models import Mission, MissionDependency
-from .filters import OPEN_STATUSES, _unresolved_prerequisites_for_outer
+from .filters import apply_mission_filters, OPEN_STATUSES, _unresolved_prerequisites_for_outer
 from .exceptions import ValidationFailure
 from .permissions import IsTeamMember
 from .serializers import MissionListSerializer
@@ -55,6 +55,6 @@ class MyWorkMissions(ListAPIView):
 
     def get_queryset(self):
         self.today = timezone.localdate()
-        if set(self.request.query_params) - {'category', 'page', 'page_size'}:
+        if set(self.request.query_params) - {'category', 'page', 'page_size', 'q', 'ordering', 'status', 'type', 'priority', 'milestone', 'tag', 'blocked', 'design_element'}:
             raise ValidationFailure('个人工作列表不支持额外筛选。')
-        return work_query(self.request.user, self.request.query_params.get('category'), self.today)
+        return apply_mission_filters(work_query(self.request.user, self.request.query_params.get('category'), self.today), self.request.query_params, user=self.request.user)

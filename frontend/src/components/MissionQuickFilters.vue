@@ -28,7 +28,7 @@ onMounted(async () => {
     <el-select :model-value="String(query.milestone || '')" placeholder="里程碑" clearable filterable style="width: 180px" @update:model-value="set('milestone', $event)"><el-option label="未归属里程碑" value="none" /><el-option v-for="item in milestones" :key="item.id" :label="item.name" :value="item.id" /></el-select>
     <el-select :model-value="Array.isArray(query.tag) ? query.tag : query.tag ? String(query.tag).split(',') : []" multiple collapse-tags clearable filterable placeholder="标签（需同时包含）" style="width: 200px" @update:model-value="set('tag', $event)"><el-option v-for="tag in tags" :key="tag" :label="tag" :value="tag" /></el-select>
     <el-select :model-value="String(query.blocked || '')" placeholder="受阻状态" clearable style="width: 140px" @update:model-value="set('blocked', $event)"><el-option label="仅受阻" value="true" /><el-option label="不受阻" value="false" /></el-select>
-    <el-select :model-value="String(query.ordering || '')" placeholder="排序" clearable style="width: 170px" @update:model-value="set('ordering', $event)"><el-option label="优先级高在前" value="priority" /><el-option label="优先级低在前" value="-priority" /></el-select>
+    <el-select :model-value="String(query.ordering || '')" placeholder="排序" clearable style="width: 170px" @update:model-value="set('ordering', $event)"><el-option label="最新发布" value="-created_at" /><el-option label="最早发布" value="created_at" /><el-option label="最近更新" value="-updated_at" /><el-option label="标题升序" value="title" /><el-option label="标题降序" value="-title" /><el-option label="优先级高在前" value="priority" /><el-option label="优先级低在前" value="-priority" /></el-select>
     <el-button @click="set('q', search)">查询</el-button>
   </div>
 </template>

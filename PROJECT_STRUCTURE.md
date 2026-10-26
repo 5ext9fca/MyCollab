@@ -556,3 +556,12 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除）及 `asset_id
 - 偏好以 `mycollab-theme` 保存在当前浏览器的 localStorage，刷新及退出登录后保留，多个标签页同步；不是用户账户设置，不跨设备同步。存储不可用时仍可在本次访问切换，无效值退回跟随系统。所有访问者均可使用，无新增后端模型、接口或权限。
 - `index.html` 在应用加载前恢复主题，`src/theme.ts` 管理响应式偏好及系统/存储事件，`ThemeSelect.vue` 提供可键盘操作的选择控件。Element Plus 使用官方深色变量，自定义卡片、Markdown、抽屉、甘特日期轴和画布控件使用主题变量；图片和上传素材保持原样，业务分类色保留原有含义。
 - 验证入口：`frontend/src/tests/theme.spec.ts`，覆盖首屏恢复、系统切换、显式覆盖、持久化、跨标签页同步、存储失败及选择控件。
+
+### 卡片列表的筛选、排序与选择
+
+- 任务广场、我发布的、我认领的、我的工作均提供任务筛选、排序与每页 10 / 20 / 50 条设置。个人发布与认领范围固定；我的工作筛选在个人分类范围内取交集，分类摘要仍显示完整分类计数。
+- 上述任务列表复用当前页批量编辑：每卡片选择框、本页全选及半选状态；单次最多 50 个。切换页码、每页条数或筛选排序时清空选择，加载期间清空旧卡片，避免选择旧页数据。批量写入仍受原有权限、版本与冻结规则约束。
+- 通知列表保留全部 / 未读 / 已读筛选，增加最新 / 最早排序、每页条数与本页全选，仅对当前用户通知生效；选择卡片不会自动标为已读。
+- 里程碑卡片列表支持状态筛选、创建时间 / 目标日期 / 名称排序及每页条数。没有批量操作的里程碑列表不显示选择框。
+- `GET /api/notifications/` 新增 `ordering=created_at|-created_at`；`GET /api/milestones/` 新增 `ordering=created_at|-created_at|due_date|name`。排序在服务端分页前执行，以 ID 作为稳定次序；未知排序返回 400。
+- `GET /api/my-work/missions/` 支持 `q/status/type/priority/milestone/tag/blocked/design_element/ordering`，复用任务筛选规则。所有列表分页继续使用 `page/page_size`，不改数据模型与写入权限。

@@ -390,7 +390,10 @@ class MilestoneViewSet(
                     "无效的 status 参数。", field_errors={"status": ["未知状态。"]}
                 )
             qs = qs.filter(status=status_filter)
-        return qs
+        ordering = self.request.query_params.get("ordering", "-created_at")
+        if ordering not in ("created_at", "-created_at", "due_date", "name"):
+            raise ValidationFailure("无效的里程碑排序。")
+        return qs.order_by(ordering, "id")
 
     def get_serializer_class(self):
         if self.action == "create":

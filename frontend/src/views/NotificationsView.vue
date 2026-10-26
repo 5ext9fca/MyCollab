@@ -4,12 +4,13 @@ import { ElMessage } from 'element-plus'
 import { listNotifications, readNotifications, notifyChanged, type Notification } from '../api/notifications'
 import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
 const rows = ref<Notification[]>([]), selected = ref<string[]>([])
+const pageSize = ref(20), ordering = ref('-created_at')
 const filter = ref('all'), page = ref(1), total = ref(0), busy = ref(false), target = ref<string | null>(null)
 let generation = 0
 async function load() {
   const token = ++generation
-  selected.value = []
-  try { const result = await listNotifications({ read: filter.value, page: page.value }); if (token === generation) { rows.value = result.results; total.value = result.count } }
+  selected.value = []; rows.value = []
+  try { const result = await listNotifications({ read: filter.value, page: page.value, page_size: pageSize.value, ordering: ordering.value }); if (token === generation) { rows.value = result.results; total.value = result.count } }
   catch (e) { ElMessage.error(e instanceof Error ? e.message : '通知加载失败') }
 }
 async function read(ids: string[], mission?: string) {
@@ -19,13 +20,15 @@ async function read(ids: string[], mission?: string) {
   catch (e) { ElMessage.error(e instanceof Error ? e.message : '标记已读失败') }
   finally { busy.value = false }
 }
-watch(filter, () => { page.value = 1; void load() })
+watch([filter, ordering, pageSize], () => { page.value = 1; void load() })
 onMounted(load)
 onUnmounted(() => { generation++ })
 </script>
 <template>
   <div class="page"><h2>站内通知</h2>
     <el-card class="section-card" shadow="never"><div class="toolbar toolbar--flush"><el-select v-model="filter" style="width: 160px"><el-option label="全部" value="all" /><el-option label="未读" value="unread" /><el-option label="已读" value="read" /></el-select>
+    <el-select v-model="ordering" aria-label="通知排序" style="width: 160px"><el-option label="最新通知" value="-created_at" /><el-option label="最早通知" value="created_at" /></el-select>
+    <el-checkbox :model-value="rows.length > 0 && selected.length === rows.length" :indeterminate="selected.length > 0 && selected.length < rows.length" :disabled="busy || !rows.length" @change="selected = $event ? rows.map(row => row.id) : []">本页全选</el-checkbox>
     <el-button :disabled="!selected.length || busy" @click="read(selected)">将选中通知标为已读</el-button></div></el-card>
     <el-empty v-if="!rows.length" description="暂无通知" />
     <el-checkbox-group v-model="selected">
@@ -45,7 +48,7 @@ onUnmounted(() => { generation++ })
         </div>
       </el-card>
     </el-checkbox-group>
-    <el-pagination :total="total" :current-page="page" :page-size="20" layout="prev, pager, next" @current-change="page = $event; load()" />
+    <el-pagination class="list-pagination" :total="total" :current-page="page" :page-size="pageSize" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" @size-change="pageSize = $event" @current-change="page = $event; load()" />
     <MissionDetailDrawer :mission-id="target" :open="!!target" @close="target = null" @changed="load(); notifyChanged()" @focus="target = $event" />
   </div>
 </template>

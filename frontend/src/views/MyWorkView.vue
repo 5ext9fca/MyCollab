@@ -2,23 +2,28 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { workSummary, workMissions, notifyChanged, type WorkCategory, type WorkSummary } from '../api/notifications'
+import MissionQuickFilters from '../components/MissionQuickFilters.vue'
+import type { QueryParams } from '../api/client'
 import type { Mission } from '../api/types'
 import BulkMissionEditor from '../components/BulkMissionEditor.vue'
 import MissionCard from '../components/MissionCard.vue'
 import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
 const labels: Record<WorkCategory, string> = { review: '待我验收', returned: '被退回', due_soon: '即将到期', overdue: '已逾期', unblocked: '依赖已解除', revalidation: '需要复核' }
+const filters = ref<QueryParams>({}), pageSize = ref(20)
+function apply(value: QueryParams) { filters.value = value }
 const category = ref<WorkCategory>('review')
 const summary = ref<WorkSummary | null>(null)
 const missions = ref<Mission[]>([])
 const page = ref(1), total = ref(0), loading = ref(false), fetchedAt = ref('')
 const selected = ref<string | null>(null)
 const selectedIds = ref<string[]>([])
-const resetKey = computed(() => `${category.value}:${page.value}`)
+const resetKey = computed(() => JSON.stringify([category.value, page.value, pageSize.value, filters.value]))
 let generation = 0, summaryGeneration = 0
 async function load() {
   const token = ++generation
   loading.value = true
-  try { const data = await workMissions(category.value, page.value); if (token === generation) { missions.value = data.results; total.value = data.count } }
+  selectedIds.value = []; missions.value = []
+  try { const data = await workMissions(category.value, page.value, { ...filters.value, page_size: pageSize.value }); if (token === generation) { missions.value = data.results; total.value = data.count } }
   catch (e) { if (token === generation) ElMessage.error(e instanceof Error ? e.message : '任务加载失败') }
   finally { if (token === generation) loading.value = false }
 }
@@ -34,7 +39,7 @@ async function refreshSummary() {
 }
 async function refresh() { await Promise.all([load(), refreshSummary()]); notifyChanged() }
 function focus() { if (!document.hidden) void refresh() }
-watch(category, () => { page.value = 1; missions.value = []; total.value = 0; void load() })
+watch([category, filters, pageSize], () => { page.value = 1; missions.value = []; total.value = 0; void load() })
 let timer: ReturnType<typeof setInterval>
 onMounted(() => { void refresh(); window.addEventListener('focus', focus); document.addEventListener('visibilitychange', focus); timer = setInterval(() => { if (!document.hidden) void refreshSummary() }, 60000) })
 onUnmounted(() => { generation++; summaryGeneration++; clearInterval(timer); window.removeEventListener('focus', focus); document.removeEventListener('visibilitychange', focus) })
@@ -47,6 +52,7 @@ onUnmounted(() => { generation++; summaryGeneration++; clearInterval(timer); win
     <div class="toolbar"><el-button v-for="(label, key) in labels" :key="key" :type="category === key ? 'primary' : 'default'" @click="category = key">{{ label }} {{ summary?.counts[key] ?? '—' }}</el-button></div>
     <p v-if="category === 'unblocked'">前置依赖已完成；仍需检查未完成子任务及提交条件。</p>
     </el-card>
+    <el-card class="section-card" shadow="never"><MissionQuickFilters :query="filters" @apply="apply" /></el-card>
     <BulkMissionEditor :missions="missions" v-model:selected-ids="selectedIds" :reset-key="resetKey" @changed="refresh" />
     <div v-loading="loading">
       <el-empty v-if="!loading && !missions.length" description="当前分类暂无任务" />
@@ -57,7 +63,7 @@ onUnmounted(() => { generation++; summaryGeneration++; clearInterval(timer); win
         </MissionCard>
       </el-checkbox-group>
     </div>
-    <el-pagination :total="total" :page-size="20" :current-page="page" layout="prev, pager, next" @current-change="page = $event; load()" />
+    <el-pagination class="list-pagination" :total="total" :page-size="pageSize" :page-sizes="[10, 20, 50]" @size-change="pageSize = $event" :current-page="page" layout="total, sizes, prev, pager, next" @current-change="page = $event; load()" />
     <MissionDetailDrawer :mission-id="selected" :open="!!selected" @close="selected = null" @changed="refresh" @focus="selected = $event" />
   </div>
 </template>

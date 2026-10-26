@@ -57,7 +57,7 @@ async function submit() {
 }
 </script>
 <template>
-  <el-card shadow="never" class="selection-card"><div class="toolbar selection-toolbar"><span>仅选择当前页 {{ selected.length }}/50</span><el-button :disabled="!selected.length || busy" @click="open">批量编辑计划</el-button></div></el-card>
+  <el-card shadow="never" class="selection-card"><div class="toolbar selection-toolbar"><el-checkbox :model-value="missions.length > 0 && selected.length === missions.length" :indeterminate="selected.length > 0 && selected.length < missions.length" :disabled="busy || !missions.length || missions.length > 50" @change="emit('update:selectedIds', $event ? missions.map(m => m.id) : [])">本页全选</el-checkbox><span>仅选择当前页 {{ selected.length }}/50</span><el-button :disabled="!selected.length || busy" @click="open">批量编辑计划</el-button></div></el-card>
   <el-dialog v-model="dialog" title="批量编辑计划" width="700px" :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy">
     <p>逐项执行，可能部分成功。仅发起者或管理员可编辑未冻结任务；延后前置受日期约束时，请先调整下游。</p>
     <el-form v-if="!preview" label-width="100px">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 
 import { ApiException } from '../api/client'
@@ -11,7 +11,8 @@ const milestones = ref<Milestone[]>([])
 const total = ref(0)
 const loading = ref(false)
 const page = ref(1)
-const pageSize = 10
+const pageSize = ref(10)
+const ordering = ref('-created_at')
 const statusFilter = ref<MilestoneStatus | ''>('')
 
 const statusOptions: { label: string; value: MilestoneStatus | '' }[] = [
@@ -26,22 +27,23 @@ const dialogVisible = ref(false)
 const creating = ref(false)
 const form = reactive({ name: '', description: '', due_date: '' })
 
-const hasMore = computed(() => total.value > pageSize)
 
+let generation = 0
 async function load() {
+  const token = ++generation
   loading.value = true
   try {
     const data = await listMilestones({
       status: statusFilter.value || undefined,
       page: page.value,
-      page_size: pageSize,
+      page_size: pageSize.value,
+      ordering: ordering.value,
     })
-    milestones.value = data.results
-    total.value = data.count
+    if (token === generation) { milestones.value = data.results; total.value = data.count }
   } catch (error) {
-    ElMessage.error(error instanceof ApiException ? error.message : '加载失败')
+    if (token === generation) ElMessage.error(error instanceof ApiException ? error.message : '加载失败')
   } finally {
-    loading.value = false
+    if (token === generation) loading.value = false
   }
 }
 
@@ -103,6 +105,7 @@ onMounted(load)
       <el-select v-model="statusFilter" style="width: 140px" @change="onFilter">
         <el-option v-for="item in statusOptions" :key="item.label" :label="item.label" :value="item.value" />
       </el-select>
+      <el-select v-model="ordering" aria-label="里程碑排序" style="width: 160px" @change="onFilter"><el-option label="最新创建" value="-created_at" /><el-option label="最早创建" value="created_at" /><el-option label="目标日期升序" value="due_date" /><el-option label="名称升序" value="name" /></el-select>
       <el-button @click="onFilter">查询</el-button>
     </div></el-card>
 
@@ -129,10 +132,12 @@ onMounted(load)
       </el-card>
     </div>
 
-    <el-pagination
-      v-if="hasMore"
+    <el-pagination class="list-pagination"
+
       background
-      layout="prev, pager, next"
+      layout="total, sizes, prev, pager, next"
+      :page-sizes="[10, 20, 50]"
+      @size-change="pageSize = $event; onFilter()"
       :total="total"
       :page-size="pageSize"
       :current-page="page"
