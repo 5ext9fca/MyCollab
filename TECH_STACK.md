@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | 前端 | Vue 3、TypeScript、Vite | SPA、任务列表、任务树、交互表单 |
 | 前端路由 | Vue Router | 页面导航与路由参数 |
-| 后端 | Python、Django | 业务逻辑、用户体系、ORM、迁移、事务 |
+| 后端 | Python 3.13、Django | 业务逻辑、用户体系、ORM、迁移、事务 |
 | API | Django REST Framework（DRF） | JSON REST API、输入校验、权限检查 |
 | 依赖图渲染 | Vue Flow（`@vue-flow/core` + `@vue-flow/controls`） | 只读依赖图的节点/边、平移与缩放控制 |
 | 依赖图布局 | 前端自研甘特布局（`frontend/src/composables/useGanttLayout.ts`） | 真实日期横轴、逐任务行与父子标签缩进 |
@@ -28,6 +28,8 @@
 | 应用服务器 | Gunicorn，WSGI 部署 | 运行 Django HTTP 应用 |
 | HTTP 入口 | Caddy | HTTPS、静态文件、反向代理 |
 | 服务部署 | Docker Compose | 管理 Caddy、应用和数据库 |
+
+运行时 MUST 使用 Python 3.13（后端及 LocalRunner），本地虚拟环境与 Docker 镜像保持一致；Python 补丁版本跟随 3.13 系列更新。
 
 版本策略：使用相互兼容、仍受支持的稳定版本。初始化时记录并锁定依赖，复用仓库已有的包管理器；不得无理由升级主版本或使用浮动的生产镜像标签。本文不指定未经验证的精确版本号。
 

@@ -35,4 +35,4 @@ alwaysApply: true
 ## 已确定决策
 
 - UI 组件库：**Element Plus**（见 `TECH_STACK.md` 第 8 节）。
-- 运行时：Python 3.14 / Django 6.1 / DRF 3.18 / PostgreSQL 16 / Node 24（依赖版本见 `backend/requirements.txt` 与 `frontend/package.json`）。
+- 运行时：Python 3.13 / Django 6.1 / DRF 3.18 / PostgreSQL 16 / Node 24（依赖版本见 `backend/requirements.txt` 与 `frontend/package.json`）。

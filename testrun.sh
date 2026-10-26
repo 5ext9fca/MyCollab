@@ -16,7 +16,7 @@ case "${1:-}" in
 后端：http://127.0.0.1:8000
 LocalRunner 使用 ~/.config/MyCollab/mycollab-runner.json；未配置时提示并跳过。
 Ctrl+C 停止本次前后端与 LocalRunner 进程；保留 PostgreSQL 容器和数据。
-首次运行需要 Python 3.14、Node 24+、Docker Compose，以及依赖下载网络。
+首次运行需要 Python 3.13、Node 24+、Docker Compose，以及依赖下载网络。
 HELP
     exit 0 ;;
   *) echo "未知参数：$1；请使用 --help。" >&2; exit 2 ;;
@@ -36,10 +36,10 @@ node -e 'if (Number(process.versions.node.split(".")[0]) < 24) { console.error("
 
 python_bin="$project_root/backend/.venv/bin/python"
 if [[ ! -x "$python_bin" ]]; then
-  command -v python3.14 >/dev/null || { echo "需要 Python 3.14，请先安装。" >&2; exit 1; }
-  python3.14 -m venv "$project_root/backend/.venv"
+  command -v python3.13 >/dev/null || { echo "需要 Python 3.13，请先安装。" >&2; exit 1; }
+  python3.13 -m venv "$project_root/backend/.venv"
 fi
-"$python_bin" -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 14) else "backend/.venv 必须使用 Python 3.14")'
+"$python_bin" -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 13) else "backend/.venv 必须使用 Python 3.13；请按 README 重建虚拟环境")'
 # 固定使用仓库本地数据库，避免继承外部数据库或生产 Django 配置。
 export POSTGRES_DB=mycollab POSTGRES_USER=mycollab POSTGRES_PASSWORD=mycollab
 export POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5432

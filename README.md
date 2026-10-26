@@ -45,7 +45,7 @@ testrun.sh          一键启动本地测试环境
 
 ## 本地开发
 
-需要 Python 3.14、Node 24+、Docker。数据库用 PostgreSQL（并发测试依赖它，不能用 SQLite）。
+需要 Python 3.13、Node 24+、Docker。数据库用 PostgreSQL（并发测试依赖它，不能用 SQLite）。
 
 ```bash
 # 1. 启动本地 PostgreSQL
@@ -53,7 +53,7 @@ docker compose up -d
 
 # 2. 后端
 cd backend
-python3 -m venv .venv
+python3.13 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py createsuperuser   # 或 shell 里 create_user
@@ -63,6 +63,15 @@ python3 -m venv .venv
 cd frontend
 npm install
 npm run dev                                  # http://127.0.0.1:5173
+```
+
+已有其他 Python 版本的 `backend/.venv` 时，先停止后端与 LocalRunner，再重建虚拟环境（只删除依赖环境，不删除数据库或素材）：
+
+```bash
+cd backend
+rm -rf .venv
+python3.13 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
 ```
 
 Vite 开发服务器把 `/api` 代理到 Django，代理不改变 Host/Origin，因此 Session Cookie 与 CSRF 在开发环境可直接工作。
@@ -76,7 +85,7 @@ Vite 开发服务器把 `/api` 代理到 Django，代理不改变 Host/Origin，
 ./testrun.sh --seed  # 可选：创建演示数据，已存在时跳过
 ```
 
-脚本检查 Python 3.14、Node 24+ 和 Docker Compose；首次缺少虚拟环境或依赖时自动安装，因此首次运行需联网。随后启动根目录 Compose 的 PostgreSQL 并等待就绪，执行迁移和系统检查，同时启动 Django 与 Vite。访问 `http://127.0.0.1:5173`；端口 8000 或 5173 被占用时直接提示退出，不终止已有服务。
+脚本检查 Python 3.13、Node 24+ 和 Docker Compose；首次缺少虚拟环境或依赖时自动安装，因此首次运行需联网。随后启动根目录 Compose 的 PostgreSQL 并等待就绪，执行迁移和系统检查，同时启动 Django 与 Vite。访问 `http://127.0.0.1:5173`；端口 8000 或 5173 被占用时直接提示退出，不终止已有服务。
 
 使用本地 `127.0.0.1:5432/mycollab` 数据库及本地开发账号配置，保留已有数据，不读取生产部署配置。按 Ctrl+C 停止本次前后端与 LocalRunner 进程，PostgreSQL 容器继续运行；需要时可在根目录手动执行 `docker compose stop db`。前端保留热更新，后端使用 `--noreload` 以可靠清理进程，修改后端代码后需重启脚本。
 
@@ -191,7 +200,7 @@ docker compose -f deploy/docker-compose.yml exec -T backend python manage.py sen
 从仓库根目录运行本地适配器自动化测试，不调用收费模型：
 
 ```bash
-python3 -m unittest discover -s local_runner/tests -v
+backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
 ```
 
 真实闭环测试需本人本机已登录 OpenCode，并明确选择模型。该测试使用独立 PostgreSQL 测试库与临时 HTTP 服务，不修改正常业务数据，但会产生模型调用：

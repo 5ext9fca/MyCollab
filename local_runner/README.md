@@ -4,7 +4,7 @@
 
 ## 环境与绑定
 
-1. 使用 Python 3.11 或更新版本与本仓库检出；Runner 只依赖 Python 标准库。
+1. 使用 Python 3.13 与本仓库检出；Runner 只依赖 Python 标准库。
 2. 安装 **OpenCode CLI 2.1.3**。适配器按此版本验证，其他版本会拒绝执行，需重新验证权限与协议后再升级支持范围。
 3. 在用户电脑运行 `opencode auth login` 完成供应商登录；用 `opencode auth list`、`opencode models --standalone` 检查可用模型。不要把供应商凭据填写到 MyCollab。
 4. 登录 MyCollab 的「本地 Agent」页面，创建设备，选择四类文本能力。设备凭据只展示一次，可设置 1–90 天有效期；服务器仅存摘要。
@@ -24,7 +24,7 @@
 从仓库根目录启动：
 
 ```bash
-python3 -m local_runner
+backend/.venv/bin/python -m local_runner
 ```
 
 默认读取 `~/.config/MyCollab/mycollab-runner.json`；可用 `--config /实际路径/mycollab-runner.json` 覆盖，路径支持 `~` 展开。配置缺失、格式错误或权限过宽时会给出提示并退出，不自动生成或覆盖凭据文件。
@@ -58,7 +58,7 @@ Runner 不修改用户 OpenCode 全局配置，也不搬运供应商凭据。Ope
 自动化测试无需模型或付费凭据：
 
 ```bash
-python3 -m unittest discover -s local_runner/tests -v
+backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
 ```
 
 官方依据：[OpenCode CLI](https://opencode.ai/docs/cli/)、[V2 配置](https://opencode.ai/v2/docs/config)、[V2 权限](https://opencode.ai/v2/docs/permissions)、[V2 策略](https://opencode.ai/v2/docs/policies)。V1 与 V2 权限字段不同，不能混用。
