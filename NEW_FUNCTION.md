@@ -1,3 +1,5 @@
+> 此文件原统一 Agent Panel 方案已归档至 `feature/agent-delegation`，以下内容不再是主分支待实现需求。主分支改为本地 LLM 整理并导出 Agent 需求 Markdown；已实现结构与规则见 `PROJECT_STRUCTURE.md` 的“Agent 需求文档导出”。
+
 # NEW_FUNCTION — 统一 Agent Panel 实现方案
 
 ## 1. 目标与本次范围

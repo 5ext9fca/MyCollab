@@ -2,8 +2,6 @@ from rest_framework import serializers
 
 from .models import AgentDevice, AssistanceRequest
 from . import protocol, services
-from .image_protocol import IMAGE_KINDS
-from .code_protocol import CODE_KIND
 
 
 class StrictSerializer(serializers.Serializer):
@@ -15,7 +13,7 @@ class StrictSerializer(serializers.Serializer):
 
 class DeviceCreateSerializer(StrictSerializer):
     name = serializers.CharField(max_length=100)
-    capabilities = serializers.ListField(child=serializers.ChoiceField(choices=protocol.KINDS + IMAGE_KINDS + (CODE_KIND,)), min_length=1, max_length=7)
+    capabilities = serializers.ListField(child=serializers.ChoiceField(choices=protocol.KINDS), min_length=1, max_length=5)
     expires_days = serializers.IntegerField(min_value=1, max_value=90, default=30)
 
 
@@ -42,7 +40,7 @@ class HeartbeatSerializer(StrictSerializer):
 class ResultSerializer(StrictSerializer):
     attempt_id = serializers.UUIDField()
     result = serializers.JSONField(required=False, default=None, allow_null=True)
-    error = serializers.ChoiceField(choices=("", "model_timeout", "model_unavailable", "invalid_result", "local_configuration", "local_failure", "no_changes"), default="")
+    error = serializers.ChoiceField(choices=("", "model_timeout", "model_unavailable", "invalid_result", "local_configuration", "local_failure"), default="")
 
 
 class DeviceSerializer(serializers.ModelSerializer):

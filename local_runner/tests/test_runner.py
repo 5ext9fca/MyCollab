@@ -42,3 +42,11 @@ class RunnerTests(unittest.TestCase):
     def test_extra_output_operations_are_rejected_locally(self):
         with self.assertRaises(ProtocolError):
             validate_result("design_polish", {"title": "x", "content": "", "summary": "", "questions": [], "assignee": 1})
+
+    def test_requirements_prompt_and_output_protocol(self):
+        prompt = prompt_for({'schema_version': 1, 'kind': 'agent_requirements', 'input': {'mission': {'title': '角色需求'}, 'contexts': []}})
+        self.assertIn('## 待澄清事项', prompt)
+        self.assertIn('禁止执行任务', prompt)
+        self.assertIn('禁止调用任何工具', prompt)
+        with self.assertRaises(ProtocolError):
+            validate_result('agent_requirements', {'markdown': '仅复制原文'})

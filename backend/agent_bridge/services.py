@@ -11,17 +11,15 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from common.exceptions import ConflictError, DomainError, NotFound, PermissionDenied, ValidationFailure
+from common.exceptions import ConflictError, NotFound, PermissionDenied, ValidationFailure
 from library.references import assert_markdown_references_allowed
 from missions.models import Comment, DesignElement, Mission, ProductionTemplate
 from missions.services import allowed_actions, design_allowed_actions, template_allowed_actions, _validate_template_steps
 
 from .models import AgentDevice, AssistanceRequest
 from . import protocol
-from .image_protocol import IMAGE_KINDS
-from .code_protocol import CODE_KIND
 
-ACTIVE = ("queued", "running", "awaiting_selection")
+ACTIVE = ("queued", "running")
 
 
 def digest(value):
@@ -51,8 +49,8 @@ def create_device(actor, *, name, capabilities, expires_days=30):
     active_user(actor)
     active_user(get_user_model().objects.select_for_update().get(pk=actor.pk))
     validate(protocol.text, name, 100, True)
-    if not isinstance(capabilities, list) or not capabilities or any(c not in protocol.KINDS + IMAGE_KINDS + (CODE_KIND,) for c in capabilities):
-        raise ValidationFailure("请选择支持的本地 Agent 能力。")
+    if not isinstance(capabilities, list) or not capabilities or any(c not in protocol.KINDS for c in capabilities):
+        raise ValidationFailure("请选择支持的文本辅助能力。")
     if type(expires_days) is not int or not 1 <= expires_days <= 90:
         raise ValidationFailure("有效期须为 1–90 天。")
     if AgentDevice.objects.filter(owner=actor, revoked_at=None, expires_at__gt=timezone.now()).count() >= 10:
@@ -73,7 +71,6 @@ def revoke_device(actor, device_id):
         device.save(update_fields=["revoked_at"])
         device.requests.filter(status="queued").update(status="cancelled", stopped_at=timezone.now(), updated_at=timezone.now())
         device.requests.filter(status="running").update(status="cancelled", updated_at=timezone.now())
-        device.requests.filter(status="awaiting_selection").update(status="cancelled", updated_at=timezone.now())
     return device
 
 
@@ -86,6 +83,15 @@ def expire_requests(queryset):
 
 def check_target(actor, kind, object_id, base_version, submission_id):
     active_user(actor)
+    if kind == "agent_requirements":
+        if object_id is None or submission_id is not None:
+            raise ValidationFailure("导出需要已有 Mission，不能携带提交轮次。")
+        obj = Mission.objects.filter(pk=object_id).first()
+        if not obj:
+            raise NotFound("Mission 不存在。")
+        if type(base_version) is not int or obj.version != base_version:
+            raise ConflictError("Mission 版本已变化，请刷新后重新导出。", code="version_conflict")
+        return obj
     if object_id is None:
         if base_version is not None or submission_id is not None or kind == "review_assist":
             raise ValidationFailure("验收需要任务与提交轮次，新建草稿不能携带版本。")
@@ -115,6 +121,12 @@ def check_target(actor, kind, object_id, base_version, submission_id):
 
 def build_input(actor, kind, draft, instructions, context_ids, parent_id, obj, submission_id, comment_ids):
     validate(protocol.text, instructions, 10000)
+    if kind == "agent_requirements":
+        from .requirements import snapshot
+        validate(protocol.fields, draft, ())
+        if instructions or context_ids or parent_id or comment_ids:
+            raise ValidationFailure("需求文档只使用服务器当前 Mission 及其关联设计、资产。")
+        return snapshot(obj)
     if not isinstance(context_ids, list) or len(context_ids) > 20 or len(set(context_ids)) != len(context_ids):
         raise ValidationFailure("最多选择 20 项不重复的设计/资产上下文。")
     contexts = []
@@ -221,19 +233,14 @@ def create_request(actor, *, device_id, kind, idempotency_key, draft, instructio
 
 
 def stale_reason(request):
-    if request.kind == CODE_KIND:
-        try:
-            from missions.code_services import assert_code_current
-            assert_code_current(request.code_execution)
-            return ''
-        except DomainError as exc:
-            return exc.message
+    from common.exceptions import DomainError
     try:
-        if request.kind in IMAGE_KINDS:
-            from missions.execution_services import assert_execution_current
-            assert_execution_current(request.execution)
+        obj = check_target(request.owner, request.kind, request.object_id, request.base_version, request.submission_id)
+        if request.kind == "agent_requirements":
+            from .requirements import snapshot
+            if snapshot(obj) != request.input:
+                raise ConflictError("Mission 或关联设计、资产已变化，请重新导出。")
             return ""
-        check_target(request.owner, request.kind, request.object_id, request.base_version, request.submission_id)
         for comment in request.input.get("comments", []):
             if not Comment.objects.filter(pk=comment["id"], mission_id=request.object_id, updated_at=comment["updated_at"]).exists():
                 raise ConflictError("所选评论已变化，请重新分析。")
@@ -259,7 +266,7 @@ def claim(device_id):
     expire_requests(device.requests.all())
     if device.requests.filter(status="running").exists():
         return None
-    request = device.requests.select_for_update().filter(owner=device.owner, status="queued").order_by("created_at").first()
+    request = device.requests.select_for_update().filter(owner=device.owner, status="queued", kind__in=protocol.KINDS).order_by("created_at").first()
     if not request:
         return None
     reason = stale_reason(request)
@@ -278,7 +285,7 @@ def locked_attempt(device_id, request_id, attempt_id):
     device_available(device)
     device.last_seen_at = timezone.now()
     device.save(update_fields=["last_seen_at"])
-    request = device.requests.select_for_update().filter(pk=request_id, owner=device.owner).first()
+    request = device.requests.select_for_update().filter(pk=request_id, owner=device.owner, kind__in=protocol.KINDS).first()
     if not request:
         raise NotFound()
     if request.attempt_id != attempt_id:
@@ -321,19 +328,19 @@ def _finish(device_id, request_id, attempt_id, *, result=None, error=""):
         return ConflictError("请求已结束，拒绝迟到或不同的回传。", code="request_terminal")
     if result is None:
         # 只接收固定错误码，避免本地异常、认证响应或环境变量泄漏。
-        if error not in ("model_timeout", "model_unavailable", "invalid_result", "local_configuration", "local_failure", "no_changes"):
+        if error not in ("model_timeout", "model_unavailable", "invalid_result", "local_configuration", "local_failure"):
             raise ValidationFailure("本地错误须使用已定义的脱敏错误码。")
         request.status, request.error = "failed", error
     else:
-        if request.kind in IMAGE_KINDS or request.kind == CODE_KIND:
-            raise ValidationFailure("图像或代码成果必须通过对应的清单与人工发布接口回传。")
+        if request.kind == "agent_requirements" and stale_reason(request):
+            return ConflictError("需求来源已变化，请重新导出。", code="version_conflict")
         if error:
             raise ValidationFailure("结果和错误不能同时提交。")
         validate(protocol.validate_result, request.kind, result)
         validate(protocol.validate_evidence, request.kind, result, request.input)
         if request.kind == "template_generate":
             _validate_template_steps(result["steps"])
-        for field in ("content", "acceptance_criteria", "description", "comment"):
+        for field in ("content", "acceptance_criteria", "description", "comment", "markdown"):
             if field in result:
                 assert_markdown_references_allowed(result[field], request.owner, field=field)
         request.status, request.result = "succeeded", result
@@ -342,22 +349,9 @@ def _finish(device_id, request_id, attempt_id, *, result=None, error=""):
     return request
 
 
-def cancel(actor, request_id):
-    request = AssistanceRequest.objects.filter(pk=request_id, owner=actor).first()
-    if not request:
-        raise NotFound()
-    if request.kind == CODE_KIND:
-        from missions.services import cancel_code_execution
-        return cancel_code_execution(actor=actor, execution_id=request.code_execution.pk)
-    if request.kind in IMAGE_KINDS:
-        from missions.services import cancel_execution
-        return cancel_execution(actor=actor, execution_id=request.execution.pk)
-    return _cancel_request(actor, request_id)
-
-
 @transaction.atomic
-def _cancel_request(actor, request_id):
-    request = AssistanceRequest.objects.select_for_update().filter(pk=request_id, owner=actor).first()
+def cancel(actor, request_id):
+    request = AssistanceRequest.objects.select_for_update().filter(pk=request_id, owner=actor, kind__in=protocol.KINDS).first()
     if not request:
         raise NotFound()
     if request.status in ACTIVE or request.status == "succeeded":

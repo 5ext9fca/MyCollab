@@ -8,7 +8,7 @@ from .authentication import DeviceAuthentication
 from .models import AgentDevice, AssistanceRequest
 from .serializers import (DeviceSerializer, DeviceCreateSerializer, RequestSerializer,
     RequestCreateSerializer, RequestSummarySerializer, HeartbeatSerializer, ResultSerializer)
-from . import services
+from . import services, protocol
 
 
 def parsed(serializer_class, request):
@@ -46,12 +46,17 @@ class RequestList(generics.ListAPIView):
     serializer_class = RequestSummarySerializer
 
     def get_queryset(self):
-        queryset = AssistanceRequest.objects.filter(owner=self.request.user).select_related("owner")
+        queryset = AssistanceRequest.objects.filter(owner=self.request.user, kind__in=protocol.KINDS).select_related("owner")
         services.expire_requests(queryset)
         return queryset
 
     def post(self, request):
-        item = services.create_request(request.user, **parsed(RequestCreateSerializer, request))
+        payload = parsed(RequestCreateSerializer, request)
+        if payload["kind"] == "agent_requirements":
+            from missions.services import create_agent_requirements
+            item = create_agent_requirements(request.user, **payload)
+        else:
+            item = services.create_request(request.user, **payload)
         return Response(RequestSerializer(item).data, status=status.HTTP_201_CREATED)
 
 
@@ -60,7 +65,7 @@ class RequestDetail(generics.RetrieveAPIView):
     serializer_class = RequestSerializer
 
     def get_queryset(self):
-        queryset = AssistanceRequest.objects.filter(owner=self.request.user).select_related("owner")
+        queryset = AssistanceRequest.objects.filter(owner=self.request.user, kind__in=protocol.KINDS).select_related("owner")
         services.expire_requests(queryset)
         return queryset
 

@@ -7,9 +7,8 @@
  * Edits and evidence submission stay on the full detail page; the drawer only
  * offers the quick, state-machine-safe actions plus a link to the full page.
  */
+import AgentRequirementsExport from './AgentRequirementsExport.vue'
 import AssistancePanel from './AssistancePanel.vue'
-import AgentPanel from './AgentPanel.vue'
-import CodeReport from './CodeReport.vue'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -430,8 +429,8 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
             <MissionDesignLink :element="mission.design_element" :assets="mission.assets" />
             <MissionSubscription v-if="mission" :mission-id="mission.id" />
             <MissionSchedule :mission="mission" />
+            <AgentRequirementsExport v-if="open" :key="mission.id" :mission="mission" />
             <MarkdownContent :source="mission.content" />
-            <AgentPanel records-only v-if="open" :key="mission.id" :mission="mission" />
             <h4>验收标准</h4>
             <MarkdownContent :source="mission.acceptance_criteria" />
           </el-tab-pane>
@@ -537,8 +536,6 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
                 </el-tag>
               </div>
               <MarkdownContent :source="item.description" />
-              <CodeReport v-for="artifact in item.code_artifacts" :key="artifact.execution_id" :report="artifact.report" :patch-url="artifact.patch_url" />
-            <el-card v-if="item.execution_artifacts?.length" shadow="never"><h4>本轮图像成果</h4><p v-for="artifact in item.execution_artifacts" :key="artifact.candidate_id"><a class="app-link" :href="artifact.url">{{ artifact.name }} · 版本 {{ artifact.version }}</a></p></el-card>
               <div v-if="item.build_references.length" class="meta">
                 构建：
                 <span v-for="build in item.build_references" :key="build.id">

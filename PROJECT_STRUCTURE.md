@@ -601,60 +601,17 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 
 `local_runner/` 是用户电脑上的 Python 标准库客户端，首个适配器为 OpenCode CLI 2.1.3。每次以私有非交互会话、临时工作目录与专用禁止工具的配置运行；模型供应商认证和调用全部留在本地。Runner 主动轮询并续租，断线或取消尽力终止进程，最多重传同一结果三次，不自动重新调用模型。安装与真实验证记录见 `local_runner/README.md`。
 
-第一批文本辅助不生成图像文件；第二批图像流程见下节。第三批本地代码副本与验证流程见后文；自动提交或自动验收仍未引入。后端不包含供应商 SDK/网络调用或常驻执行器，不新增 Redis/Celery/WebSocket。
-
-## 第二批：Mission 图像委派与成果版本
-
-- 当前认领者可在 InProgress Mission 的完整详情页及抽屉中手动选择本人图像设备、已关联且未归档的 Asset、生成/编辑、要求和本人参考图。管理员不能代替认领者委派。浏览器预览输入后才创建执行；编辑至少一张参考图，最多四张、每张 20 MiB、合计 40 MiB。只下载明确授权的参考，不抓取 Markdown 外链。
-- `AssistanceRequest` 增加 `image_generate/image_edit` 和 `awaiting_selection`，与文本共用设备、领取、attempt、租约及用户三个活动请求配额。设备只运行一个任务；等待本地选择不占运行槽。运行总限时 30 分钟、心跳 30 秒/租约 180 秒，候选等待选择 24 小时。超时、断线、取消、撤销均不自动重新生成。
-- `MissionExecution` 保存 request、mission、asset、actor、Mission/Asset 基础版本、同任务资产递增 version、previous、授权 reference_files 和不可覆盖的 selected_ids。`ExecutionCandidate` 保存有界清单与 SHA-256、尺寸、大小，选中上传后关联本人 LibraryFile。唯一约束分别保护 `(mission, asset, version)` 和 `(execution, key)`。`SubmissionExecutionArtifact` 将候选固定关联到人工提交轮次，历史不可替换。
-- 所有业务写入口由 `missions/services.py` 导出，图像实现集中于 `missions/execution_services.py`；视图仅解析/认证/调用。创建、选中、上传及完成使用事务、团队锁及设备/请求锁，重复相同操作幂等。权限、有效账号、设备、任务状态/认领者/版本、资产版本/关联和授权参考均重新检查；过期后拒绝迟到上传。
-- Session+CSRF API：`GET/POST /api/mission-executions/`（列表必传 `mission`，分页）、`GET /api/mission-executions/{id}/`、`POST /api/mission-executions/{id}/cancel/`。有效团队成员可查看历史；只有发起者取消；已关联提交的执行不可取消。创建字段见 `agent_bridge/execution_api.py:ExecutionCreate`，含幂等 UUID、两个版本及可选 previous_id。
-- Runner Bearer API：继续使用 `claim/heartbeat/result`（图像 result 只接受固定失败码）；`POST /api/agent-runner/requests/{id}/references/{file_id}/` 仅运行期间读取本次授权参考；`candidates/` 发布元数据；`selection/` 确认选择集合；`candidates/{key}/upload/` multipart 上传；`complete/` 确认已选成果全部入库。每个请求必须带 attempt_id；设备凭据不能访问通用 Mission/素材写接口。
-- 最多四个候选，服务器不收未选图片或缩略图。上传仅限清单对应的静态、8 位 RGB/RGBA 非交错 PNG，单张 20 MiB、最多 16 × 1024 × 1024 像素。服务器有界检查块 CRC、压缩流/行长度、尺寸和摘要，不重建像素、不转换图片。转换、生成和下载均由本地完成。部分上传不标记成功，明确选中后已入库文件保留。
-- `MissionExecutionPanel.vue` 显示输入预览、离线等待、取消、候选版本/局部上传及已上传图片；候选选择始终在本地。完整详情的“引用到提交草稿”重新检查执行及资产版本，仅填入 Markdown 与候选 ID。`submit` 增加可选 `execution_candidate_ids`（最多 20 个），仅接受当前任务/认领者、已成功且版本有效的成果；原人工验证说明、依赖、子任务与人工验收规则保持有效。提交历史显示本轮图像成果链接和版本。
-- 已关联候选的 LibraryFile 禁止删除，避免执行/提交证据断链。`cleanup_assistance` 清理 30 天前图像请求的原始输入/result，但保留执行、候选、文件、提交关联；文本请求仍按原规则清理。
-- `local_runner/codex_image.py` 使用 Codex CLI 0.164.0 原生图像工具、独立临时目录与本机登录，禁用 shell、浏览器、应用/插件、hooks 和多 Agent，忽略用户配置但保留本机认证，不改变全局配置。仅从 JSON `thread.started` 对应的本机原生输出目录读取有界普通文件；不信任模型回复中的路径。Pillow 13.0.0 仅安装在本地 Runner，转换和去除元数据后生成私人预览。`--select REQUEST_ID --keys ...` 才确认选择并上传；失败只重传同一文件。安装和手工清理见 `local_runner/README.md`。
-- 验证入口：`agent_bridge.tests.test_images`（PostgreSQL 状态/权限/版本/并发/清理）、`test_image_roundtrip`（真实 HTTP 与确定性本地适配器生成→编辑→选择→上传→人工提交验收）、`local_runner/tests/test_images.py`、`frontend/src/tests/missionExecution.spec.ts`。真实 Codex 生成/编辑记录见 Runner 文档，普通测试不调用付费模型。
-
-## 第三批：Mission 规则/代码委派（OpenCode）
-
-- 当前认领者可在 InProgress Mission 的完整详情/抽屉选择本人代码设备、填写本地仓库标识与要求，预览后委派。代码执行不要求关联 Asset。仓库标识只允许 1–64 位字母数字、短横线、下划线；本机路径、Git 地址、验证命令、凭据均不上传。未知标识在本地明确失败。
-- `AssistanceRequest` 增加 `code_implement`，沿用设备单 running、用户最多三个活动请求及短轮询。代码运行总时限 30 分钟、租约 180 秒/心跳 30 秒；本地实现与验证结束后进入 `awaiting_selection`，最长 24 小时等候人工发布，终态不会自动重新派发。
-- `CodeExecution` 关联 request、mission、actor、mission_version、repository_key、递增 version、previous；manifest 只含基线 SHA、补丁/报告摘要和字节数。人工发布后才存本人 LibraryFile 补丁和结构化 report、published_at。唯一约束 `(mission, repository_key, version)`；代码写服务在 `missions/code_services.py`，公开入口由 `missions/services.py` 导出，事务内使用团队/设备/请求锁复核权限、状态与版本。
-- Session+CSRF：`GET/POST /api/code-executions/`（列表必传 mission、分页）、`GET /api/code-executions/{id}/`、`POST /api/code-executions/{id}/cancel/`。有效团队成员可查看历史，只有发起者可取消，已被提交轮次引用的成果不可取消。创建携带 device_id、mission_id、repository_key、expected_version、instructions、idempotency_key、可选 previous_id。
-- Runner 独立 Bearer：`POST /api/agent-runner/requests/{id}/code-manifest/`（attempt_id、manifest）和 `code-publish/`（multipart attempt_id、patch、report）；继续复用 claim/heartbeat 与固定失败码 result。设备令牌不能调用通用业务写接口。清单无文件正文；本地 `--publish-code` 才发实际成果，重复同内容幂等，不重复调用模型。
-- 补丁最多 2 MiB、UTF-8 文本 Git diff，报告最多 128 KiB、最多 200 个变更文件/20 项验证。共享 `agent_bridge/code_protocol.py` 校验字段、基线、摘要、路径、差异文件清单与验证状态/退出码。服务器不执行补丁或复跑测试。补丁保存为 `changes.patch.txt`，复用现有安全文本附件类型；用户可下载后用 Git 检查/应用。
-- `SubmissionCodeExecution` 固定人工提交轮次与执行的关联；submit 新增可选 `code_execution_ids`（最多 20）。只接受本任务/本人、已发布、当前 Mission 版本的成果；仍需原有人工验证说明或源码/构建证据，依赖/子任务/验收规则不变。本地测试失败不伪装成功，也不替代验收者判断。已关联代码成果的素材不能删除，历史清理只清空老请求输入/result，保留补丁与报告。
-- `MissionCodePanel.vue` 提供输入预览、离线等待、取消、新版本和历史；`CodeReport.vue` 显示基线、变更摘要/文件、真实本地测试结果、补丁下载，并明确服务器未验证。引用按钮重新检查执行版本，仅填入提交草稿和关联 ID，提交历史继续显示报告，不自动提交、推送、PR、合并或部署。
-- 本地 `code_workspace.py` 从已配置 Git 基线导出独立副本，不包含未提交/未跟踪内容，不共享原仓库可写 Git 元数据；排除常见认证/Agent 配置，拒绝符号链接、子模块、特殊文件与不规范路径。源码导出上限 100 MiB/20000 条目；逐项核对 Git blob 摘要和完整文件清单，导出属性改变基线时拒绝。输出只支持文本补丁。原仓库及其脏改动不受影响。
-- `opencode_code.py` 独立于首批纯文本 Agent，锁定 OpenCode 2.1.3；显式同步 cwd 与 PWD 为隔离副本，只允许读取和白名单文件修改，拒绝外部目录、shell、集成和子 Agent，禁用格式化。`code_verification.py` 在候选的另一个副本中以 shell=False 运行本地 argv，验证命令不由服务器/模型决定，真实退出码/超时进入报告，最多 1 MiB/项的原始日志只留本地。独立目录不是 OS 沙箱；用户选择的验证代码仍以本机权限执行。
-- `code_execution.py` 管理本地补丁与 report.json、清单发布、显式 `--publish-code` 及同内容重传；`--list-repositories` 只输出本地标识和验证名称。无验证项显示未配置，工具缺失为未运行，失败/超时如实记录。来源是 local_runner，不能冒充服务器独立验证。
-- 测试入口：`agent_bridge.tests.test_code`、`test_code_roundtrip`（真实 HTTP 与确定性模型）、`local_runner/tests/test_code_*.py`、`frontend/src/tests/missionCode.spec.ts`。真实 OpenCode 隔离示例验收及安装说明见 `local_runner/README.md`。
+本批不包含图像文件产出、仓库操作、构建测试、自动提交或自动验收；第二、三批继续由 NEW_FUNCTION.md 规划。后端不包含供应商 SDK/网络调用或常驻执行器，不新增 Redis/Celery/WebSocket。
 
 
-## 统一 Agent Panel（轻量入口）
+## Agent 需求文档导出
 
-- `views/AgentInteractionView.vue` 提供登录后访问的 `/missions/:id/agent` 独立交互页，读取当前 Mission，集中创建委派、取消、再次委派、私有对话与审批。`components/AgentPanel.vue` 按类型挂载 `MissionCodePanel` 或 `MissionExecutionPanel`；历史仍按类型分页。Mission 完整详情和抽屉使用 `recordsOnly` 模式，只保留交互记录、成果查看、完整详情的成果引用及独立交互页入口，不加载设备或参考素材、不挂载对话或创建/取消/重试操作。抽屉关闭后卸载面板，重新打开读取当前状态。独立页加载失败可重试，切换 Mission 或离开页面忽略旧响应；`?kind=image` 可直接进入图像类型。
-- 继续复用已有 AgentDevice、AssistanceRequest、CodeExecution、MissionExecution 与原 API，不增加数据表、服务依赖或服务器模型通信。只有当前 InProgress Mission 的认领者可创建，设备须属于本人、未撤销、未到期且声明对应能力；图像还须有未归档的关联 Asset。没有可用能力时隐藏创建表单，保留历史和设备管理说明。
-- 创建前展示 Mission/Asset 版本、要求、仓库标识或参考素材快照；确认失败重发同一幂等键，明确新版本关联原执行。切换类型不会自动发起、取消或恢复执行。凭据、供应商配置、仓库路径与验证命令仍留本地。
-- 活跃历史约 15 秒轮询，失败以 15/30/60 秒退避；终态、切换类型/Mission、关闭抽屉和卸载时停止旧轮询，忽略过期响应。生命周期状态不代表百分比或模型耗时；最近联系不代表实时在线。
-- 展示创建/到期时间、失效原因、取消停止确认与本地发布提示；图像选中上传或代码人工发布后，才可引用到完整详情的提交草稿。抽屉保留完整详情入口。CodeReport 如实展示本地验证失败/超时/未运行，服务器不复跑。
-- 设计、模板、Mission 编写、验收继续使用原 AssistancePanel 表单上下文与逐字段采纳；设备页继续注册/撤销。代码执行私有对话与单次审批见下节；流式工具事件与 descriptor 能力发现尚未实现。
-- 前端回归新增 `src/tests/agentPanel.spec.ts`，覆盖类型切换、卸载停止轮询、失败退避、终态停止、旧 Mission 响应隔离及成果事件转发、原位置仅显示记录；`agentInteractionView.spec.ts` 覆盖独立页加载、失败重试和旧响应隔离。领域流程继续由 missionCode/missionExecution/agentBridge 测试覆盖。
-
-验证记录：统一面板使用组件测试验收，后端 Agent 交接与本地 Runner 使用确定性闭环回归；本次未新增真实供应商调用。浏览器工具未提供可用浏览器，实际页面验收未完成，不能将组件测试等同于人工浏览器验收。
-
-## 执行中私有对话与权限审批
-
-- `agent_bridge/interaction_protocol.py` 是两端共享的字段白名单；`interaction_services.py` 管理交接，入口仍经 `missions/services.py`。新增迁移 `agent_bridge/0004`，增加 InteractionSession（每请求唯一，绑定 attempt 与随机会话 nonce）、InteractionEvent（递增 seq 与事件 UUID 去重）、InteractionPermission（具体操作摘要、单次决定、期限）、InteractionCommand（命令 UUID、有效期和本地处理状态）。这些对象不替代 AssistanceRequest 状态机，不保存原生 Agent session ID。
-- 浏览器 Session + CSRF：`GET /api/assistance-requests/{id}/interaction/?after=N` 分页读取私有事件，POST 同路径发送 followup 或 permission_reply。只允许原请求所有者访问，团队可读成果权限不延伸到对话。响应禁止缓存。
-- Runner Bearer：`POST /api/agent-runner/requests/{id}/interaction/open/` 声明当前 attempt 的会话 nonce 与能力；`exchange/` 批量上报最多 20 个事件、100 个命令确认并领取待处理指令，可请求关闭。关闭前须处理完已排队指令。两条写接口均校验设备、租约、业务版本、attempt 和会话 nonce；同一事件/命令 UUID 内容不一致返回冲突。
-- 每次最多 100 条命令、1000 条事件、累计 1 MiB 事件，单事件 8 KiB；消息最多 4000 字符且受体积限制。事件只接受普通回复、审批请求/结束，禁止原始 Agent 事件透传。命令和审批最多 120 秒有效；过期或终态不可恢复，ACK 的 applied 仅表示本地已处理该指令，不表示 Mission 完成。
-- 网页 `AgentConversation.vue` 在独立 Agent 交互页的代码历史中按本人权限展开，5 秒轮询，失败退避至 60 秒，分页按游标合并，关闭后卸载停止请求。普通文本渲染，不执行消息 HTML。发送结果未知时重发同一个 command_id；审批仅提供一次批准或拒绝，绑定操作摘要。
-- 本地仓库配置 `interactive: true` 才启用 `opencode_interactive.py`。`opencode_server.py` 启动 OpenCode 2.1.3 随机端口/临时密码的环回私有服务；`interaction.py` 持久记录去重、验证白名单/相对路径/符号链接、绑定原生待决操作，并将一次批准映射为 `once`。只将原先允许的 edit 收紧为 ask，不放开 shell、外部目录、集成或配置写入。原生权限请求变更、审批超时、会话取消均不批准新操作。
-- 供应商通信与认证全部留本机；MyCollab 仍仅短轮询和数据库交接，不增加模型 SDK、WebSocket 或后台任务依赖。交互结束后继续原补丁/报告验证和人工发布链。图像与文本适配器尚未声明交互支持，不冒充可用。
-- `cleanup_assistance` 清除超过七天且不再 running 的交互记录，保留任务成果和提交关联。本地会话记录由用户管理，当前不支持崩溃恢复或跨设备迁移。
-- 验证入口：后端 `test_interaction.py`，本地 `test_interaction.py`/`test_interaction_protocol.py`，前端 `agentConversation.spec.ts`；真实 OpenCode 隔离目录验收记录见 local_runner/README.md。
-
-交互 UI 验收限制：本次浏览器工具没有可用浏览器，未完成人工浏览器操作验收；前端以组件测试和生产构建验证，不能据此声称真实浏览器逐页通过。
+- 图像、代码委派和执行中对话/审批的完整实现保存于 `feature/agent-delegation`（起点 `fe0ef84`）；主分支不再提供对应页面、执行接口、本地适配器及成果提交关联。既有四类文本辅助继续提供。
+- `AgentRequirementsExport.vue` 在 Mission 详情和抽屉提供“导出为Agent需求文档”。点击后选择声明 `agent_requirements` 能力的本人设备（只有一台时自动选择），本地 LLM 整理完成后预览并下载 UTF-8 `.md`。没有设备时引导绑定；离线时显示等待，不以静态模板冒充 LLM 结果。
+- 复用 `AssistanceRequest`、Session+CSRF `POST/GET /api/assistance-requests/` 及现有 Runner Bearer 领取/心跳/结果接口；新增 kind `agent_requirements`，输出严格为 `{markdown: string}`。模型输出上限 30000 字符、JSON 128 KiB；固定目标、范围与约束、实施要求、交付物、验收标准、待澄清事项、来源章节。
+- `agent_bridge/requirements.py` 从服务器构建 Mission ID/版本、标题、正文、验收标准、状态、类型、优先级及关联设计/资产 ID/版本/标题/正文/归档状态快照。最多 256 KiB。浏览器不得替换正文、附加任意上下文或操作指令；不读取评论、私有凭据、源码、图片或链接正文。
+- 所有有效成员均可为可读 Mission 导出，包括未认领或已结束的任务；请求和结果仅发起人可见，设备必须属于本人且声明新能力。创建入口经 `missions/services.py:create_agent_requirements`，只创建交接记录，不修改任务状态、内容或版本。
+- LLM 调用仍由 `local_runner/opencode.py` 的本地 OpenCode 文本会话完成，禁用工具/文件/网络读取。未知事实必须列入待澄清事项，不虚构命令、路径、格式或已执行结论；网页使用 MarkdownContent 清洗预览，下载的是模型返回的原始 Markdown。
+- 来源在领取、心跳、回传和读取时复核，关联说明变化也会过期；下载前再次 GET 检查。重复网络重试沿用同一幂等键，不重复生成；重新导出显式创建新请求。活动状态 5 秒轮询，失败退避至 60 秒，终态/卸载停止。结果按原文本请求规则保留 30 天。
+- 新迁移 `missions/0013` 与 `agent_bridge/0005–0006` 移除旧执行/交互表、旧成果提交关联及图像/代码请求，并移除设备的旧能力；不会删除素材库文件或 Mission/普通提交正文。历史迁移保留以支持已有数据库升级与空库创建。切换 feature 分支验证使用独立数据库；分支只保存代码，不备份数据库。
+- 验证：`agent_bridge.tests.test_requirements`、`frontend/src/tests/agentRequirementsExport.spec.ts`、`local_runner/tests/test_runner.py`。自动化测试不调用供应商；真实模型验收须显式启用。

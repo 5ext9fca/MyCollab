@@ -3,7 +3,7 @@
 import json
 import re
 
-KINDS = ("design_polish", "template_generate", "mission_write", "review_assist")
+KINDS = ("design_polish", "template_generate", "mission_write", "review_assist", "agent_requirements")
 INPUT_LIMIT = 256 * 1024
 RESULT_LIMIT = 128 * 1024
 TEXT_LIMIT = 30000
@@ -51,7 +51,13 @@ def mission_fields(value):
 
 def validate_result(kind, value):
     bounded_json(value, RESULT_LIMIT)
-    if kind == "design_polish":
+    if kind == "agent_requirements":
+        fields(value, ("markdown",))
+        text(value["markdown"], TEXT_LIMIT, True)
+        for heading in ("# Agent 需求文档", "## 目标", "## 范围与约束", "## 实施要求", "## 交付物", "## 验收标准", "## 待澄清事项", "## 来源"):
+            if heading not in value["markdown"].splitlines():
+                raise ProtocolError("需求文档缺少必要章节。")
+    elif kind == "design_polish":
         fields(value, ("title", "content", "summary", "questions"))
         text(value["title"], 200, True)
         text(value["content"])

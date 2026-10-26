@@ -1,11 +1,9 @@
 import { request } from './client'
 import type { Paginated } from './types'
 
-export type AssistanceKind = 'design_polish' | 'template_generate' | 'mission_write' | 'review_assist'
-export type ImageKind = 'image_generate' | 'image_edit'
-export type AgentCapability = AssistanceKind | ImageKind | 'code_implement'
+export type AssistanceKind = 'design_polish' | 'template_generate' | 'mission_write' | 'review_assist' | 'agent_requirements'
 export interface AgentDevice {
-  id: string; name: string; capabilities: AgentCapability[]; expires_at: string
+  id: string; name: string; capabilities: AssistanceKind[]; expires_at: string
   revoked_at: string | null; last_seen_at: string | null
 }
 export interface AssistanceRequest {
@@ -19,9 +17,9 @@ export interface AssistanceInput {
   submission_id?: string | null; parent_id?: string | null; retry_of?: string | null
   comment_ids?: string[]
 }
-export type AssistanceSummary = Pick<AssistanceRequest, 'id' | 'error' | 'stopped_at' | 'created_at'> & { kind: AgentCapability; status: AssistanceRequest['status'] | 'awaiting_selection' }
+export type AssistanceSummary = Pick<AssistanceRequest, 'id' | 'kind' | 'status' | 'error' | 'stopped_at' | 'created_at'>
 export const listAgentDevices = () => request<Paginated<AgentDevice>>('GET', '/api/agent-devices/?page_size=100')
-export const createAgentDevice = (name: string, capabilities: AgentCapability[], expires_days: number) =>
+export const createAgentDevice = (name: string, capabilities: AssistanceKind[], expires_days: number) =>
   request<AgentDevice & { token: string }>('POST', '/api/agent-devices/', { name, capabilities, expires_days })
 export const revokeAgentDevice = (id: string) => request<AgentDevice>('POST', `/api/agent-devices/${id}/revoke/`, {})
 export const createAssistance = (input: AssistanceInput) => request<AssistanceRequest>('POST', '/api/assistance-requests/', input)

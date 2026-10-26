@@ -745,8 +745,6 @@ def submit_mission(
     verification_description: str = "",
     source_references=None,
     build_references=None,
-    execution_candidate_ids=None,
-    code_execution_ids=None,
     expected_version,
 ) -> Mission:
     _acquire_team_lock()
@@ -777,31 +775,6 @@ def submit_mission(
     _assert_prerequisites_done(mission)
     _assert_children_done(mission)
 
-    from .models import ExecutionCandidate, SubmissionExecutionArtifact
-    candidate_ids = execution_candidate_ids or []
-    if not isinstance(candidate_ids, list) or len(candidate_ids) > 20 or len(set(candidate_ids)) != len(candidate_ids):
-        raise ValidationFailure("最多选择 20 项不重复的执行成果。")
-    candidates = list(ExecutionCandidate.objects.filter(pk__in=candidate_ids).select_related('execution__request', 'execution__asset', 'file'))
-    if len(candidates) != len(candidate_ids) or any(
-        item.execution.mission_id != mission.pk or item.execution.actor_id != actor.pk or not item.file_id
-        or item.file.owner_id != actor.pk or item.execution.request.status != 'succeeded'
-        or item.execution.mission_version != mission.version
-        or item.execution.asset.archived or item.execution.asset.version != item.execution.asset_version
-        or not mission.assets.filter(pk=item.execution.asset_id).exists()
-        for item in candidates
-    ):
-        raise ValidationFailure("执行成果不属于当前任务/认领者、尚未完成或任务版本已变化。")
-    from .models import CodeExecution, SubmissionCodeExecution
-    code_ids = code_execution_ids or []
-    if not isinstance(code_ids, list) or len(code_ids) > 20 or len(set(code_ids)) != len(code_ids):
-        raise ValidationFailure("最多选择 20 项不重复的代码成果。")
-    code_results = list(CodeExecution.objects.filter(pk__in=code_ids).select_related('request', 'patch'))
-    if len(code_results) != len(code_ids) or any(
-        item.mission_id != mission.pk or item.actor_id != actor.pk or not item.patch_id
-        or item.patch.owner_id != actor.pk or item.request.status != 'succeeded'
-        or item.mission_version != mission.version for item in code_results
-    ):
-        raise ValidationFailure("代码成果未完成、不属于当前任务/本人或版本已过期。")
     submission = MissionSubmission.objects.create(
         mission=mission,
         submitted_by=actor,
@@ -810,14 +783,8 @@ def submit_mission(
         reviewer_snapshot=mission.reviewer,
         outcome=SubmissionOutcome.PENDING,
     )
-    SubmissionCodeExecution.objects.bulk_create([
-        SubmissionCodeExecution(submission=submission, execution=item) for item in code_results
-    ])
     _build_source_references(submission, source_references)
     _build_build_references(submission, build_references)
-    SubmissionExecutionArtifact.objects.bulk_create([
-        SubmissionExecutionArtifact(submission=submission, candidate=item) for item in candidates
-    ])
 
     mission.current_submission = submission
     mission.status = MissionStatus.SUBMITTED
@@ -1697,32 +1664,8 @@ def bulk_update_missions(*, actor, payload):
     succeeded = sum(item['success'] for item in results)
     return {'results': results, 'succeeded_count': succeeded, 'failed_count': len(results) - succeeded}
 
-# 委派写入口保持统一，具体实现独立成模块以隔离模型交接与任务状态机。
-from .execution_services import (  # noqa: E402,F401
-    create_execution, publish_execution_candidates, select_execution_candidates,
-    upload_execution_candidate, complete_execution, cancel_execution, execution_reference,
-)
 
-from .code_services import (
-    create_code_execution, stage_code_execution, publish_code_execution, cancel_code_execution,
-)
-
-# 交互只写有界交接记录，继续从统一业务服务入口调用。
-def open_interaction(*args, **kwargs):
-    from agent_bridge.interaction_services import open_interaction as implementation
-    return implementation(*args, **kwargs)
-
-
-def exchange_interaction(*args, **kwargs):
-    from agent_bridge.interaction_services import exchange_interaction as implementation
-    return implementation(*args, **kwargs)
-
-
-def interaction_state(*args, **kwargs):
-    from agent_bridge.interaction_services import interaction_state as implementation
-    return implementation(*args, **kwargs)
-
-
-def create_interaction_command(*args, **kwargs):
-    from agent_bridge.interaction_services import create_interaction_command as implementation
-    return implementation(*args, **kwargs)
+def create_agent_requirements(actor, **payload):
+    """需求导出只创建私有文本交接请求，不修改 Mission。"""
+    from agent_bridge.services import create_request
+    return create_request(actor, **payload)
