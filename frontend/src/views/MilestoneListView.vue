@@ -1,17 +1,15 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import CardListSort from '../components/CardListSort.vue'
+import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 
+import CardList from '../components/CardList.vue'
+import { useCardList } from '../composables/useCardList'
 import { ApiException } from '../api/client'
 import { createMilestone, listMilestones } from '../api/milestones'
 import type { Milestone, MilestoneStatus } from '../api/types'
 import { MILESTONE_STATUS_LABELS, MILESTONE_STATUS_TAG } from '../missionMeta'
 
-const milestones = ref<Milestone[]>([])
-const total = ref(0)
-const loading = ref(false)
-const page = ref(1)
-const pageSize = ref(10)
 const ordering = ref('-created_at')
 const statusFilter = ref<MilestoneStatus | ''>('')
 
@@ -27,36 +25,7 @@ const dialogVisible = ref(false)
 const creating = ref(false)
 const form = reactive({ name: '', description: '', due_date: '' })
 
-
-let generation = 0
-async function load() {
-  const token = ++generation
-  loading.value = true
-  try {
-    const data = await listMilestones({
-      status: statusFilter.value || undefined,
-      page: page.value,
-      page_size: pageSize.value,
-      ordering: ordering.value,
-    })
-    if (token === generation) { milestones.value = data.results; total.value = data.count }
-  } catch (error) {
-    if (token === generation) ElMessage.error(error instanceof ApiException ? error.message : '加载失败')
-  } finally {
-    if (token === generation) loading.value = false
-  }
-}
-
-function onFilter() {
-  page.value = 1
-  load()
-}
-
-function onPage(next: number) {
-  page.value = next
-  load()
-}
-
+const { items: milestones, total, loading, page, pageSize, reload: load } = useCardList(() => ({ status: statusFilter.value || undefined, ordering: ordering.value }), listMilestones, 10)
 function progressText(milestone: Milestone): string {
   if (milestone.progress === null) return '无有效任务'
   return `${Math.round(milestone.progress * 100)}%（${milestone.mission_counts.done}/${milestone.mission_counts.effective_total}）`
@@ -91,7 +60,6 @@ async function confirmCreate() {
   }
 }
 
-onMounted(load)
 </script>
 
 <template>
@@ -101,17 +69,17 @@ onMounted(load)
       <el-button type="primary" @click="openCreate">新建里程碑</el-button>
     </div>
 
-    <el-card class="section-card" shadow="never"><div class="toolbar toolbar--flush">
-      <el-select v-model="statusFilter" style="width: 140px" @change="onFilter">
+    <CardList :items="milestones" :total="total" :loading="loading" v-model:page="page" v-model:page-size="pageSize" empty-text="暂无里程碑">
+    <template #filters><div class="toolbar toolbar--flush">
+      <el-select v-model="statusFilter" style="width: 140px">
         <el-option v-for="item in statusOptions" :key="item.label" :label="item.label" :value="item.value" />
       </el-select>
-      <el-select v-model="ordering" aria-label="里程碑排序" style="width: 160px" @change="onFilter"><el-option label="最新创建" value="-created_at" /><el-option label="最早创建" value="created_at" /><el-option label="目标日期升序" value="due_date" /><el-option label="名称升序" value="name" /></el-select>
-      <el-button @click="onFilter">查询</el-button>
-    </div></el-card>
+      <CardListSort v-model="ordering" label="里程碑排序" :options="[{ label: '最新创建', value: '-created_at' }, { label: '最早创建', value: 'created_at' }, { label: '目标日期升序', value: 'due_date' }, { label: '名称升序', value: 'name' }]" />
+      <el-button @click="load">查询</el-button>
+    </div></template>
 
-    <div v-loading="loading">
-      <el-empty v-if="!loading && !milestones.length" description="暂无里程碑" />
-      <el-card v-for="milestone in milestones" :key="milestone.id" class="milestone-card" shadow="never">
+    <template #item="{ item: milestone }">
+      <el-card class="milestone-card" shadow="never">
         <div class="milestone-card__row">
           <router-link class="app-link app-link--title" :to="{ name: 'milestone-detail', params: { id: milestone.id } }">
             {{ milestone.name }}
@@ -130,19 +98,8 @@ onMounted(load)
         </div>
         <div v-if="milestone.description" class="meta">{{ milestone.description }}</div>
       </el-card>
-    </div>
-
-    <el-pagination class="list-pagination"
-
-      background
-      layout="total, sizes, prev, pager, next"
-      :page-sizes="[10, 20, 50]"
-      @size-change="pageSize = $event; onFilter()"
-      :total="total"
-      :page-size="pageSize"
-      :current-page="page"
-      @current-change="onPage"
-    />
+    </template>
+    </CardList>
 
     <el-dialog v-model="dialogVisible" title="新建里程碑" width="480px">
       <el-form label-position="top">

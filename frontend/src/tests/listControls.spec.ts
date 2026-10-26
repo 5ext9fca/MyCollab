@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import MissionListSection from '../components/MissionListSection.vue'
 import NotificationsView from '../views/NotificationsView.vue'
+import ActionCardList from '../components/ActionCardList.vue'
 import BulkMissionEditor from '../components/BulkMissionEditor.vue'
 import { listMissions } from '../api/missions'
 import { listNotifications, readNotifications } from '../api/notifications'
@@ -28,7 +29,7 @@ describe('列表控制', () => {
     expect(listMissions).toHaveBeenLastCalledWith(expect.objectContaining({ creator: 'me', status: 'Done', ordering: 'title', page: 1 }))
   })
   it('任务本页全选支持半选、取消全选与切页清空', async () => {
-    const wrapper = mount(BulkMissionEditor, { props: { missions: [{ id: 'a' }, { id: 'b' }] as Mission[], selectedIds: ['a'], resetKey: '1' }, global: { plugins: [ElementPlus] } }); wrappers.push(wrapper)
+    const wrapper = mount(ActionCardList, { props: { items: [{ id: 'a' }, { id: 'b' }], total: 2, page: 1, pageSize: 20, loading: false, selectedIds: ['a'], resetKey: '1' }, global: { plugins: [ElementPlus] } }); wrappers.push(wrapper)
     expect(wrapper.findComponent({ name: 'ElCheckbox' }).props('indeterminate')).toBe(true)
     await wrapper.get('input[type="checkbox"]').setValue(true)
     expect(wrapper.emitted('update:selectedIds')?.at(-1)).toEqual([['a', 'b']])

@@ -1,32 +1,23 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import ActionCardList from '../components/ActionCardList.vue'
+import CardListSelection from '../components/CardListSelection.vue'
+import { useCardList } from '../composables/useCardList'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { workSummary, workMissions, notifyChanged, type WorkCategory, type WorkSummary } from '../api/notifications'
 import MissionQuickFilters from '../components/MissionQuickFilters.vue'
 import type { QueryParams } from '../api/client'
-import type { Mission } from '../api/types'
 import BulkMissionEditor from '../components/BulkMissionEditor.vue'
 import MissionCard from '../components/MissionCard.vue'
 import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
 const labels: Record<WorkCategory, string> = { review: '待我验收', returned: '被退回', due_soon: '即将到期', overdue: '已逾期', unblocked: '依赖已解除', revalidation: '需要复核' }
-const filters = ref<QueryParams>({}), pageSize = ref(20)
+const filters = ref<QueryParams>({})
 function apply(value: QueryParams) { filters.value = value }
 const category = ref<WorkCategory>('review')
 const summary = ref<WorkSummary | null>(null)
-const missions = ref<Mission[]>([])
-const page = ref(1), total = ref(0), loading = ref(false), fetchedAt = ref('')
-const selected = ref<string | null>(null)
-const selectedIds = ref<string[]>([])
-const resetKey = computed(() => JSON.stringify([category.value, page.value, pageSize.value, filters.value]))
-let generation = 0, summaryGeneration = 0
-async function load() {
-  const token = ++generation
-  loading.value = true
-  selectedIds.value = []; missions.value = []
-  try { const data = await workMissions(category.value, page.value, { ...filters.value, page_size: pageSize.value }); if (token === generation) { missions.value = data.results; total.value = data.count } }
-  catch (e) { if (token === generation) ElMessage.error(e instanceof Error ? e.message : '任务加载失败') }
-  finally { if (token === generation) loading.value = false }
-}
+const fetchedAt = ref(''), selected = ref<string | null>(null), selectedIds = ref<string[]>([]), actionBusy = ref(false)
+const { items: missions, total, loading, page, pageSize, resetKey, reload: load } = useCardList(() => ({ ...filters.value, category: category.value }), params => workMissions(category.value, Number(params.page), params))
+let summaryGeneration = 0
 async function refreshSummary() {
   const token = ++summaryGeneration
   try {
@@ -39,10 +30,9 @@ async function refreshSummary() {
 }
 async function refresh() { await Promise.all([load(), refreshSummary()]); notifyChanged() }
 function focus() { if (!document.hidden) void refresh() }
-watch([category, filters, pageSize], () => { page.value = 1; missions.value = []; total.value = 0; void load() })
 let timer: ReturnType<typeof setInterval>
-onMounted(() => { void refresh(); window.addEventListener('focus', focus); document.addEventListener('visibilitychange', focus); timer = setInterval(() => { if (!document.hidden) void refreshSummary() }, 60000) })
-onUnmounted(() => { generation++; summaryGeneration++; clearInterval(timer); window.removeEventListener('focus', focus); document.removeEventListener('visibilitychange', focus) })
+onMounted(() => { void refreshSummary(); window.addEventListener('focus', focus); document.addEventListener('visibilitychange', focus); timer = setInterval(() => { if (!document.hidden) void refreshSummary() }, 60000) })
+onUnmounted(() => { summaryGeneration++; clearInterval(timer); window.removeEventListener('focus', focus); document.removeEventListener('visibilitychange', focus) })
 </script>
 <template>
   <div class="page">
@@ -52,18 +42,14 @@ onUnmounted(() => { generation++; summaryGeneration++; clearInterval(timer); win
     <div class="toolbar"><el-button v-for="(label, key) in labels" :key="key" :type="category === key ? 'primary' : 'default'" @click="category = key">{{ label }} {{ summary?.counts[key] ?? '—' }}</el-button></div>
     <p v-if="category === 'unblocked'">前置依赖已完成；仍需检查未完成子任务及提交条件。</p>
     </el-card>
-    <el-card class="section-card" shadow="never"><MissionQuickFilters :query="filters" @apply="apply" /></el-card>
-    <BulkMissionEditor :missions="missions" v-model:selected-ids="selectedIds" :reset-key="resetKey" @changed="refresh" />
-    <div v-loading="loading">
-      <el-empty v-if="!loading && !missions.length" description="当前分类暂无任务" />
-      <el-checkbox-group v-model="selectedIds" :max="50">
-        <MissionCard v-for="mission in missions" :key="mission.id" :mission="mission" open-in-drawer @open="selected = $event">
-          <template #selection><el-checkbox :value="mission.id" :aria-label="`选择 ${mission.title}`" /></template>
-          <template #details><p v-if="mission.unfinished_child_ids?.length" class="meta">仍有 {{ mission.unfinished_child_ids.length }} 个未完成子任务</p></template>
-        </MissionCard>
-      </el-checkbox-group>
-    </div>
-    <el-pagination class="list-pagination" :total="total" :page-size="pageSize" :page-sizes="[10, 20, 50]" @size-change="pageSize = $event" :current-page="page" layout="total, sizes, prev, pager, next" @current-change="page = $event; load()" />
+    <ActionCardList :busy="actionBusy" :items="missions" :total="total" :loading="loading" v-model:page="page" v-model:page-size="pageSize" v-model:selected-ids="selectedIds" :reset-key="resetKey" empty-text="暂无任务">
+      <template #filters><MissionQuickFilters :query="filters" @apply="apply" /></template>
+      <template #actions><BulkMissionEditor @update:busy="actionBusy = $event" :missions="missions" v-model:selected-ids="selectedIds" :reset-key="resetKey" @changed="refresh" /></template>
+      <template #item="{ item: mission }"><MissionCard :mission="mission" open-in-drawer @open="selected = $event">
+        <template #selection><CardListSelection :id="mission.id" :label="`选择 ${mission.title}`" /></template>
+        <template #details><p v-if="mission.unfinished_child_ids?.length" class="meta">仍有 {{ mission.unfinished_child_ids.length }} 个未完成子任务</p></template>
+      </MissionCard></template>
+    </ActionCardList>
     <MissionDetailDrawer :mission-id="selected" :open="!!selected" @close="selected = null" @changed="refresh" @focus="selected = $event" />
   </div>
 </template>

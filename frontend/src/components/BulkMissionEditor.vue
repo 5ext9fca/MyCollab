@@ -6,10 +6,11 @@ import { ApiException } from '../api/client'
 import { notifyChanged } from '../api/notifications'
 import type { Mission } from '../api/types'
 const props = defineProps<{ missions: Mission[]; selectedIds: string[]; resetKey: string }>()
-const emit = defineEmits<{ 'update:selectedIds': [ids: string[]]; changed: [] }>()
+const emit = defineEmits<{ 'update:selectedIds': [ids: string[]]; changed: []; 'update:busy': [value: boolean] }>()
 const selected = computed(() => props.missions.filter(m => props.selectedIds.includes(m.id)))
 const dialog = ref(false), busy = ref(false), preview = ref(false), uncertain = ref(false), refreshing = ref(false)
 const rows = ref<Mission[]>([]), results = ref<BulkResult[]>([])
+watch(busy, value => emit('update:busy', value), { flush: 'sync' })
 const fields = ['priority', 'milestone', 'planned_start_date', 'planned_end_date'] as const
 const labels = { priority: '优先级', milestone: '里程碑', planned_start_date: '计划开始', planned_end_date: '计划结束' }
 const modes = reactive<Record<string, 'keep' | 'set' | 'clear'>>({ priority: 'keep', milestone: 'keep', planned_start_date: 'keep', planned_end_date: 'keep' })
@@ -57,7 +58,7 @@ async function submit() {
 }
 </script>
 <template>
-  <el-card shadow="never" class="selection-card"><div class="toolbar selection-toolbar"><el-checkbox :model-value="missions.length > 0 && selected.length === missions.length" :indeterminate="selected.length > 0 && selected.length < missions.length" :disabled="busy || !missions.length || missions.length > 50" @change="emit('update:selectedIds', $event ? missions.map(m => m.id) : [])">本页全选</el-checkbox><span>仅选择当前页 {{ selected.length }}/50</span><el-button :disabled="!selected.length || busy" @click="open">批量编辑计划</el-button></div></el-card>
+  <el-button :disabled="!selected.length || busy" @click="open">批量编辑计划</el-button>
   <el-dialog v-model="dialog" title="批量编辑计划" width="700px" :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy">
     <p>逐项执行，可能部分成功。仅发起者或管理员可编辑未冻结任务；延后前置受日期约束时，请先调整下游。</p>
     <el-form v-if="!preview" label-width="100px">
@@ -74,8 +75,3 @@ async function submit() {
     <template #footer><el-button v-if="uncertain" :loading="refreshing" @click="refreshRows">读取最新任务</el-button><el-button v-if="preview" :disabled="busy" @click="preview = false">返回修改</el-button><el-button v-if="!preview" :disabled="uncertain || !rows.length || refreshing || busy" @click="prepare">预览变更</el-button><el-button v-else type="primary" :loading="busy" @click="submit">确认逐项执行</el-button></template>
   </el-dialog>
 </template>
-
-<style scoped>
-.selection-card { margin-bottom: 16px; }
-.selection-toolbar { align-items: center; margin-bottom: 0; }
-</style>

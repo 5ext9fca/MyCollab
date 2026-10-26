@@ -565,3 +565,11 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除）及 `asset_id
 - 里程碑卡片列表支持状态筛选、创建时间 / 目标日期 / 名称排序及每页条数。没有批量操作的里程碑列表不显示选择框。
 - `GET /api/notifications/` 新增 `ordering=created_at|-created_at`；`GET /api/milestones/` 新增 `ordering=created_at|-created_at|due_date|name`。排序在服务端分页前执行，以 ID 作为稳定次序；未知排序返回 400。
 - `GET /api/my-work/missions/` 支持 `q/status/type/priority/milestone/tag/blocked/design_element/ordering`，复用任务筛选规则。所有列表分页继续使用 `page/page_size`，不改数据模型与写入权限。
+
+### 通用卡片列表组件
+
+- `frontend/src/composables/useCardList.ts` 统一管理筛选与排序查询、页码、每页条数、总数、加载状态和刷新。查询或页长变化时回到第一页；同一轮变更合并加载，旧请求与卸载后的结果不再覆盖当前列表。调用方通过查询函数指定固定业务范围，通过 API 函数在服务端分页前完成筛选排序。
+- `CardList.vue` 是普通卡片列表：提供筛选区、卡片插槽、加载与空状态、分页栏；`CardListSort.vue` 统一排序选择框，选项由业务页面提供。卡片布局与具体筛选字段由插槽保留。
+- `ActionCardList.vue` 在普通列表上提供当前页全选、半选、选择上限、选择框组和操作区。切换查询或分页时清空选择，刷新后剔除已不在本页的选择；加载或执行操作期间禁止选择。操作插槽提供本页选中对象、ID 和禁用状态，业务操作保留原有权限、预览、部分失败和版本冲突处理。
+- `CardListSelection.vue` 提供每张卡片的选择框并阻止点击、键盘事件冒泡，避免选择触发打开卡片。与操作列表中的选择框组配合使用。
+- 里程碑使用普通列表；通知、任务广场、我的工作、我发布的和我认领的使用可操作列表。`BulkMissionEditor.vue` 仅负责任务计划编辑与结果处理，全选等通用行为移至操作列表。重构不改变后端接口、数据模型和权限。
