@@ -47,6 +47,8 @@ def configuration(config, key):
     repository = Path(value.get('path', '')).expanduser()
     if not repository.is_absolute() or not repository.is_dir():
         raise LocalFailure('local_configuration')
+    if type(value.get('interactive', False)) is not bool:
+        raise LocalFailure('local_configuration')
     allowed = value.get('writable_paths')
     if not isinstance(allowed, list) or not allowed or len(allowed) > 50:
         raise LocalFailure('local_configuration')

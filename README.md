@@ -214,3 +214,9 @@ MYCOLLAB_LIVE_MODEL=deepseek/deepseek-flash .venv/bin/python manage.py test agen
 Runner 在隔离副本中生成补丁与本地验证报告；查看后使用 `--publish-code 请求UUID` 明确发布，回到 Mission 引用到草稿并人工提交/验收。不会自动应用到原仓库、推送、创建 PR 或部署。所有模型/Git/依赖认证和执行资源留在本地，服务器没有代码执行环境。
 
 完整配置、安装、人工应用补丁、失败报告与清理步骤见 [本地 Runner 说明](local_runner/README.md)。升级后照常执行后端迁移；本机验证命令由用户授权，不等同于在 OS 沙箱内执行。
+
+## 执行中对话与权限审批
+
+本机仓库配置 `repositories.<标识>.interactive: true` 后，OpenCode 代码执行支持同会话追问与单次文件编辑审批。在 Mission 的代码执行历史展开“私有对话与权限审批”操作；仅执行发起人可见，审批超时默认拒绝。未启用的仓库、图像和文本适配器继续原流程。
+
+本机 Runner 使用随机认证的环回私有 OpenCode 服务，服务器不与模型提供商通信、不保存供应商凭据。仅能批准原本位于本地白名单的编辑，不能开启 shell 或扩大工作目录权限。仍须本机审查发布补丁、网页人工提交与验收。升级后执行数据库迁移；详细配置、限制和验收记录见 [local_runner/README.md](local_runner/README.md)。

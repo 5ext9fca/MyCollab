@@ -2,8 +2,12 @@ from django.urls import path
 from . import views
 from . import execution_api as execution
 from . import code_api as code
+from . import interaction_api as interaction
 
 urlpatterns = [
+    path("assistance-requests/<uuid:pk>/interaction/", interaction.InteractionState.as_view()),
+    path("agent-runner/requests/<uuid:pk>/interaction/open/", interaction.RunnerInteractionOpen.as_view()),
+    path("agent-runner/requests/<uuid:pk>/interaction/exchange/", interaction.RunnerInteractionExchange.as_view()),
     path("code-executions/", code.CodeList.as_view()),
     path("code-executions/<uuid:pk>/", code.CodeDetail.as_view()),
     path("code-executions/<uuid:pk>/cancel/", code.CodeCancel.as_view()),

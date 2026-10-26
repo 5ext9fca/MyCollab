@@ -37,8 +37,13 @@ def execute_code(client, request, config):
         base = code_workspace.prepare(repository, workspace)
         if not heartbeat():
             raise Cancelled()
-        summary = opencode_code.run(request, workspace, repository['writable_paths'], model=config.get('code_model', config.get('model', '')),
+        options = dict(model=config.get('code_model', config.get('model', '')),
             executable=config.get('opencode', 'opencode'), heartbeat=heartbeat)
+        if repository.get('interactive', False):
+            from .opencode_interactive import run as interactive_run
+            summary = interactive_run(request, workspace, repository['writable_paths'], client=client, **options)
+        else:
+            summary = opencode_code.run(request, workspace, repository['writable_paths'], **options)
         patch, files = code_workspace.changes(workspace, repository['writable_paths'])
         # 测试输出不污染补丁，也不共享原仓库 Git 元数据。
         verification_workspace = directory / 'verification'

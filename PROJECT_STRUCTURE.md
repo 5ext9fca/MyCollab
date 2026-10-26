@@ -644,3 +644,17 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - 前端回归新增 `src/tests/agentPanel.spec.ts`，覆盖类型切换、卸载停止轮询、失败退避、终态停止、旧 Mission 响应隔离及成果事件转发，领域流程继续由 missionCode/missionExecution/agentBridge 测试覆盖。
 
 验证记录：统一面板使用组件测试验收，后端 Agent 交接与本地 Runner 使用确定性闭环回归；本次未新增真实供应商调用。浏览器工具未提供可用浏览器，实际页面验收未完成，不能将组件测试等同于人工浏览器验收。
+
+## 执行中私有对话与权限审批
+
+- `agent_bridge/interaction_protocol.py` 是两端共享的字段白名单；`interaction_services.py` 管理交接，入口仍经 `missions/services.py`。新增迁移 `agent_bridge/0004`，增加 InteractionSession（每请求唯一，绑定 attempt 与随机会话 nonce）、InteractionEvent（递增 seq 与事件 UUID 去重）、InteractionPermission（具体操作摘要、单次决定、期限）、InteractionCommand（命令 UUID、有效期和本地处理状态）。这些对象不替代 AssistanceRequest 状态机，不保存原生 Agent session ID。
+- 浏览器 Session + CSRF：`GET /api/assistance-requests/{id}/interaction/?after=N` 分页读取私有事件，POST 同路径发送 followup 或 permission_reply。只允许原请求所有者访问，团队可读成果权限不延伸到对话。响应禁止缓存。
+- Runner Bearer：`POST /api/agent-runner/requests/{id}/interaction/open/` 声明当前 attempt 的会话 nonce 与能力；`exchange/` 批量上报最多 20 个事件、100 个命令确认并领取待处理指令，可请求关闭。关闭前须处理完已排队指令。两条写接口均校验设备、租约、业务版本、attempt 和会话 nonce；同一事件/命令 UUID 内容不一致返回冲突。
+- 每次最多 100 条命令、1000 条事件、累计 1 MiB 事件，单事件 8 KiB；消息最多 4000 字符且受体积限制。事件只接受普通回复、审批请求/结束，禁止原始 Agent 事件透传。命令和审批最多 120 秒有效；过期或终态不可恢复，ACK 的 applied 仅表示本地已处理该指令，不表示 Mission 完成。
+- 网页 `AgentConversation.vue` 从代码历史中按本人权限展开，5 秒轮询，失败退避至 60 秒，分页按游标合并，关闭后卸载停止请求。普通文本渲染，不执行消息 HTML。发送结果未知时重发同一个 command_id；审批仅提供一次批准或拒绝，绑定操作摘要。
+- 本地仓库配置 `interactive: true` 才启用 `opencode_interactive.py`。`opencode_server.py` 启动 OpenCode 2.1.3 随机端口/临时密码的环回私有服务；`interaction.py` 持久记录去重、验证白名单/相对路径/符号链接、绑定原生待决操作，并将一次批准映射为 `once`。只将原先允许的 edit 收紧为 ask，不放开 shell、外部目录、集成或配置写入。原生权限请求变更、审批超时、会话取消均不批准新操作。
+- 供应商通信与认证全部留本机；MyCollab 仍仅短轮询和数据库交接，不增加模型 SDK、WebSocket 或后台任务依赖。交互结束后继续原补丁/报告验证和人工发布链。图像与文本适配器尚未声明交互支持，不冒充可用。
+- `cleanup_assistance` 清除超过七天且不再 running 的交互记录，保留任务成果和提交关联。本地会话记录由用户管理，当前不支持崩溃恢复或跨设备迁移。
+- 验证入口：后端 `test_interaction.py`，本地 `test_interaction.py`/`test_interaction_protocol.py`，前端 `agentConversation.spec.ts`；真实 OpenCode 隔离目录验收记录见 local_runner/README.md。
+
+交互 UI 验收限制：本次浏览器工具没有可用浏览器，未完成人工浏览器操作验收；前端以组件测试和生产构建验证，不能据此声称真实浏览器逐页通过。

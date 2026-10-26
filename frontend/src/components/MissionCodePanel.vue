@@ -7,6 +7,7 @@ import { createCodeExecution, listCodeExecutions, cancelCodeExecution, getCodeEx
 import type { CodeExecution, CodeInput } from '../api/codeExecutions'
 import type { Mission } from '../api/types'
 import CodeReport from './CodeReport.vue'
+import AgentConversation from './AgentConversation.vue'
 
 const props = defineProps<{ mission: Mission; canAdopt?: boolean }>()
 const emit = defineEmits<{ adopt: [execution: CodeExecution] }>()
@@ -18,6 +19,7 @@ const deviceId = ref(''), repositoryKey = ref(''), instructions = ref(''), previ
 const prepared = ref<CodeInput | null>(null), preview = ref(''), error = ref(''), busy = ref(false)
 const history = ref<CodeExecution[]>([]), page = ref(1), count = ref(0)
 const formDetails = ref<HTMLDetailsElement>()
+const conversations = ref<Record<string, boolean>>({})
 const active = ['queued', 'running', 'awaiting_selection']
 const labels: Record<CodeExecution['status'], string> = { queued: '等待本地设备', running: '本地实现/验证中', awaiting_selection: '等待本地审查发布', succeeded: '补丁与报告已发布', failed: '失败', cancelled: '已取消', expired: '已过期' }
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -107,6 +109,7 @@ onBeforeUnmount(() => { disposed = true; generation++; clearTimeout(timer) })
       <p v-if="item.error || item.stale_reason">{{ item.stale_reason || (item.error === 'no_changes' ? '未产生代码差异，请检查任务与本地基线。' : item.error) }}</p>
       <p v-if="item.status === 'cancelled'">{{ item.stopped_at ? '本地已确认停止或未开始' : '等待本地确认停止；取消不保证供应商立即停止' }}</p>
       <p v-if="item.status === 'awaiting_selection'">请在本机检查补丁与报告，再用 --publish-code {{ item.request_id }} 明确发布。有效期至 {{ new Date(item.expires_at).toLocaleString() }}。</p>
+      <details v-if="item.actor_id === auth.user?.id" @toggle="conversations[item.id] = ($event.target as HTMLDetailsElement).open"><summary>私有对话与权限审批</summary><AgentConversation v-if="conversations[item.id]" :request-id="item.request_id" :status="item.status" /></details>
       <CodeReport v-if="item.report" :report="item.report" :patch-url="item.patch_url" />
       <el-button v-if="item.actor_id === auth.user?.id && active.includes(item.status)" @click="cancel(item)">取消代码执行</el-button>
       <el-button v-if="eligible && item.actor_id === auth.user?.id && !active.includes(item.status)" @click="retry(item)">以新版本再次委派代码</el-button>

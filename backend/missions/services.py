@@ -1706,3 +1706,23 @@ from .execution_services import (  # noqa: E402,F401
 from .code_services import (
     create_code_execution, stage_code_execution, publish_code_execution, cancel_code_execution,
 )
+
+# 交互只写有界交接记录，继续从统一业务服务入口调用。
+def open_interaction(*args, **kwargs):
+    from agent_bridge.interaction_services import open_interaction as implementation
+    return implementation(*args, **kwargs)
+
+
+def exchange_interaction(*args, **kwargs):
+    from agent_bridge.interaction_services import exchange_interaction as implementation
+    return implementation(*args, **kwargs)
+
+
+def interaction_state(*args, **kwargs):
+    from agent_bridge.interaction_services import interaction_state as implementation
+    return implementation(*args, **kwargs)
+
+
+def create_interaction_command(*args, **kwargs):
+    from agent_bridge.interaction_services import create_interaction_command as implementation
+    return implementation(*args, **kwargs)

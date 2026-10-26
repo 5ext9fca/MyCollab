@@ -68,3 +68,64 @@ class AssistanceRequest(models.Model):
             models.UniqueConstraint(fields=["device"], condition=models.Q(status="running"), name="agent_device_one_running"),
         ]
         indexes = [models.Index(fields=["owner", "status"]), models.Index(fields=["device", "status", "created_at"])]
+
+
+class InteractionSession(models.Model):
+    """当前 attempt 的交互能力；不保存本机 Agent session 标识。"""
+    request = models.OneToOneField(AssistanceRequest, on_delete=models.CASCADE, related_name='interaction')
+    attempt_id = models.UUIDField()
+    session_nonce = models.UUIDField()
+    supports_followup = models.BooleanField(default=False)
+    supports_permissions = models.BooleanField(default=False)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    event_count = models.PositiveIntegerField(default=0)
+    event_bytes = models.PositiveIntegerField(default=0)
+    command_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class InteractionEvent(models.Model):
+    session = models.ForeignKey(InteractionSession, on_delete=models.CASCADE, related_name='events')
+    event_id = models.UUIDField()
+    seq = models.PositiveIntegerField()
+    kind = models.CharField(max_length=32)
+    payload = models.JSONField()
+    payload_digest = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['seq']
+        constraints = [
+            models.UniqueConstraint(fields=['session', 'event_id'], name='interaction_event_dedup'),
+            models.UniqueConstraint(fields=['session', 'seq'], name='interaction_event_sequence'),
+        ]
+
+
+class InteractionPermission(models.Model):
+    session = models.ForeignKey(InteractionSession, on_delete=models.CASCADE, related_name='permissions')
+    permission_id = models.UUIDField()
+    operation = models.JSONField()
+    operation_digest = models.CharField(max_length=64)
+    status = models.CharField(max_length=16, default='pending')
+    decision = models.CharField(max_length=8, blank=True)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['session', 'permission_id'], name='interaction_permission_dedup')]
+
+
+class InteractionCommand(models.Model):
+    session = models.ForeignKey(InteractionSession, on_delete=models.CASCADE, related_name='commands')
+    command_id = models.UUIDField()
+    kind = models.CharField(max_length=24)
+    payload = models.JSONField()
+    payload_digest = models.CharField(max_length=64)
+    status = models.CharField(max_length=16, default='queued')
+    expires_at = models.DateTimeField()
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        constraints = [models.UniqueConstraint(fields=['session', 'command_id'], name='interaction_command_dedup')]
