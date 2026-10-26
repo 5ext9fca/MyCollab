@@ -211,3 +211,27 @@ MYCOLLAB_LIVE_MODEL=deepseek/deepseek-flash .venv/bin/python manage.py test agen
 3. 等待文档返回，预览后点击“下载 Markdown”。文档包含目标、约束、实施要求、交付物、验收标准、待澄清事项和来源；不执行代码或生成图片。
 
 升级仍需执行 `python manage.py migrate`。**本次迁移删除旧图像/代码执行、对话审批、成果提交关联及旧委派请求**，保留 Mission、普通提交正文与素材文件。需要历史数据时先备份数据库；feature 分支保存的是代码，验证旧功能应使用独立数据库。尚未在业务数据库执行本次删除迁移。
+
+## 局域网文件互传
+
+升级后执行后端迁移 `python manage.py migrate`。双方登录，打开顶部“文件互传”：发送方选择文件并生成配对码；接收方输入码、核对信息后点击“确认接收”。支持同一账号在不同设备使用；单文件最多 100 MiB。双方保持页面打开，接收端 SHA-256 一致后点击“保存已校验文件”。文件直传，不进入服务器素材库；首次配对 5 分钟内确认，会话总期限 30 分钟，中断后重新发送。
+
+局域网必须通过受信任 **HTTPS** 访问（本机 localhost 开发除外），否则 Web Crypto SHA-256 不可用。浏览器/操作系统提示访问局域网时允许本站；若连接失败，检查双方网络、防火墙、UDP 和 mDNS。普通 HTTP 互访不保证 WebRTC 能建立连接。本版无跨网中继或后台接收。
+
+每 5 分钟清理过期配对、信令和文件元信息：
+
+```cron
+*/5 * * * * cd /opt/MyCollabAdvanced/deploy && docker compose exec -T backend python manage.py cleanup_transfers
+```
+
+真实浏览器验收使用隔离 PostgreSQL 测试库，不修改业务数据、不调用模型。先在 `frontend/` 执行 `npm ci` 和 `npx playwright install chromium`，然后在 `backend/` 执行：
+
+```bash
+MYCOLLAB_BROWSER_TEST=1 POSTGRES_DB=mycollab_browser .venv/bin/python manage.py test transfers.test_browser --noinput
+```
+
+已有 Google Chrome 时可增加 `MYCOLLAB_BROWSER_CHANNEL=chrome`，无需下载 Chromium。测试自动启动临时 Django 服务及 localhost:5179 的 Vite，执行 `npm run test:transfer`；该 npm 命令依赖测试服务和测试用户，不作为单独启动应用的命令。覆盖空文件、普通文件、100 MiB 文件下载摘要一致、篡改字节拒收和取消；同机两个独立浏览器会话不能替代实际两台设备的网络环境验收。失败截图/trace 保存在 `frontend/test-results/`，不提交版本库。
+
+若自动验收机器的 mDNS 解析受限，可在上述验收命令中额外设置 `MYCOLLAB_TEST_RAW_IP=1` 进行对照测试：仅让临时 Chrome/Chromium 测试进程使用原始 IP 候选，不修改系统或日常浏览器设置，也不改变应用代码。该模式下通过的结果证明文件传输及校验协议可用，不证明默认 mDNS 或真实跨设备网络可达；实际部署仍需正常浏览器双机验证。
+
+本次实现的本机验收记录：Chrome 默认 mDNS 候选未能建立连接，独立 WebRTC 探针也复现该现象；临时测试浏览器启用原始 IP 候选后，6 项真实浏览器测试全部通过（空文件、约 2 MiB、100 MiB、字节篡改拒收、配对后取消、传输中取消）。桌面与 390px 窄屏截图已检查。未修改系统或日常浏览器权限；真实两台设备的默认浏览器环境仍需部署后验证。

@@ -631,3 +631,16 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - “已关注”是状态说明，纳入订阅功能卡片；关注、静音与失败重试分别使用操作链接卡片，保留原权限、忙碌禁用及版本校验。此次无数据模型、API 或权限变化。
 
 任务详情页与详情抽屉中的任务树、前置依赖、下游任务、未完成子任务及记录类空状态使用紧凑提示：隐藏空状态插图、取消说明上方留白，以轻边框和 8px 垂直内边距承载文字；有数据时仍使用原列表布局，抽屉未选择任务时保留完整空状态。无模型、接口或权限变化。
+
+## 浏览器局域网文件直传（第一版）
+
+- 登录成员在 `/file-transfer`（`FileTransferView.vue`，顶部“文件互传”）选择单个文件生成 12 位配对码；接收方输入码，核对文件名、大小、发送人后明确确认接收。同一账号的不同设备也可互传。首版上限 100 MiB，支持空文件，不限制扩展名；保存时统一下载为附件，不预览或执行内容。
+- 双方页面需保持打开。首版不包含文件夹、后台接收、断点续传、跨网 TURN 中继或素材库导入。失败后重新发送。前端使用浏览器 WebRTC 有序可靠 DataChannel，`iceServers: []`，文件不经过服务器、不写入素材库。DHCP IP 不作为设备身份。
+- `frontend/src/transfers/protocol.ts` 定义 16 KiB 分块、512 KiB 发送缓冲高水位、128 KiB 低水位；接收端检查每块和累计大小，完整接收后独立计算 SHA-256。发送端发送前计算完整文件摘要；接收端匹配后回报确认，双方只在服务端确认的 completed 状态显示成功。100% 字节进度不代表校验完成。校验不一致、截断、越界或无效协议均禁止下载；页面显示双方 SHA-256。checksum 是客户端完整性校验，服务器不持有文件，不能替代内容真实性鉴定。
+- `frontend/src/transfers/controller.ts` 管理配对、确认、非 trickle ICE 信令交换、分块发送、接收校验、轮询与清理。凭据仅在当前页面内存中；取消、路由离开及组件卸载关闭连接、停止轮询并释放接收缓冲和下载 URL。取消通知为尽力送达，页面突然关闭时由对端失败/超时或会话过期结束。接收确认响应丢失时通过轮询和幂等回报恢复。
+- `backend/transfers/models.py:FileTransfer` 保存 UUID、发送/接收用户、页面凭据摘要、配对码摘要、文件名/大小、发送/接收 SHA-256、status、offer/answer、有限错误码和期限；不保存文件字节。配对码 5 分钟内完成确认，整个会话最长 30 分钟；每用户最多 3 个有效活动会话。状态为 waiting → paired → accepted → completed，或 failed/cancelled/expired；终态不可改写，终态立即清空 SDP。
+- 创建、配对与受控操作统一由 `missions/services.py` 入口调用 `transfers/services.py`，视图只解析/认证/调用服务。配对与状态流转使用 PostgreSQL 事务行锁，同一配对码最多一个接收方。摘要凭据区分同一账号的不同页面，必须同时满足 Session 用户和页面凭据匹配；管理员无越权入口。双方任一用户停用会取消会话。
+- API 均为 Session + CSRF 的 POST JSON，响应 `Cache-Control: no-store`：`/api/file-transfers/` 接收 name/size/sha256/token，返回会话与一次性配对码；`/api/file-transfers/join/` 接收 code/token；`/api/file-transfers/{uuid}/` 接收 token/action（poll/accept/offer/answer/complete/cancel/fail），按操作携带 sdp/sha256/error。未知字段拒绝，SDP 限 16 KiB，仅允许数据通道。没有公开列表或下载接口，凭据不在 URL。已绑定接收方使用相同凭据重试配对幂等，SDP 只允许重复相同内容，完成和终态操作幂等。
+- 前端 API 集中在 `api/transfers.ts`，复用 request 的 CSRF/错误处理并使用 15 秒请求超时。活动状态约每秒轮询，错误指数退避至 8 秒，连续 4 次失败停止；终态停止。收集 ICE 最多 10 秒，缓冲等待最多 30 秒，accepted 状态 60 秒无文件处理进展失败。
+- 浏览器 SHA-256 依赖安全上下文：局域网访问使用受信任 HTTPS（本机开发 localhost 可用）。用户需允许浏览器与操作系统的局域网访问；防火墙和 mDNS/UDP 可达性仍影响 WebRTC。文件校验使用完整缓冲，100 MiB 文件峰值内存高于文件大小，不承诺多 GB 支持。
+- `cleanup_transfers` 删除总期限已过的会话，部署每 5 分钟运行一次；不依赖 Redis/Celery/WebSocket。测试入口：`transfers.tests` 覆盖状态、权限、CSRF、大小、checksum、过期和并发配对；`fileTransferProtocol.spec.ts` 覆盖标准 SHA-256、损坏/截断拒收及背压，`fileTransferController.spec.ts` 覆盖确认、取消竞态、未本地验证禁止成功和轮询停止；`transfers.test_browser` 显式启用后以隔离 PostgreSQL 测试库和真实 Chrome/Chromium 页面运行 `frontend/e2e/file-transfer.spec.ts`。

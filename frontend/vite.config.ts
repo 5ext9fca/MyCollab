@@ -8,7 +8,7 @@ export default defineConfig({
     proxy: {
       // changeOrigin stays false so Django sees the browser's Host/Origin and
       // the cookie + CSRF checks keep working during development.
-      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: false },
+      '/api': { target: process.env.MYCOLLAB_TEST_API_TARGET || 'http://127.0.0.1:8000', changeOrigin: false },
     },
   },
   test: {

@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "library",
     "notifications",
     "agent_bridge",
+    "transfers",
 ]
 
 MIDDLEWARE = [

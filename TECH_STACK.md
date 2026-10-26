@@ -278,3 +278,11 @@ Redis、后台任务队列、WebSocket、独立搜索服务与 Kubernetes 不属
 
 
 主分支使用本地 LLM 整理 Agent 需求 Markdown，MUST 复用有界文本交接，不增加服务器模型 SDK 或执行环境，不将模板拼接当作 LLM 整理。图像/代码执行及审批实现仅保留于 `feature/agent-delegation`；恢复该分支须使用独立数据库，不能假定主分支迁移后的执行历史仍存在。
+
+## 浏览器文件直传约束
+
+- 文件直传使用浏览器原生 WebRTC DataChannel 和 Web Crypto SHA-256；首版单文件最多 100 MiB，页面在线。MUST 在接收端独立校验完整文件大小与 SHA-256，一致后才允许下载和显示成功；发送端排空缓冲不等于成功。
+- Django/PostgreSQL 只存有界、短期会话与 SDP，不上传或中转文件。没有 STUN/TURN 配置，不新增 WebSocket、Redis 或后台队列；信令用有限短轮询，过期数据由外部 cron 清理。
+- 此会话是 expected_version 规则的明确例外：通过参与者身份、页面凭据、事务行锁、一次性状态转换、不可覆盖 SDP 和幂等终态保证一致性。写入口经 missions/services.py 转交独立 transfers 服务，不改变 Mission 状态。
+- 局域网部署 MUST 使用受信任 HTTPS 以支持 Web Crypto；本机 localhost 开发可例外。浏览器/系统局域网权限及 UDP/mDNS 必须可用；不能以普通 HTTP/IP 可访问推定 WebRTC 一定可用。
+- 增加 @playwright/test 开发依赖用于真实浏览器验收，无运行时依赖。显式浏览器测试使用独立 PostgreSQL 测试库，Vite 的 MYCOLLAB_TEST_API_TARGET 仅用于将测试代理指向 LiveServer；默认开发代理仍为 127.0.0.1:8000，changeOrigin 保持 false。

@@ -1669,3 +1669,19 @@ def create_agent_requirements(actor, **payload):
     """需求导出只创建私有文本交接请求，不修改 Mission。"""
     from agent_bridge.services import create_request
     return create_request(actor, **payload)
+
+
+# 文件直传的写入口统一从此处进入，独立状态机由 transfers 服务实现。
+def create_file_transfer(**kwargs):
+    from transfers.services import create_transfer
+    return create_transfer(**kwargs)
+
+
+def join_file_transfer(**kwargs):
+    from transfers.services import join_transfer
+    return join_transfer(**kwargs)
+
+
+def operate_file_transfer(**kwargs):
+    from transfers.services import operate_transfer
+    return operate_transfer(**kwargs)

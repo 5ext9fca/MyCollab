@@ -28,6 +28,10 @@ alwaysApply: true
 
 按 `README.md` 的顺序执行：后端 `makemigrations --check --dry-run` → `check` → `test`；前端 `type-check` → `test` → `build`。不得声称未运行的测试已通过；每次交付说明改动、验证结果与未完成事项。
 
+## 浏览器文件直传验收
+
+在 `frontend/` 安装依赖及浏览器（`npm ci`、`npx playwright install chromium`）后，在 `backend/` 运行 `MYCOLLAB_BROWSER_TEST=1 POSTGRES_DB=mycollab_browser .venv/bin/python manage.py test transfers.test_browser --noinput`。已有 Chrome 可加 `MYCOLLAB_BROWSER_CHANNEL=chrome`。此命令自动启动隔离 PostgreSQL 测试库、临时 Django/Vite 和 `npm run test:transfer`；不修改业务数据库。具体要求与产物见 README“局域网文件互传”。普通后端测试默认跳过浏览器验收。
+
 ## 已确定决策
 
 - UI 组件库：**Element Plus**（见 `TECH_STACK.md` 第 8 节）。

@@ -67,9 +67,9 @@ export async function ensureCsrf(): Promise<void> {
   await fetch('/api/auth/csrf/', { method: 'GET', credentials: 'same-origin' })
 }
 
-export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+export async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
-  const init: RequestInit = { method, headers, credentials: 'same-origin' }
+  const init: RequestInit = { method, headers, credentials: 'same-origin', signal }
 
   if (body instanceof FormData) {
     // Let the browser set the multipart boundary; do not set Content-Type.

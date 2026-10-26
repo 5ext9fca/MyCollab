@@ -28,3 +28,7 @@ coverage/
 .DS_Store
 .idea/
 .vscode/
+
+# 浏览器测试产物
+frontend/test-results/
+frontend/playwright-report/
