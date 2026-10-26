@@ -438,7 +438,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
 
           <el-tab-pane label="关系">
             <h4>前置依赖（{{ prerequisites.length }}）</h4>
-            <el-empty
+            <el-empty class="app-empty--compact"
               v-if="!prerequisites.length"
               description="没有显式前置依赖"
               :image-size="50"
@@ -487,7 +487,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
             </div>
 
             <h4>下游任务（{{ dependents.length }}）</h4>
-            <el-empty v-if="!dependents.length" description="没有下游任务" :image-size="50" />
+            <el-empty class="app-empty--compact" v-if="!dependents.length" description="没有下游任务" :image-size="50" />
             <ul v-else class="drawer__list">
               <li v-for="item in dependents" :key="item.id">
                 <span>{{ item.title }}</span>
@@ -505,7 +505,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
               </template>
               <template v-else>无</template>
             </div>
-            <el-empty v-if="!children.length" description="没有子任务" :image-size="50" />
+            <el-empty class="app-empty--compact" v-if="!children.length" description="没有子任务" :image-size="50" />
             <ul v-else class="drawer__list">
               <li v-for="child in children" :key="child.id">
                 <span>{{ child.title }}（{{ child.status }}）</span>
@@ -517,7 +517,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
           </el-tab-pane>
 
           <el-tab-pane label="成果与验收">
-            <el-empty v-if="!submissions.length" description="还没有提交记录" :image-size="50" />
+            <el-empty class="app-empty--compact" v-if="!submissions.length" description="还没有提交记录" :image-size="50" />
             <div v-for="item in submissions" :key="item.id" class="drawer__submission">
               <div class="drawer__submission-head">
                 <span class="meta">

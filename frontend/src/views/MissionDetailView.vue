@@ -713,7 +713,7 @@ function formatDate(value: string | null) {
 
       <section class="section">
         <h3>任务树（子任务）</h3>
-        <el-empty v-if="!children.length" description="没有子任务" :image-size="60" />
+        <el-empty class="app-empty--compact" v-if="!children.length" description="没有子任务" :image-size="60" />
         <div v-else class="link-list">
           <router-link class="app-link app-link--action"
             v-for="child in children"
@@ -727,7 +727,7 @@ function formatDate(value: string | null) {
 
       <section id="dependencies" class="section" tabindex="-1">
         <h3>前置依赖</h3>
-        <el-empty v-if="!prerequisites.length" description="没有前置依赖" :image-size="60" />
+        <el-empty class="app-empty--compact" v-if="!prerequisites.length" description="没有前置依赖" :image-size="60" />
         <ul v-else class="edge-list">
           <li v-for="edge in prerequisites" :key="edge.dependency_id">
             <router-link class="app-link app-link--action" :to="{ name: 'mission-detail', params: { id: edge.id } }">
@@ -773,7 +773,7 @@ function formatDate(value: string | null) {
 
       <section class="section">
         <h3>下游任务</h3>
-        <el-empty v-if="!dependents.length" description="没有下游任务" :image-size="60" />
+        <el-empty class="app-empty--compact" v-if="!dependents.length" description="没有下游任务" :image-size="60" />
         <div v-else class="link-list">
           <router-link class="app-link app-link--action"
             v-for="item in dependents"
@@ -787,7 +787,7 @@ function formatDate(value: string | null) {
 
       <section class="section">
         <h3>未完成子任务</h3>
-        <el-empty v-if="!unfinishedChildren.length" description="子任务均已完成" :image-size="60" />
+        <el-empty class="app-empty--compact" v-if="!unfinishedChildren.length" description="子任务均已完成" :image-size="60" />
         <div v-else class="link-list">
           <router-link class="app-link app-link--action"
             v-for="child in unfinishedChildren"
@@ -801,7 +801,7 @@ function formatDate(value: string | null) {
 
       <section class="section">
         <h3>成果提交与验收历史</h3>
-        <el-empty v-if="!submissions.length" description="还没有提交记录" :image-size="60" />
+        <el-empty class="app-empty--compact" v-if="!submissions.length" description="还没有提交记录" :image-size="60" />
         <div v-else class="submission-list">
           <el-card v-for="item in submissions" :key="item.id" class="submission" shadow="never">
             <div class="submission__head">
@@ -872,7 +872,7 @@ function formatDate(value: string | null) {
           </el-button>
         </div>
 
-        <el-empty v-if="!comments.length" description="还没有评论" :image-size="60" />
+        <el-empty class="app-empty--compact" v-if="!comments.length" description="还没有评论" :image-size="60" />
         <div v-else class="comment-list">
           <div v-for="comment in comments" :key="comment.id" class="comment">
             <div class="comment__head">
@@ -920,7 +920,7 @@ function formatDate(value: string | null) {
             {{ event.actor.display_name }} {{ ACTION_LABELS[event.action] ?? event.action }}
           </el-timeline-item>
         </el-timeline>
-        <el-empty v-else description="暂无记录" :image-size="60" />
+        <el-empty class="app-empty--compact" v-else description="暂无记录" :image-size="60" />
       </section>
     </template>
 

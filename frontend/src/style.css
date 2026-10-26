@@ -209,3 +209,15 @@ a { color: var(--el-color-primary); }
 .app-link--action.app-link--warning { color: var(--app-warning-text); }
 .action-link-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 #dependencies { scroll-margin-top: 16px; }
+
+/* 详情子区域的空状态只保留紧凑说明，避免插图与默认留白撑高页面。 */
+.el-empty.app-empty--compact {
+  align-items: flex-start;
+  padding: 8px 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-fill-color-light);
+}
+.app-empty--compact .el-empty__image { display: none; }
+.app-empty--compact .el-empty__description { margin-top: 0; }
+.app-empty--compact .el-empty__description p { font-size: 13px; line-height: 20px; }
