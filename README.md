@@ -6,6 +6,8 @@
 
 产品规则与数据模型见 [`PROJECT_STRUCTURE.md`](./PROJECT_STRUCTURE.md)，技术栈与实现约束见 [`TECH_STACK.md`](./TECH_STACK.md)。
 
+第一次接触游戏开发或任务协作，请先阅读 [从零开始用 MyCollab 协作开发游戏](./TUTORIAL.md)：从游戏制作流程讲起，通过一个小型游戏案例练习设计、分工、认领、提交、验收与发布。
+
 ## 技术栈
 
 | 层 | 技术 |
