@@ -29,6 +29,8 @@ describe('导出 Agent 需求文档', () => {
     expect(createAssistance).toHaveBeenCalledWith(expect.objectContaining({ kind: 'agent_requirements', object_id: 'mission', base_version: 3, draft: {} }))
     vi.mocked(getAssistance).mockResolvedValue({ ...item, status: 'succeeded', result: { markdown: '# Agent 需求文档\n\n绿色披风<script>alert(1)</script>' } })
     await vi.advanceTimersByTimeAsync(5000); await flushPromises()
+    expect(wrapper.find('details').element.open).toBe(false)
+    expect(wrapper.find('summary').text()).toBe('需求文档预览')
     expect(wrapper.text()).toContain('绿色披风')
     expect(wrapper.find('.markdown script').exists()).toBe(false)
     expect(wrapper.text()).toContain('下载 Markdown')

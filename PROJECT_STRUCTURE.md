@@ -606,6 +606,9 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 
 ## Agent 需求文档导出
 
+- 生成结果的需求文档预览默认折叠，用户通过可键盘操作的摘要展开；下载入口始终可用（仍受来源有效性校验）。管理本地 Agent 设备的文字链接使用专属紧凑卡片。
+- 顶部菜单随当前路由同步选中所属页面，包括从任务页跳转到本地 Agent 设备页；设计模板归属“设计与资产”，任务详情归属“任务广场”，里程碑详情归属“里程碑”。本次调整不改变数据模型、接口和权限。
+
 - 图像、代码委派和执行中对话/审批的完整实现保存于 `feature/agent-delegation`（起点 `fe0ef84`）；主分支不再提供对应页面、执行接口、本地适配器及成果提交关联。既有四类文本辅助继续提供。
 - `AgentRequirementsExport.vue` 在 Mission 详情和抽屉提供“导出为Agent需求文档”。点击后选择声明 `agent_requirements` 能力的本人设备（只有一台时自动选择），本地 LLM 整理完成后预览并下载 UTF-8 `.md`。没有设备时引导绑定；离线时显示等待，不以静态模板冒充 LLM 结果。
 - 复用 `AssistanceRequest`、Session+CSRF `POST/GET /api/assistance-requests/` 及现有 Runner Bearer 领取/心跳/结果接口；新增 kind `agent_requirements`，输出严格为 `{markdown: string}`。模型输出上限 30000 字符、JSON 128 KiB；固定目标、范围与约束、实施要求、交付物、验收标准、待澄清事项、来源章节。

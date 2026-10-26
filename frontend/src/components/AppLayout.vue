@@ -30,6 +30,7 @@ const activeMenu = computed(() => {
   if (route.name === 'claimed') return '/claimed'
   if (route.name === 'published') return '/published'
   if (route.name === 'milestones' || route.name === 'milestone-detail') return '/milestones'
+  if (route.name === 'agent-devices') return '/agent-devices'
   if (route.name === 'library') return '/library'
   if (route.name === 'manage') return '/manage'
   return '/missions'
