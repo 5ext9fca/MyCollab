@@ -119,7 +119,7 @@ async function onDelete(file: LibraryFile) {
   align-items: center;
   gap: 12px;
   padding: 8px 0;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--el-border-color);
 }
 .picker__row:first-child {
   border-top: none;
@@ -138,8 +138,8 @@ async function onDelete(file: LibraryFile) {
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 .picker__info {

@@ -1059,7 +1059,7 @@ function formatDate(value: string | null) {
 
 .comment {
   padding: 12px 0;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--el-border-color);
 }
 
 .comment:first-child {

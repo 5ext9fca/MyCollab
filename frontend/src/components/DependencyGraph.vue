@@ -141,9 +141,9 @@ defineExpose({ fit, reset, locate })
 
 <style scoped>
 .graph {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--el-border-color);
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--el-fill-color-lighter);
   overflow: hidden;
 }
 .graph__host {
@@ -157,7 +157,7 @@ defineExpose({ fit, reset, locate })
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f8fafc;
+  background: var(--el-fill-color-lighter);
 }
 .graph :deep(.ws-edge) .vue-flow__edge-path,
 .graph :deep(.ws-edge) path {
@@ -178,6 +178,13 @@ defineExpose({ fit, reset, locate })
 }
 .graph :deep(.vue-flow__edge-text) {
   font-size: 11px;
-  fill: #b45309;
+  fill: var(--app-warning-text);
 }
+
+.graph :deep(.vue-flow__controls-button) { background: var(--el-bg-color-overlay); color: var(--el-text-color-primary); border-color: var(--el-border-color); }
+.graph :deep(.vue-flow__controls-button svg) { fill: currentColor; }
+.graph :deep(.vue-flow__controls-button:hover) { background: var(--el-fill-color); }
+.graph :deep(.vue-flow__edge-textbg) { fill: var(--el-bg-color); }
+/* 保留来源对应的色相，同时提高深色背景上的线条和箭头亮度。 */
+.graph :deep(.vue-flow__edges) { filter: var(--app-edge-filter, none); }
 </style>

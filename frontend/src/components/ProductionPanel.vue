@@ -97,4 +97,4 @@ onBeforeUnmount(() => { seq++; searchSeq++; milestoneSeq++ })
     </el-dialog>
   </el-card>
 </template>
-<style scoped>.production-step { padding: 12px 0; border-bottom: 1px solid #eee; }</style>
+<style scoped>.production-step { padding: 12px 0; border-bottom: 1px solid var(--el-border-color-light); }</style>

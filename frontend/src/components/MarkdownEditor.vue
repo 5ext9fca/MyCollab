@@ -69,7 +69,7 @@ function onInput(value: string) {
   margin-top: 6px;
 }
 .markdown-editor__hint {
-  color: #6b7280;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 </style>

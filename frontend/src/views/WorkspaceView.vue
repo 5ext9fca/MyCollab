@@ -920,17 +920,17 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 16px;
   padding: 10px 12px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
   border-radius: 8px;
   margin-bottom: 12px;
   font-size: 14px;
 }
 .workspace__summary-item--warn {
-  color: #b45309;
+  color: var(--app-warning-text);
 }
 .workspace__summary-item--danger {
-  color: #b91c1c;
+  color: var(--app-danger-text);
 }
 .workspace__graph-options {
   display: flex;
@@ -980,7 +980,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   margin-top: 8px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--el-text-color-secondary);
 }
 .workspace__milestone-item {
   display: inline-flex;

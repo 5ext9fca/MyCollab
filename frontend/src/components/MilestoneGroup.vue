@@ -95,8 +95,8 @@ function hasMore(status: MissionStatus): boolean {
 <style scoped>
 .group {
   margin-bottom: 20px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
   border-radius: 8px;
   padding: 10px 12px;
 }
@@ -114,7 +114,7 @@ function hasMore(status: MissionStatus): boolean {
   flex: 1;
 }
 .group__collapse {
-  color: #94a3b8;
+  color: var(--el-text-color-placeholder);
 }
 .group__columns {
   display: grid;
@@ -124,8 +124,8 @@ function hasMore(status: MissionStatus): boolean {
   overflow-x: auto;
 }
 .group__column {
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-light);
   border-radius: 8px;
   padding: 8px;
   min-height: 80px;

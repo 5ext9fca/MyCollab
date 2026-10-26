@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ThemeSelect from './ThemeSelect.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -63,6 +64,7 @@ async function onLogout() {
         <el-menu-item v-if="auth.user?.is_staff" index="/manage">管理后台</el-menu-item>
       </el-menu>
       <div class="app-header__user">
+        <ThemeSelect />
         <span class="meta">{{ auth.user?.display_name }}</span>
         <el-button link type="primary" @click="onLogout">退出</el-button>
       </div>
@@ -77,9 +79,14 @@ async function onLogout() {
 .app-header {
   display: flex;
   align-items: center;
-  gap: 24px;
-  background: #fff;
-  border-bottom: 1px solid #e5e7eb;
+  height: auto;
+  min-height: var(--el-header-height);
+  flex-wrap: wrap;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  gap: 8px 16px;
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color);
 }
 .app-header__brand {
   font-weight: 700;
@@ -88,6 +95,8 @@ async function onLogout() {
 }
 .app-header__menu {
   flex: 1;
+  min-width: 0;
+  overflow-x: auto;
   border-bottom: none;
 }
 .app-header__user {
@@ -95,5 +104,10 @@ async function onLogout() {
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .app-header__menu { order: 3; flex-basis: 100%; }
+  .app-header__user { margin-left: auto; flex-wrap: wrap; }
 }
 </style>

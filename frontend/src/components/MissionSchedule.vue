@@ -10,4 +10,4 @@ defineProps<{ mission: ScheduleFields }>()
     <el-tag v-if="mission.beyond_milestone_due" type="warning" size="small">超出里程碑目标日期</el-tag>
   </div>
 </template>
-<style scoped>.schedule-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; color: #475467; }</style>
+<style scoped>.schedule-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; color: var(--el-text-color-regular); }</style>

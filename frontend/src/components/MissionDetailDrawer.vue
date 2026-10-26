@@ -652,7 +652,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
   margin-bottom: 12px;
 }
 .drawer__submission {
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--el-border-color);
   padding-top: 8px;
   margin-top: 8px;
 }

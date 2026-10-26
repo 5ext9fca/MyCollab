@@ -165,8 +165,8 @@ function onKey(event: KeyboardEvent) {
   width: 220px;
   min-height: 92px;
   padding: 8px 10px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
   border-radius: 8px;
   box-shadow: 0 1px 2px rgb(15 23 42 / 6%);
   cursor: pointer;
@@ -176,11 +176,11 @@ function onKey(event: KeyboardEvent) {
   text-align: left;
 }
 .ws-card:focus-visible {
-  outline: 2px solid #409eff;
+  outline: 2px solid var(--el-color-primary);
   outline-offset: 1px;
 }
 .ws-card--selected {
-  border-color: #1d4ed8;
+  border-color: var(--el-color-primary);
   box-shadow: 0 0 0 2px rgb(29 78 216 / 35%);
 }
 .ws-card--dimmed {
@@ -191,7 +191,7 @@ function onKey(event: KeyboardEvent) {
 }
 .ws-card--cancelled .ws-card__title {
   text-decoration: line-through;
-  color: #6b7280;
+  color: var(--el-text-color-secondary);
 }
 .ws-card--compact {
   /* 固定卡片高度，保证甘特图逐行排布时不遮挡时间条。 */
@@ -216,14 +216,14 @@ function onKey(event: KeyboardEvent) {
   height: 20px;
   padding: 0 6px;
   font-size: 12px;
-  color: #475569;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  color: var(--el-text-color-regular);
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-light);
   border-radius: 6px;
   cursor: pointer;
 }
 .ws-card__toggle:hover {
-  background: #e2e8f0;
+  background: var(--el-border-color-light);
 }
 .ws-card__toggle-icon {
   font-size: 10px;
@@ -231,7 +231,7 @@ function onKey(event: KeyboardEvent) {
 }
 .ws-card--milestoned {
   border-left: 4px solid var(--ws-milestone);
-  background: color-mix(in srgb, var(--ws-milestone) 7%, #fff);
+  background: color-mix(in srgb, var(--ws-milestone) 7%, var(--el-bg-color));
 }
 .ws-card__head {
   display: flex;
@@ -253,13 +253,13 @@ function onKey(event: KeyboardEvent) {
   flex: none;
 }
 .ws-card__depth {
-  color: #94a3b8;
+  color: var(--el-text-color-placeholder);
   font-size: 12px;
   line-height: 1;
   flex: none;
 }
 .ws-card__id {
-  color: #94a3b8;
+  color: var(--el-text-color-placeholder);
   font-size: 11px;
 }
 .ws-card__title {
@@ -278,11 +278,11 @@ function onKey(event: KeyboardEvent) {
   gap: 4px;
 }
 .ws-card__meta {
-  color: #6b7280;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 .ws-card__unassigned {
-  color: #b45309;
+  color: var(--app-warning-text);
 }
 .ws-card__relations {
   display: flex;
@@ -295,7 +295,7 @@ function onKey(event: KeyboardEvent) {
   margin-top: auto;
 }
 .ws-card__relation {
-  color: #6b7280;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 </style>

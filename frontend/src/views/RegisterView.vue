@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ThemeSelect from '../components/ThemeSelect.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -52,6 +53,7 @@ async function onSubmit() {
   <div class="login-page">
     <el-card class="login-card register-card">
       <template #header><b>申请加入 Mission 协作</b></template>
+      <div class="auth-theme"><ThemeSelect /></div>
       <el-form label-position="top" @submit.prevent="onSubmit">
         <el-form-item label="用户名">
           <el-input v-model="form.username" autocomplete="username" />

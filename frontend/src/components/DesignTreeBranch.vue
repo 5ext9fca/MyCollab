@@ -43,5 +43,5 @@ onMounted(load)
 .design-children > li:last-child > .design-item-card { margin-bottom: 0; }
 .design-item-card { margin-bottom: 16px; }
 .tree-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-small { color: #667085; }
+small { color: var(--el-text-color-secondary); }
 </style>

@@ -39,8 +39,8 @@ const emit = defineEmits<{
       @focus="emit('focus', $event)"
       @toggle-children="emit('toggleChildren', $event)"
     />
-    <button v-if="data.gantt" class="gantt-bar" :class="{ 'gantt-bar--incomplete': data.gantt.incomplete, 'gantt-bar--dim': data.dimmed, 'gantt-bar--selected': data.selected }" :style="{ background: data.gantt.unscheduled ? '#e2e8f0' : data.color }" :title="data.node.title + '：' + data.gantt.label" :aria-label="data.node.title + '：' + data.gantt.label" @click.stop="emit('select', data.node.id)">
-      {{ data.gantt.unscheduled ? '未排期' : data.gantt.clippedStart ? '←' : data.gantt.clippedEnd ? '→' : ' ' }}
+    <button v-if="data.gantt" class="gantt-bar" :class="{ 'gantt-bar--incomplete': data.gantt.incomplete, 'gantt-bar--dim': data.dimmed, 'gantt-bar--selected': data.selected }" :style="{ background: data.gantt.unscheduled ? 'var(--el-border-color-light)' : data.color }" :title="data.node.title + '：' + data.gantt.label" :aria-label="data.node.title + '：' + data.gantt.label" @click.stop="emit('select', data.node.id)">
+      <span v-if="data.gantt.unscheduled || data.gantt.clippedStart || data.gantt.clippedEnd" class="gantt-bar-label">{{ data.gantt.unscheduled ? '未排期' : data.gantt.clippedStart ? '←' : '→' }}</span>
     </button>
     <span v-if="data.gantt" class="gantt-dates">{{ data.gantt.label }}</span>
     <Handle
@@ -59,14 +59,15 @@ const emit = defineEmits<{
 .ws-graph-node :deep(.vue-flow__handle) {
   width: 8px;
   height: 8px;
-  background: #94a3b8;
-  border: 1px solid #fff;
+  background: var(--el-text-color-placeholder);
+  border: 1px solid var(--el-bg-color);
 }
 .ws-graph-node--gantt { height: 24px; }
 .gantt-caption { position: absolute; top: -122px; left: 0; width: 220px; }
-.gantt-bar { width: 100%; height: 24px; border: 1px solid #334155; border-radius: 4px; cursor: pointer; color: #0f172a; }
+.gantt-bar { width: 100%; height: 24px; border: 1px solid var(--el-border-color-darker); border-radius: 4px; cursor: pointer; color: var(--el-text-color-primary); }
+.gantt-bar-label { background: var(--el-bg-color); color: var(--el-text-color-primary); border-radius: 2px; padding: 0 3px; }
 .gantt-bar--incomplete { border-style: dashed; }
 .gantt-bar--dim { opacity: .25; }
-.gantt-bar--selected { outline: 3px solid #2563eb; }
-.gantt-dates { position: absolute; top: 28px; left: 0; white-space: nowrap; font-size: 11px; color: #475569; }
+.gantt-bar--selected { outline: 3px solid var(--el-color-primary); }
+.gantt-dates { position: absolute; top: 28px; left: 0; white-space: nowrap; font-size: 11px; color: var(--el-text-color-regular); }
 </style>
