@@ -457,15 +457,19 @@ WHERE id = :mission_id
 
 `DesignElement` 保存 UUID、title（1–200 字符）、content（Markdown）、kind（Design/Asset，创建后固定）、parent（可空、自引用 PROTECT）、created_by、version、archived、created_at/updated_at。设计与资产是同级对象，复用条目存储和接口，kind 创建后固定；parent 只能指向同类型条目，分别组织设计与资产层级，禁止跨类型父子关系。Design 的 `assets` 是指向 Asset 的非对称多对多引用，反向为 `referencing_designs`；同一资产可供多个设计复用。Asset 表示角色/关卡等交付对象，不是 LibraryFile。Mission 的可空 `design_element`（PROTECT）只接受 Design，最多一个主要设计依据；另以 `assets` 多对多关联相关资产。任务可同时引用两者，也可只关联其中一种或都为空；资产不必属于所选设计的引用集合，不自动同步引用。子任务在服务端不自动继承；创建表单可预填父任务的设计与资产并允许清空。
 
+设计和资产各自拥有独立的父子树与有向依赖图。`DesignElementDependency` 保存 element/prerequisite；数据库约束禁止自依赖和重复边。`DesignElement.prerequisites` 通过该表指向同类型前置，反向 `dependents` 只读。创建/PATCH 接受 `prerequisite_ids` UUID 数组（完整替换，空数组清空，省略不变），响应包含 prerequisites/dependents 摘要。只能由当前条目创建者或管理员维护，沿用团队事务锁、expected_version、归档冻结和事件记录；新增依赖禁止归档目标，已存在的归档前置可保留或解除。禁止跨类型依赖、自依赖与直接/间接环（409 design_dependency_cycle）；父子树和依赖图分别验环，父子关系不隐含依赖。依赖变化记录 dependencies_changed 及 updated 前后值。依赖不触发归档级联，不生成或修改 Mission 依赖、状态与进度。跨类型关系仅为 Design → Asset 单向多对多引用，资产页的 referencing_designs 是只读反查，不是反向引用写入口。
+
 有效成员可读取和创建；创建者或管理员可修改、移动和归档/恢复。所有写入走 missions/services.py，并记录 DesignElementEvent（element/actor/action/payload/created_at）。树变更先取现有团队事务锁，再行锁及 expected_version 校验，禁止自引用与循环。归档不级联，要求没有未归档直接子条目；恢复要求父节点未归档，归档内容须先恢复再编辑。禁止硬删除。Markdown 素材归属按条目创建者校验，管理员代编辑也不能引用管理员自己的私人素材替代作者素材。
 
 Mission 创建与 PATCH 接受 `design_element_id`（null 解除）及 `asset_ids`（UUID 数组，完整替换，空数组解除，省略不变），返回 design_element 摘要及 assets 摘要数组（id/title/kind/archived）。关联修改遵守原任务编辑权限和 Open/InProgress 状态，记录 design_element_changed / assets_changed 事件并递增任务版本。新关联禁止指向归档条目；既有关联保留，提交原有归档资产引用也允许，解除后不能重新添加。设计引用和任务引用相互独立，归档不级联到引用方。设计内容变更不覆盖 Mission 内容、验收标准或成果，不自动重开任务。
 
 接口：GET/POST `/api/design-elements/`，GET/PATCH `/api/design-elements/{id}/`，GET `/api/design-elements/{id}/events/`。列表和事件分页；列表支持 q、kind、parent（UUID/root）、archived（false 默认/true/all），详情含祖先路径、父节点、assets、referencing_designs、allowed_actions、has_children 和直属任务进度。设计创建/PATCH 接受 asset_ids 完整替换引用，只有设计创建者或管理员可维护，资产不能引用资产；引用修改与版本及事件同事务保存。PATCH 必须 expected_version，过期 409；kind 等未知输入拒绝。Mission 列表、工作台概览/依赖图共享 design_element（UUID/none）筛选，匹配任务的直接设计依据或直接相关资产，none 表示两者都为空，不递归到设计后代，也不经设计引用间接扩展到资产任务。
 
-`/design` 与 `/design/:id` 的「设计与资产」页面提供懒加载分页树、搜索/类型/归档筛选、Markdown 正文、编辑、归档、祖先跳转、直属任务、分页活动与进度。进度为非 Cancelled 直属 Mission 的 Done/有效数，零分母显示「暂无有效任务」，另列受阻/需复核数；父子 Mission 独立计数，不代表工时或资产验收状态。设计页发布入口预填设计依据，资产页发布入口预填相关资产；设计编辑提供资产多选，详情展示引用资产，资产详情展示引用它的设计，所有引用沿用通用链接样式。任务表单分别选择设计与资产，详情和抽屉可回到两类条目；任务仍用原抽屉与生命周期操作。编辑版本冲突刷新版本并保留输入，不静默覆盖。
+`/design` 与 `/design/:id` 的「设计与资产」页面分别提供设计树与资产树、懒加载分页、搜索/类型/归档筛选、Markdown 正文、编辑、归档、祖先跳转、直属任务、分页活动与进度。进度为非 Cancelled 直属 Mission 的 Done/有效数，零分母显示「暂无有效任务」，另列受阻/需复核数；父子 Mission 独立计数，不代表工时或资产验收状态。设计页发布入口预填设计依据，资产页发布入口预填相关资产；两种条目编辑均提供同类型父条目和前置依赖多选，详情卡片展示前置及依赖它的条目。设计编辑提供资产多选，详情展示引用资产，资产详情展示引用它的设计，所有引用沿用通用链接样式。任务表单分别选择设计与资产，详情和抽屉可回到两类条目；任务仍用原抽屉与生命周期操作。编辑版本冲突刷新版本并保留输入，不静默覆盖。
 
 对应迁移为 `0005_alter_missionevent_action_designelement_and_more.py` 和 `0009_designelement_assets_mission_assets_and_more.py`，后者将既有跨类型父子关系转换为设计引用资产、将旧任务的资产依据移入相关资产；测试入口为 `test_design_elements.py` 与 `frontend/src/tests/designElements.spec.ts`，并保留原任务和工作台回归。
+
+设计/资产独立依赖迁移：`0010_designelementdependency_designelement_prerequisites_and_more.py`；规则与并发测试：`backend/missions/tests/test_design_dependencies.py`。
 
 **11. 资产生产模板与批次**
 
@@ -542,7 +546,7 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除）及 `asset_id
 - 任务广场和我的工作复用 `MissionCard.selection`，复选框位于卡片内左侧，选择不触发详情；我的工作移除重复的详情按钮，未完成子任务提示置于卡片正文。任务标题使用原生按钮，支持键盘激活，卡片点击仍保留原跳转/抽屉行为。
 - 通知条目使用轻边框卡片，左侧选择、右侧标题/已读状态/摘要/时间。选择不会标记已读；点击卡片或标题继续先调用已读接口，成功后打开关联任务，失败不打开。筛选、分页与批量已读权限保持不变。
 - 设计/资产树逐项卡片化；标题保留路由链接，展开按钮只控制子树，子树作为子卡片嵌入所属设计母卡片内，保留展开/折叠。设计详情按说明与进度、生产步骤、关联任务、活动记录分组；模板列表与详情同样按功能分组。
-- 设计详情的所属路径和任务中的设计依据复用 `.app-link.app-link--title` 标题链接，路径分隔符独立于链接；详情卡片头部集中展示标题、类型、元信息与操作。“发布 Mission”为主按钮，“查看依赖”为次按钮，两者保留路由链接及原筛选参数；操作区小屏可换行，归档与编辑权限保持不变。关联任务与生产步骤标题同样复用卡片标题样式，继续打开原任务抽屉。
+- 设计详情的所属路径和任务中的设计依据复用 `.app-link.app-link--title` 标题链接，路径分隔符独立于链接；详情卡片头部集中展示标题、类型、元信息与操作。“发布 Mission”为主按钮，“查看任务依赖”为次按钮，两者保留路由链接及原筛选参数；操作区小屏可换行，归档与编辑权限保持不变。关联任务与生产步骤标题同样复用卡片标题样式，继续打开原任务抽屉。
 - `DesignNavigation.vue` 提供设计与资产、生产模板两个导航按钮，当前页高亮并带 `aria-current`。两页页头使用等宽侧列固定导航位置，小屏导航独占第二行居中，不随标题长度移动。Mission、里程碑、通知与设计树复用通用 `.app-link` 的主题颜色、悬停、换行、键盘焦点和禁用态样式，标题排版由 `.app-link--title` 单独提供（16px、600 字重）。普通文字链接可仅使用 `.app-link` 继承上下文字体；原生按钮继续保留动作语义，路由链接保留导航语义。
 - 卡片采用 `shadow="never"`、通常 16px 的区域间距，条目选择框不与甘特显示开关混用；新增 `cardInteractions.spec.ts` 覆盖选择/打开隔离、设计树展开和导航。此次未变更数据模型、接口或权限。
 

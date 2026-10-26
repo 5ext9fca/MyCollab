@@ -112,6 +112,7 @@ class DesignElement(models.Model):
     kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.DESIGN)
     parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="children")
     assets = models.ManyToManyField("self", symmetrical=False, related_name="referencing_designs", blank=True)
+    prerequisites = models.ManyToManyField("self", symmetrical=False, through="DesignElementDependency", related_name="dependents", blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="design_elements")
     version = models.PositiveIntegerField(default=1)
     archived = models.BooleanField(default=False)
@@ -122,6 +123,17 @@ class DesignElement(models.Model):
         ordering = ["title", "id"]
         constraints = [models.CheckConstraint(condition=~Q(parent=models.F("id")), name="design_parent_not_self")]
         indexes = [models.Index(fields=["archived", "parent"])]
+
+
+class DesignElementDependency(models.Model):
+    element = models.ForeignKey(DesignElement, on_delete=models.CASCADE, related_name="dependency_edges")
+    prerequisite = models.ForeignKey(DesignElement, on_delete=models.PROTECT, related_name="dependent_edges")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["element", "prerequisite"], name="design_dependency_unique"),
+            models.CheckConstraint(condition=~Q(element=models.F("prerequisite")), name="design_dependency_not_self"),
+        ]
 
 
 class DesignElementEvent(models.Model):

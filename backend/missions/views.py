@@ -461,7 +461,7 @@ class DesignElementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, vie
         from django.db.models import Q
         from .models import DesignElement
         from .filters import parse_uuid
-        qs = DesignElement.objects.select_related("created_by", "parent").prefetch_related("assets", "referencing_designs")
+        qs = DesignElement.objects.select_related("created_by", "parent").prefetch_related("assets", "referencing_designs", "prerequisites", "dependents")
         if self.action != "list":
             return qs
         params = self.request.query_params

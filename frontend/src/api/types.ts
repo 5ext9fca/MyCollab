@@ -456,6 +456,8 @@ export interface DesignElement extends DesignElementBrief {
   ancestors: DesignElementBrief[]
   assets: DesignElementBrief[]
   referencing_designs: DesignElementBrief[]
+  prerequisites: DesignElementBrief[]
+  dependents: DesignElementBrief[]
   created_by: User
   version: number
   created_at: string
@@ -465,6 +467,7 @@ export interface DesignElement extends DesignElementBrief {
   progress: { effective_total: number; done: number; progress: number | null; blocked: number; revalidation: number }
 }
 export interface DesignInput {
+  prerequisite_ids?: string[]
   asset_ids?: string[]
   title: string
   content: string

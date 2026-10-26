@@ -14,7 +14,7 @@ vi.mock('../api/missions', () => ({ listMissions: vi.fn() }))
 const empty = { results: [], count: 0, next: null, previous: null }
 const detail: DesignElement = {
   id: 'asset', title: '森林守卫', content: '设计内容', kind: 'Asset', archived: false,
-  parent: null, ancestors: [], assets: [], referencing_designs: [], created_by: { id: 1, username: 'a', display_name: '作者' },
+  parent: null, ancestors: [], assets: [], referencing_designs: [], prerequisites: [], dependents: [], created_by: { id: 1, username: 'a', display_name: '作者' },
   version: 1, created_at: '2026-10-25', updated_at: '2026-10-25', allowed_actions: ['edit', 'archive'], has_children: false,
   progress: { effective_total: 0, done: 0, progress: null, blocked: 0, revalidation: 0 },
 }
@@ -32,7 +32,7 @@ async function render(value = detail) {
   ] })
   await router.push('/design/asset'); await router.isReady()
   const wrapper = mount(DesignView, { attachTo: document.body, global: { plugins: [router, ElementPlus], stubs: {
-    ProductionPanel: true, DesignTreeBranch: true, DesignElementSelect: true, AssetSelect: true, MarkdownEditor: defineComponent({ props: ['modelValue'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' }), MissionDetailDrawer: true,
+    ProductionPanel: true, DesignTreeBranch: true, DesignElementSelect: true, AssetSelect: true, ElementMultiSelect: true, MarkdownEditor: defineComponent({ props: ['modelValue'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' }), MissionDetailDrawer: true,
   } } })
   wrappers.push(wrapper); await flushPromises()
   return wrapper
@@ -55,6 +55,23 @@ describe('设计关联页面', () => {
     expect(designPage.text()).toContain('引用资产')
     expect(designPage.find('a[href="/missions/new?design_element=design"]').exists()).toBe(true)
     expect(designPage.find('a[href="/design/asset"]').text()).toBe('森林守卫')
+  })
+  it('分开显示设计树和资产树，并展示同类依赖', async () => {
+    const prerequisite = { id: 'mesh', title: '角色模型', kind: 'Asset' as const, archived: false }
+    const wrapper = await render({ ...detail, prerequisites: [prerequisite] })
+    expect(wrapper.find('section[aria-label="设计树"]').exists()).toBe(true)
+    expect(wrapper.find('section[aria-label="资产树"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('资产依赖')
+    expect(wrapper.find('a[href="/design/mesh"]').text()).toBe('角色模型')
+    await wrapper.findAll('button').find(b => b.text() === '编辑')!.trigger('click')
+    await flushPromises()
+    const selector = wrapper.findComponent({ name: 'ElementMultiSelect' })
+    expect(selector.attributes('kind')).toBe('Asset')
+    selector.vm.$emit('update:modelValue', ['mesh', 'rig'])
+    await flushPromises()
+    ;[...document.body.querySelectorAll('button')].find(b => b.textContent?.trim() === '保存')!.click()
+    await flushPromises()
+    expect(updateDesignElement).toHaveBeenLastCalledWith('asset', expect.objectContaining({ prerequisite_ids: ['mesh', 'rig'], expected_version: 1 }))
   })
   it('归档只读条目不显示编辑或发布按钮', async () => {
     const wrapper = await render({ ...detail, archived: true, allowed_actions: [] })

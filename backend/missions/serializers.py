@@ -498,6 +498,7 @@ class StrictInputSerializer(serializers.Serializer):
 
 
 class DesignCreateSerializer(StrictInputSerializer):
+    prerequisite_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
     title = serializers.CharField(max_length=200)
     content = serializers.CharField(required=False, allow_blank=True, default="")
     kind = serializers.ChoiceField(choices=DesignElement.Kind.choices, required=False, default="Design")
@@ -506,6 +507,7 @@ class DesignCreateSerializer(StrictInputSerializer):
 
 
 class DesignUpdateSerializer(StrictInputSerializer):
+    prerequisite_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
     asset_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
     expected_version = serializers.IntegerField(min_value=1)
     title = serializers.CharField(required=False, max_length=200)
@@ -515,6 +517,8 @@ class DesignUpdateSerializer(StrictInputSerializer):
 
 
 class DesignElementSerializer(serializers.ModelSerializer):
+    prerequisites = DesignElementBriefSerializer(many=True, read_only=True)
+    dependents = DesignElementBriefSerializer(many=True, read_only=True)
     assets = DesignElementBriefSerializer(many=True, read_only=True)
     referencing_designs = DesignElementBriefSerializer(many=True, read_only=True)
     created_by = UserBriefSerializer(read_only=True)
@@ -526,7 +530,7 @@ class DesignElementSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DesignElement
-        fields = ["id", "title", "content", "kind", "parent", "ancestors", "assets", "referencing_designs", "created_by", "version", "archived", "created_at", "updated_at", "allowed_actions", "progress", "has_children"]
+        fields = ["id", "title", "content", "kind", "parent", "ancestors", "assets", "referencing_designs", "prerequisites", "dependents", "created_by", "version", "archived", "created_at", "updated_at", "allowed_actions", "progress", "has_children"]
 
     def get_ancestors(self, obj):
         ancestors = []

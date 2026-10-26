@@ -22,6 +22,7 @@ from .models import (
     BuildStatus,
     Comment,
     DesignElement,
+    DesignElementDependency,
     DesignElementEvent,
     ProductionTemplate,
     ProductionTemplateEvent,
@@ -1298,6 +1299,37 @@ def _validate_design_parent(parent, kind):
     return parent
 
 
+def _set_design_prerequisites(element, prerequisite_ids):
+    if not isinstance(prerequisite_ids, (list, tuple)):
+        raise ValidationFailure("前置依赖必须为 ID 数组。", field_errors={"prerequisite_ids": ["需要数组。"]})
+    ids = {str(pk) for pk in prerequisite_ids}
+    try:
+        targets = list(DesignElement.objects.filter(pk__in=ids))
+    except (ValueError, TypeError, DjangoValidationError):
+        raise ValidationFailure("前置依赖 ID 无效。", field_errors={"prerequisite_ids": ["无效 ID。"]})
+    if len(targets) != len(ids) or any(target.kind != element.kind for target in targets):
+        raise ValidationFailure("前置依赖必须是存在的同类型条目。", field_errors={"prerequisite_ids": ["设计只能依赖设计，资产只能依赖资产。"]})
+    if str(element.pk) in ids:
+        raise ConflictError("条目不能依赖自身。", code="design_dependency_cycle")
+    retained = {str(pk) for pk in element.prerequisites.values_list("pk", flat=True)}
+    if any(target.archived and str(target.pk) not in retained for target in targets):
+        raise ConflictError("不能新增对已归档条目的依赖。", code="design_archived")
+    # 父子结构只表达组成；循环检查仅遍历同类型的显式依赖边。
+    adjacency = {}
+    for source, target in DesignElementDependency.objects.filter(element__kind=element.kind).values_list("element_id", "prerequisite_id"):
+        adjacency.setdefault(source, set()).add(target)
+    pending = [target.pk for target in targets]
+    visited = set()
+    while pending:
+        current = pending.pop()
+        if current == element.pk:
+            raise ConflictError("前置依赖不能形成循环。", code="design_dependency_cycle")
+        if current not in visited:
+            visited.add(current)
+            pending.extend(adjacency.get(current, ()))
+    element.prerequisites.set(targets)
+
+
 def design_allowed_actions(actor, element):
     if not actor or not actor.is_active or (actor.pk != element.created_by_id and not _is_admin(actor)):
         return []
@@ -1311,7 +1343,7 @@ def _design_title(value):
 
 
 @transaction.atomic
-def create_design_element(*, actor, title, content="", kind="Design", parent=None, asset_ids=None):
+def create_design_element(*, actor, title, content="", kind="Design", parent=None, asset_ids=None, prerequisite_ids=None):
     _acquire_team_lock()
     if not _is_active_member(actor):
         raise PermissionDenied("只有有效团队成员可以创建设计条目。")
@@ -1323,7 +1355,8 @@ def create_design_element(*, actor, title, content="", kind="Design", parent=Non
     if kind != "Design" and asset_ids:
         raise ValidationFailure("只有设计可以引用资产。")
     element.assets.set(_resolve_assets(asset_ids or []))
-    DesignElementEvent.objects.create(element=element, actor=actor, action="created")
+    _set_design_prerequisites(element, prerequisite_ids if prerequisite_ids is not None else [])
+    DesignElementEvent.objects.create(element=element, actor=actor, action="created", payload={"prerequisite_ids": sorted(str(pk) for pk in element.prerequisites.values_list("pk", flat=True))})
     return element
 
 
@@ -1337,7 +1370,7 @@ def update_design_element(*, actor, element_id, expected_version, changes):
     if not design_allowed_actions(actor, element):
         raise PermissionDenied("只有创建者或管理员可以修改设计条目。")
     _check_version(element, expected_version)
-    if set(changes) - {"title", "content", "parent", "archived", "asset_ids"}:
+    if set(changes) - {"title", "content", "parent", "archived", "asset_ids", "prerequisite_ids"}:
         raise ValidationFailure("包含不支持修改的字段。")
     if element.archived and changes != {"archived": False}:
         raise ConflictError("请先恢复设计条目再编辑。", code="design_archived")
@@ -1345,6 +1378,9 @@ def update_design_element(*, actor, element_id, expected_version, changes):
         raise ValidationFailure("归档状态必须是布尔值。")
     old = {"title": element.title, "content": element.content, "parent": str(element.parent_id) if element.parent_id else None, "archived": element.archived}
     old["asset_ids"] = sorted(str(pk) for pk in element.assets.values_list("pk", flat=True))
+    old["prerequisite_ids"] = sorted(str(pk) for pk in element.prerequisites.values_list("pk", flat=True))
+    if "prerequisite_ids" in changes:
+        _set_design_prerequisites(element, changes["prerequisite_ids"])
     if "asset_ids" in changes:
         if element.kind != "Design" and changes["asset_ids"]:
             raise ValidationFailure("只有设计可以引用资产。")
@@ -1372,7 +1408,8 @@ def update_design_element(*, actor, element_id, expected_version, changes):
     element.save()
     new = {"title": element.title, "content": element.content, "parent": str(element.parent_id) if element.parent_id else None, "archived": element.archived}
     new["asset_ids"] = sorted(str(pk) for pk in element.assets.values_list("pk", flat=True))
-    for field, action in (("parent", "moved"), ("archived", "archived" if element.archived else "restored")):
+    new["prerequisite_ids"] = sorted(str(pk) for pk in element.prerequisites.values_list("pk", flat=True))
+    for field, action in (("prerequisite_ids", "dependencies_changed"), ("parent", "moved"), ("archived", "archived" if element.archived else "restored")):
         if old[field] != new[field]:
             DesignElementEvent.objects.create(element=element, actor=actor, action=action, payload={"from": old[field], "to": new[field]})
     DesignElementEvent.objects.create(element=element, actor=actor, action="updated", payload={"from": old, "to": new, "version": element.version})

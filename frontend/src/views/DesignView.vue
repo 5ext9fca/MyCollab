@@ -10,6 +10,7 @@ import type { DesignElement, DesignInput, Mission, MissionEvent } from '../api/t
 import DesignTreeBranch from '../components/DesignTreeBranch.vue'
 import DesignElementSelect from '../components/DesignElementSelect.vue'
 import AssetSelect from '../components/AssetSelect.vue'
+import ElementMultiSelect from '../components/ElementMultiSelect.vue'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
@@ -37,8 +38,8 @@ const selected = ref<string | null>(null)
 const dialog = ref(false)
 const editingId = ref<string | null>(null)
 const saving = ref(false)
-const form = reactive<DesignInput>({ title: '', content: '', kind: 'Design', parent: null, asset_ids: [] })
-const actionLabels: Record<string, string> = { created: '创建', updated: '修改', moved: '移动', archived: '归档', restored: '恢复', instantiated: '生成生产任务' }
+const form = reactive<DesignInput>({ title: '', content: '', kind: 'Design', parent: null, asset_ids: [], prerequisite_ids: [] })
+const actionLabels: Record<string, string> = { created: '创建', updated: '修改', moved: '移动', archived: '归档', restored: '恢复', instantiated: '生成生产任务', dependencies_changed: '修改前置依赖' }
 let seq = 0
 async function load() {
   const current = ++seq
@@ -56,11 +57,11 @@ async function load() {
   } catch (err) { if (current === seq) error.value = err instanceof ApiException ? err.message : '加载失败' }
   finally { if (current === seq) loading.value = false }
 }
-watch(id, () => { page.value = 1; eventPage.value = 1; element.value = null; selected.value = null; void load() }, { immediate: true })
+watch(id, () => { page.value = 1; eventPage.value = 1; element.value = null; selected.value = null; hasBatch.value = false; void load() }, { immediate: true })
 function openEditor(edit = false, child = false) {
   const source = edit ? element.value : null
   editingId.value = source?.id ?? null
-  Object.assign(form, { title: source?.title ?? '', content: source?.content ?? '', kind: source?.kind ?? (child ? element.value?.kind : 'Design') ?? 'Design', parent: source?.parent?.id ?? (child ? id.value : null), asset_ids: source?.assets?.map(asset => asset.id) ?? [] })
+  Object.assign(form, { title: source?.title ?? '', content: source?.content ?? '', kind: source?.kind ?? (child ? element.value?.kind : 'Design') ?? 'Design', parent: source?.parent?.id ?? (child ? id.value : null), asset_ids: source?.assets?.map(asset => asset.id) ?? [], prerequisite_ids: source?.prerequisites?.map(item => item.id) ?? [] })
   dialog.value = true
 }
 function report(err: unknown) {
@@ -71,7 +72,7 @@ async function save() {
   saving.value = true
   try {
     if (editingId.value && element.value) {
-      await updateDesignElement(editingId.value, { title: form.title, content: form.content, parent: form.parent, asset_ids: form.kind === 'Design' ? form.asset_ids : [], expected_version: element.value.version })
+      await updateDesignElement(editingId.value, { title: form.title, content: form.content, parent: form.parent, prerequisite_ids: form.prerequisite_ids, asset_ids: form.kind === 'Design' ? form.asset_ids : [], expected_version: element.value.version })
     } else await createDesignElement({ ...form })
     dialog.value = false; treeRevision.value++; await load(); ElMessage.success('已保存')
   } catch (err) { report(err); if (err instanceof ApiException && err.status === 409) await load() }
@@ -94,12 +95,15 @@ async function changed() { await load(); treeRevision.value++ }
     <div class="design-layout">
       <aside>
         <el-card class="section-card" shadow="never"><div class="design-filters">
-        <el-input v-model="search" placeholder="搜索设计标题与正文" clearable @keyup.enter="query = search" @clear="query = ''" />
+        <el-input v-model="search" placeholder="搜索设计或资产的标题与正文" clearable @keyup.enter="query = search" @clear="query = ''" />
         <el-button @click="query = search">搜索</el-button>
         <el-select v-model="archived" aria-label="归档筛选"><el-option label="未归档" value="false" /><el-option label="全部" value="all" /><el-option label="已归档" value="true" /></el-select>
         <el-select v-model="kind" clearable placeholder="条目类型"><el-option label="设计" value="Design" /><el-option label="资产" value="Asset" /></el-select>
         </div></el-card>
-        <DesignTreeBranch :key="`${treeRevision}:${archived}:${query}:${kind}`" :archived="archived" :query="query" :kind="kind" />
+        <section v-for="treeKind in (['Design', 'Asset'] as const)" v-show="!kind || kind === treeKind" :key="treeKind" :aria-label="treeKind === 'Design' ? '设计树' : '资产树'">
+          <h3>{{ treeKind === 'Design' ? '设计树' : '资产树' }}</h3>
+          <DesignTreeBranch :key="`${treeRevision}:${archived}:${query}:${treeKind}`" :archived="archived" :query="query" :kind="treeKind" />
+        </section>
       </aside>
       <main v-loading="loading">
         <el-alert v-if="error" :title="error" type="error" :closable="false" /><el-button v-if="error" @click="load">重试</el-button>
@@ -127,7 +131,7 @@ async function changed() { await load(); treeRevision.value++ }
                   <el-button tag="a" type="primary" :href="href" @click="navigate">发布 Mission</el-button>
                 </router-link>
                 <router-link v-slot="{ href, navigate }" custom :to="{ name: 'workspace', query: { view: 'graph', design_element: element.id } }">
-                  <el-button tag="a" :href="href" @click="navigate">查看依赖</el-button>
+                  <el-button tag="a" :href="href" @click="navigate">查看任务依赖</el-button>
                 </router-link>
                 <el-button v-if="!element.archived" @click="openEditor(false, true)">新建子条目</el-button>
                 <el-button v-if="element.allowed_actions.includes('edit')" @click="openEditor(true)">编辑</el-button>
@@ -144,6 +148,16 @@ async function changed() { await load(); treeRevision.value++ }
           <h3>直属任务进度</h3>
           <p>{{ element.progress.progress === null ? '暂无有效任务' : `${element.progress.done}/${element.progress.effective_total} 已完成（${Math.round(element.progress.progress * 100)}%）` }} · 受阻 {{ element.progress.blocked }} · 需复核 {{ element.progress.revalidation }}</p>
           <p class="meta">按直接关联的有效 Mission 数量统计，不表示工时或资产验收状态。</p>
+          </el-card>
+          <el-card class="section-card" shadow="never">
+            <h3>{{ element.kind === 'Design' ? '设计依赖' : '资产依赖' }}</h3>
+            <p class="meta">前置依赖表示当前条目的先后约束，与父子组成关系独立；不会自动改变任务依赖或状态。通过编辑条目维护。</p>
+            <h4>前置依赖</h4>
+            <div class="design-references"><router-link v-for="item in element.prerequisites" :key="item.id" class="app-link app-link--title" :to="{ name: 'design', params: { id: item.id } }">{{ item.title }}{{ item.archived ? '（已归档）' : '' }}</router-link></div>
+            <p v-if="!element.prerequisites?.length" class="meta">无前置依赖</p>
+            <h4>依赖此条目</h4>
+            <div class="design-references"><router-link v-for="item in element.dependents" :key="item.id" class="app-link app-link--title" :to="{ name: 'design', params: { id: item.id } }">{{ item.title }}{{ item.archived ? '（已归档）' : '' }}</router-link></div>
+            <p v-if="!element.dependents?.length" class="meta">暂无条目依赖它</p>
           </el-card>
           <ProductionPanel v-if="element.kind === 'Asset'" :asset="element" @open="selected = $event" @changed="changed" @batch-loaded="hasBatch = $event" />
           <el-card class="section-card" shadow="never">
@@ -163,8 +177,9 @@ async function changed() { await load(); treeRevision.value++ }
     <el-dialog v-model="dialog" :title="editingId ? '编辑设计条目' : '新建设计条目'" width="min(680px, 95vw)" :close-on-click-modal="!saving">
       <el-form label-position="top" @submit.prevent="save">
         <el-form-item label="标题"><el-input v-model="form.title" maxlength="200" /></el-form-item>
-        <el-form-item label="类型"><el-select v-model="form.kind" :disabled="!!editingId" @change="form.parent = null; form.asset_ids = []"><el-option label="设计说明" value="Design" /><el-option label="资产" value="Asset" /></el-select></el-form-item>
+        <el-form-item label="类型"><el-select v-model="form.kind" :disabled="!!editingId" @change="form.parent = null; form.asset_ids = []; form.prerequisite_ids = []"><el-option label="设计说明" value="Design" /><el-option label="资产" value="Asset" /></el-select></el-form-item>
         <el-form-item :label="form.kind === 'Asset' ? '上级资产' : '上级设计'"><DesignElementSelect v-model="form.parent" :kind="form.kind" /></el-form-item>
+        <el-form-item label="前置依赖"><ElementMultiSelect v-model="form.prerequisite_ids" :kind="form.kind" :exclude-id="editingId ?? undefined" label="前置依赖" /></el-form-item>
         <el-form-item v-if="form.kind === 'Design'" label="引用资产"><AssetSelect v-model="form.asset_ids" /></el-form-item>
         <el-form-item label="设计内容"><MarkdownEditor v-model="form.content" /></el-form-item>
         <el-button native-type="submit" type="primary" :loading="saving">保存</el-button>
