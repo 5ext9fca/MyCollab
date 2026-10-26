@@ -10,11 +10,12 @@ case "${1:-}" in
   -h|--help)
     cat <<'HELP'
 用法：./testrun.sh [--seed]
-启动 PostgreSQL、执行迁移并运行 Django 与 Vite；缺少依赖时自动安装。
+启动 PostgreSQL、执行迁移并运行 Django、Vite 与 LocalRunner；缺少依赖时自动安装。
 --seed  加载演示数据（已存在时跳过，不重置数据）
 前端：http://127.0.0.1:5173
 后端：http://127.0.0.1:8000
-Ctrl+C 停止本次前后端进程；保留 PostgreSQL 容器和数据。
+LocalRunner 使用 ~/.config/MyCollab/mycollab-runner.json；未配置时提示并跳过。
+Ctrl+C 停止本次前后端与 LocalRunner 进程；保留 PostgreSQL 容器和数据。
 首次运行需要 Python 3.14、Node 24+、Docker Compose，以及依赖下载网络。
 HELP
     exit 0 ;;
@@ -73,12 +74,14 @@ fi
 
 backend_pid=""
 frontend_pid=""
+runner_pid=""
 cleanup() {
-  trap - EXIT INT TERM
-  for pid in "$backend_pid" "$frontend_pid"; do
+  trap - EXIT
+  trap '' INT TERM
+  for pid in "$backend_pid" "$frontend_pid" "$runner_pid"; do
     if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; fi
   done
-  for pid in "$backend_pid" "$frontend_pid"; do
+  for pid in "$backend_pid" "$frontend_pid" "$runner_pid"; do
     if [[ -n "$pid" ]]; then wait "$pid" 2>/dev/null || true; fi
   done
 }
@@ -109,6 +112,23 @@ for ((attempt=0; attempt<60; attempt++)); do
   sleep 1
 done
 if ! "$ready"; then echo "服务启动超时。" >&2; exit 1; fi
+runner_config="$HOME/.config/MyCollab/mycollab-runner.json"
+if [[ -f "$runner_config" ]]; then
+  echo "启动 LocalRunner，使用配置：$runner_config"
+  "$python_bin" -u -m local_runner --config "$runner_config" &
+  runner_pid=$!
+else
+  echo "未找到 LocalRunner 配置：${runner_config}；跳过自动启动。配置方法见 local_runner/README.md。"
+fi
 echo "测试环境已就绪：http://127.0.0.1:5173"
-echo "按 Ctrl+C 停止前后端；数据库和数据会保留。后端代码修改后需重启脚本。"
-while true; do ensure_running; sleep 1; done
+echo "按 Ctrl+C 停止前后端与 LocalRunner；数据库和数据会保留。后端代码修改后需重启脚本。"
+while true; do
+  ensure_running
+  if [[ -n "$runner_pid" ]] && ! kill -0 "$runner_pid" 2>/dev/null; then
+    runner_status=0
+    wait "$runner_pid" || runner_status=$?
+    echo "LocalRunner 已退出（退出码 ${runner_status}）；前后端继续运行，请查看上方提示。" >&2
+    runner_pid=""
+  fi
+  sleep 1
+done

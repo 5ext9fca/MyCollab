@@ -618,3 +618,6 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - 来源在领取、心跳、回传和读取时复核，关联说明变化也会过期；下载前再次 GET 检查。重复网络重试沿用同一幂等键，不重复生成；重新导出显式创建新请求。活动状态 5 秒轮询，失败退避至 60 秒，终态/卸载停止。结果按原文本请求规则保留 30 天。
 - 新迁移 `missions/0013` 与 `agent_bridge/0005–0006` 移除旧执行/交互表、旧成果提交关联及图像/代码请求，并移除设备的旧能力；不会删除素材库文件或 Mission/普通提交正文。历史迁移保留以支持已有数据库升级与空库创建。切换 feature 分支验证使用独立数据库；分支只保存代码，不备份数据库。
 - 验证：`agent_bridge.tests.test_requirements`、`frontend/src/tests/agentRequirementsExport.spec.ts`、`local_runner/tests/test_runner.py`。自动化测试不调用供应商；真实模型验收须显式启用。
+
+
+`./testrun.sh` 在前后端就绪后自动启动 LocalRunner，读取 `~/.config/MyCollab/mycollab-runner.json`；配置缺失时提示并跳过，Runner 退出时提示且保持前后端运行，不自动重启。Ctrl-C 或终止脚本时一并停止本次 Runner，通过 SIGTERM 复用模型进程清理，数据库与数据保留。启动前应确认配置中的服务器地址和设备凭据属于预期环境；Runner 仍使用该配置，不覆盖服务器地址。此启动流程不改变数据模型、接口或权限。

@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## 常用命令
 
-仓库根目录：`./testrun.sh` 一键启动本地 PostgreSQL、迁移、Django 与 Vite；`--seed` 可选加载演示数据。Ctrl+C 停止前后端，保留数据库。此命令不替代下方自动化验证。
+仓库根目录：`./testrun.sh` 一键启动本地 PostgreSQL、迁移、Django、Vite，并在默认配置存在时自动启动 LocalRunner；`--seed` 可选加载演示数据。Ctrl+C 停止前后端与本次 LocalRunner，保留数据库。此命令不替代下方自动化验证。
 
 后端（在 `backend/`，使用 `.venv`）：
 - 启动依赖数据库（仓库根）：`docker compose up -d`

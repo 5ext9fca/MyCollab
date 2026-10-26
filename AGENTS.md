@@ -18,7 +18,7 @@ MyCollab 是一个**单团队 Mission 协作系统**：发布 Mission、认领�
 
 - [沟通语言](.cursor/rules/communication.mdc)
 - [发布阶段与数据库兼容性](.cursor/rules/database-lifecycle.mdc)
-- [开发命令与验证](.cursor/rules/development-validation.mdc)
+- [开发命令与验证（含 testrun 自动启动 LocalRunner）](.cursor/rules/development-validation.mdc)
 - [架构与业务约束](.cursor/rules/architecture.mdc)
 - [需求规格与文档同步](.cursor/rules/documentation.mdc)
 - [提交与推送规范](.cursor/rules/git-workflow.mdc)

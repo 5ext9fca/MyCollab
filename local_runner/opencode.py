@@ -80,17 +80,18 @@ def _terminate(process):
 
 def terminate(process):
     # 清理期间忽略重复 Ctrl-C，确保终止和回收子进程后再退出。
-    previous = None
+    previous = {}
     if threading.current_thread() is threading.main_thread():
-        previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous[signum] = signal.signal(signum, signal.SIG_IGN)
     try:
         try:
             _terminate(process)
         except ProcessLookupError:
             process.wait()
     finally:
-        if previous is not None:
-            signal.signal(signal.SIGINT, previous)
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
 
 
 def run(request, *, model, executable="opencode", heartbeat=lambda: True, timeout=780):

@@ -144,3 +144,11 @@ class RunnerCliTests(unittest.TestCase):
             terminate(process)
         self.assertEqual([call.args for call in killpg.call_args_list], [(123, signal.SIGTERM), (123, signal.SIGKILL)])
         self.assertEqual(signal.getsignal(signal.SIGINT), previous)
+
+
+    @patch("local_runner.__main__.run_cli", side_effect=lambda argv: signal.raise_signal(signal.SIGTERM))
+    def test_sigterm_uses_interrupt_cleanup_and_restores_handler(self, run_cli):
+        previous = signal.getsignal(signal.SIGTERM)
+        with patch("sys.stderr", new_callable=io.StringIO):
+            self.assertEqual(main([]), 130)
+        self.assertEqual(signal.getsignal(signal.SIGTERM), previous)

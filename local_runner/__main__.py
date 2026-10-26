@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import random
+import signal
 import sys
 import time
 from urllib.error import HTTPError
@@ -121,11 +122,15 @@ def run_cli(argv=None):
 
 
 def main(argv=None):
+    # testrun 通过 SIGTERM 停止后台 Runner，复用 Ctrl-C 的资源清理。
+    previous = signal.signal(signal.SIGTERM, signal.default_int_handler)
     try:
         run_cli(argv)
     except KeyboardInterrupt:
         print("\nRunner 已停止；未回传的请求将由服务器租约过期处理。", file=sys.stderr, flush=True)
         return 130
+    finally:
+        signal.signal(signal.SIGTERM, previous)
     return 0
 
 
