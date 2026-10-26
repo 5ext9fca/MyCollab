@@ -13,6 +13,7 @@ import AssetSelect from '../components/AssetSelect.vue'
 import ElementMultiSelect from '../components/ElementMultiSelect.vue'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
+import AssistancePanel from '../components/AssistancePanel.vue'
 import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
 import ProductionPanel from '../components/ProductionPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
@@ -36,6 +37,8 @@ const archived = ref('false')
 const kind = ref('')
 const selected = ref<string | null>(null)
 const dialog = ref(false)
+const editVersion = ref(1)
+const conflict = ref(false)
 const editingId = ref<string | null>(null)
 const saving = ref(false)
 const form = reactive<DesignInput>({ title: '', content: '', kind: 'Design', parent: null, asset_ids: [], prerequisite_ids: [] })
@@ -61,6 +64,7 @@ watch(id, () => { page.value = 1; eventPage.value = 1; element.value = null; sel
 function openEditor(edit = false, child = false) {
   const source = edit ? element.value : null
   editingId.value = source?.id ?? null
+  editVersion.value = source?.version ?? 1; conflict.value = false
   Object.assign(form, { title: source?.title ?? '', content: source?.content ?? '', kind: source?.kind ?? (child ? element.value?.kind : 'Design') ?? 'Design', parent: source?.parent?.id ?? (child ? id.value : null), asset_ids: source?.assets?.map(asset => asset.id) ?? [], prerequisite_ids: source?.prerequisites?.map(item => item.id) ?? [] })
   dialog.value = true
 }
@@ -72,10 +76,10 @@ async function save() {
   saving.value = true
   try {
     if (editingId.value && element.value) {
-      await updateDesignElement(editingId.value, { title: form.title, content: form.content, parent: form.parent, prerequisite_ids: form.prerequisite_ids, asset_ids: form.kind === 'Design' ? form.asset_ids : [], expected_version: element.value.version })
+      await updateDesignElement(editingId.value, { title: form.title, content: form.content, parent: form.parent, prerequisite_ids: form.prerequisite_ids, asset_ids: form.kind === 'Design' ? form.asset_ids : [], expected_version: editVersion.value })
     } else await createDesignElement({ ...form })
     dialog.value = false; treeRevision.value++; await load(); ElMessage.success('已保存')
-  } catch (err) { report(err); if (err instanceof ApiException && err.status === 409) await load() }
+  } catch (err) { report(err); if (err instanceof ApiException && err.status === 409) { conflict.value = true; await load() } }
   finally { saving.value = false }
 }
 async function archive() {
@@ -84,7 +88,7 @@ async function archive() {
   try {
     await updateDesignElement(element.value.id, { archived: !element.value.archived, expected_version: element.value.version })
     treeRevision.value++; await load()
-  } catch (err) { report(err); if (err instanceof ApiException && err.status === 409) await load() }
+  } catch (err) { report(err); if (err instanceof ApiException && err.status === 409) { conflict.value = true; await load() } }
   finally { saving.value = false }
 }
 async function changed() { await load(); treeRevision.value++ }
@@ -175,6 +179,8 @@ async function changed() { await load(); treeRevision.value++ }
       </main>
     </div>
     <el-dialog v-model="dialog" :title="editingId ? '编辑设计条目' : '新建设计条目'" width="min(680px, 95vw)" :close-on-click-modal="!saving">
+      <el-card v-if="conflict && element" shadow="never"><h3>服务器版本已变化，请比较后继续</h3><p>{{ element.title }}</p><MarkdownContent :source="element.content" /><el-button @click="editVersion = element.version; conflict = false">已比较，保留当前草稿并使用此版本保存</el-button></el-card>
+      <AssistancePanel v-if="dialog" kind="design_polish" :object-id="editingId" :base-version="editingId ? editVersion : undefined" :draft="{ title: form.title, content: form.content, kind: form.kind }" @adopt="(field, value) => { if (field === 'title' || field === 'content') Object.assign(form, { [field]: value }) }" />
       <el-form label-position="top" @submit.prevent="save">
         <el-form-item label="标题"><el-input v-model="form.title" maxlength="200" /></el-form-item>
         <el-form-item label="类型"><el-select v-model="form.kind" :disabled="!!editingId" @change="form.parent = null; form.asset_ids = []; form.prerequisite_ids = []"><el-option label="设计说明" value="Design" /><el-option label="资产" value="Asset" /></el-select></el-form-item>

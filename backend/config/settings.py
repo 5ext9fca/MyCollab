@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "missions",
     "library",
     "notifications",
+    "agent_bridge",
 ]
 
 MIDDLEWARE = [

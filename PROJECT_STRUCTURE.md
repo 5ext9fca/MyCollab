@@ -573,3 +573,32 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除）及 `asset_id
 - `ActionCardList.vue` 在普通列表上提供当前页全选、半选、选择上限、选择框组和操作区；已选数量以紧凑的无阴影卡片展示，使用主题边框及背景，并向辅助技术播报数量变化。切换查询或分页时清空选择，刷新后剔除已不在本页的选择；加载或执行操作期间禁止选择。操作插槽提供本页选中对象、ID 和禁用状态，业务操作保留原有权限、预览、部分失败和版本冲突处理。
 - `CardListSelection.vue` 提供每张卡片的选择框并阻止点击、键盘事件冒泡，避免选择触发打开卡片。与操作列表中的选择框组配合使用。
 - 里程碑使用普通列表；通知、任务广场、我的工作、我发布的和我认领的使用可操作列表。`BulkMissionEditor.vue` 仅负责任务计划编辑与结果处理，全选等通用行为移至操作列表。重构不改变后端接口、数据模型和权限。
+
+## 本地 Agent 文本辅助（第一批）
+
+四项辅助分别接入设计/资产编辑、生产模板编辑、Mission 新建/编辑、当前 Submitted 轮次验收。共用 `AssistancePanel.vue`，由用户选择本人设备、设计/资产文本上下文及可选父任务或验收评论，预览后生成；逐字段采纳只改变表单，仍由原服务完成显式保存。验收仅生成材料分析与意见，不自动选择通过/退回、已验证构建或提交验收。模板候选保存不创建 ProductionBatch 或 Mission。
+
+### 数据与职责
+
+- `backend/agent_bridge/models.py`：AgentDevice 保存 owner、名称、能力列表、SHA-256 token_digest、到期/撤销/联系时间。随机设备凭据仅创建时展示，最长 90 天，每用户最多 10 个有效设备；不保存模型供应商凭据。
+- AssistanceRequest 保存 UUID、owner/device、四类 kind、schema_version=1、object_id/base_version、验收 submission_id、input 快照、status、attempt_id/lease_expires_at/expires_at、result/error、stopped_at、retry_of、idempotency_key/payload_digest 和时间戳。kind 唯一决定对象类型；新建草稿不绑定对象。owner+idempotency_key 唯一；数据库约束每设备只有一个 running。
+- `agent_bridge/services.py` 只写设备与请求生命周期，不写业务对象。创建、领取、心跳及候选采纳前复核对象能力/版本；上下文归档、版本或选中评论变化也会标记建议过期。有效用户、对象 edit/review、当前提交轮次均沿用现有业务规则。
+- `agent_bridge/protocol.py` 是无框架依赖的严格输出校验，供服务器与 `local_runner/protocol.py` 共用；未知字段、错误枚举、超长值、非法步骤依赖被拒。服务器另行校验素材引用；验收证据包含输入 JSON Pointer 与逐字摘录，本地和服务器均拒绝不存在的字段或原文。所有 Markdown 显示经 MarkdownContent。
+
+### API 和认证
+
+浏览器仅 Session + CSRF：`GET/POST /api/agent-devices/`、`POST /api/agent-devices/{id}/revoke/`；`GET/POST /api/assistance-requests/`、`GET /api/assistance-requests/{id}/`、`POST /api/assistance-requests/{id}/cancel/`。设备与请求只对 owner 可见，列表分页。设备创建返回一次 token，响应 no-store；请求详情包含 stale_reason。
+
+请求创建字段为 device_id、kind、idempotency_key、draft、instructions、context_ids，以及可选 object_id/base_version/submission_id/parent_id/retry_of/comment_ids。上下文 ID 必须逐个验证，评论必须属于当前验收任务；服务器构造验收轮次快照，不接受客户端伪造提交材料。输入最多 256 KiB，结果最多 128 KiB；模型错误只接受固定脱敏错误码。
+
+Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-runner/requests/{id}/heartbeat/`、`POST /api/agent-runner/requests/{id}/result/`。无 Cookie 回退；设备凭据无法访问普通业务 API。回传/心跳携带 attempt_id；同结果重复回传幂等，不同结果不可覆盖终态。用户停用、设备撤销或到期立即禁止设备访问。
+
+状态为 queued/running/succeeded/failed/cancelled/expired；每用户最多 3 个活动请求，每设备最多 1 个 running。默认 180 秒租约、15 分钟总期限，过期仅标记 expired，不自动再派发。取消阻止采纳并通知本地停止，stopped_at 记录确认；取消不保证供应商退费。显式重试创建关联的新请求。请求输入/结果保留 30 天，由 `cleanup_assistance` 管理命令清理。
+
+### 页面与本地运行
+
+`/agent-devices`（AgentDevicesView）管理绑定、撤销、有效期、最近联系及本人请求历史。`api/agentBridge.ts` 只访问 MyCollab；不接收供应商密钥。公共辅助面板仅在活动请求存在时轮询；网络状态不明重发同一幂等键；采纳前重新读取过期状态。生成期间表单变化须明确比较后逐字段合并。设计、模板、Mission 编辑冲突不自动换用新版本覆盖，需比较服务器内容后确认。
+
+`local_runner/` 是用户电脑上的 Python 标准库客户端，首个适配器为 OpenCode CLI 2.1.3。每次以私有非交互会话、临时工作目录与专用禁止工具的配置运行；模型供应商认证和调用全部留在本地。Runner 主动轮询并续租，断线或取消尽力终止进程，最多重传同一结果三次，不自动重新调用模型。安装与真实验证记录见 `local_runner/README.md`。
+
+本批不包含图像文件产出、仓库操作、构建测试、自动提交或自动验收；第二、三批继续由 NEW_FUNCTION.md 规划。后端不包含供应商 SDK/网络调用或常驻执行器，不新增 Redis/Celery/WebSocket。

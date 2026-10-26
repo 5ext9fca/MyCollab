@@ -7,6 +7,7 @@ import { createProductionTemplate, getProductionTemplate, listProductionTemplate
 import type { TemplateInput } from '../api/productionTemplates'
 import type { MissionEvent, ProductionTemplate } from '../api/types'
 import ProductionStepsEditor from '../components/ProductionStepsEditor.vue'
+import AssistancePanel from '../components/AssistancePanel.vue'
 import MarkdownContent from '../components/MarkdownContent.vue'
 const templates = ref<ProductionTemplate[]>([])
 const total = ref(0)
@@ -20,6 +21,7 @@ const eventTotal = ref(0)
 const dialog = ref(false)
 const editingId = ref<string | null>(null)
 const version = ref(1)
+const conflictTemplate = ref<ProductionTemplate | null>(null)
 const saving = ref(false)
 const loading = ref(false)
 const form = reactive<TemplateInput>({ name: '', description: '', steps: [] })
@@ -37,6 +39,7 @@ async function inspect(item: ProductionTemplate) {
   try { const result = await listTemplateEvents(item.id, eventPage.value); if (seq === detailSequence) { events.value = result.results; eventTotal.value = result.count } } catch (err) { report(err) }
 }
 function edit(item?: ProductionTemplate) {
+  conflictTemplate.value = null
   editingId.value = item?.id ?? null; version.value = item?.version ?? 1
   Object.assign(form, item ? { name: item.name, description: item.description, steps: structuredClone(item.steps.map(s => ({ ...s, tags: [...s.tags], prerequisite_keys: [...s.prerequisite_keys] }))) } : { name: '', description: '', steps: [{ key: 'step_1', title: '', content: '', acceptance_criteria: '', type: 'Task', priority: 'P2', tags: [], prerequisite_keys: [] }] })
   dialog.value = true
@@ -44,7 +47,7 @@ function edit(item?: ProductionTemplate) {
 async function refreshConflict(err: unknown) {
   report(err)
   if (err instanceof ApiException && err.status === 409 && editingId.value) {
-    try { version.value = (await getProductionTemplate(editingId.value)).version } catch (error) { report(error) }
+    try { conflictTemplate.value = await getProductionTemplate(editingId.value) } catch (error) { report(error) }
   }
 }
 async function save() {
@@ -83,6 +86,8 @@ onMounted(load)
       <el-pagination v-if="eventTotal > 20" v-model:current-page="eventPage" :total="eventTotal" :page-size="20" layout="prev, pager, next" @current-change="inspect(selected)" />
     </el-card>
     <el-dialog v-model="dialog" :title="editingId ? '编辑生产模板' : '新建生产模板'" width="min(800px, 95vw)" :close-on-click-modal="!saving">
+      <el-card v-if="conflictTemplate" shadow="never"><h3>服务器版本已变化，请比较后继续</h3><pre style="white-space: pre-wrap">{{ JSON.stringify({ name: conflictTemplate.name, description: conflictTemplate.description, steps: conflictTemplate.steps }, null, 2) }}</pre><el-button @click="version = conflictTemplate.version; conflictTemplate = null">已比较，保留当前草稿并使用此版本保存</el-button></el-card>
+      <AssistancePanel v-if="dialog" kind="template_generate" :object-id="editingId" :base-version="editingId ? version : undefined" :draft="{ name: form.name, description: form.description, steps: form.steps }" @adopt="(field, value) => { if (['name', 'description', 'steps'].includes(field)) Object.assign(form, { [field]: value }) }" />
       <el-form label-position="top" @submit.prevent="save"><el-form-item label="名称"><el-input v-model="form.name" maxlength="200" /></el-form-item><el-form-item label="说明"><el-input v-model="form.description" type="textarea" /></el-form-item><ProductionStepsEditor v-model="form.steps" /><p>模板不保存认领者、里程碑或日期；所有步骤将生成待认领 Mission。</p><el-button type="primary" native-type="submit" :loading="saving">保存模板</el-button></el-form>
     </el-dialog>
   </div>

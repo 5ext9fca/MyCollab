@@ -2,9 +2,9 @@
 
 ## 1. 状态、目标与范围
 
-本文替换原有功能规格，记录本次完整需求。本文所列 Agent 能力均为待实现；本次仅编写规格，不代表功能已经上线。
+本文记录完整需求与实施结果。第一批已实现并完成自动化及真实本地适配器验证；第二、三批仍为待实现。本次未部署到生产环境。
 
-当前已实现设计/资产编辑、生产模板编辑与实例化、Mission 编写、提交与人工验收；尚未实现本地 Agent 绑定、辅助请求、模型建议回传或模型执行委派。不得将已有业务功能重复实现。
+原有设计/资产编辑、生产模板编辑与实例化、Mission 编写、提交与人工验收继续复用。第一批实现进展见第 9 节；模型执行委派仍不属于首批。
 
 首批只交付四项业务能力：
 
@@ -29,7 +29,7 @@
 
 ### 第一批：四项文本辅助与最小本地接入
 
-交付第 4–7 节。先完成通用协议和一个可实际运行的本地适配器，再依次接入四个业务入口。具体 Agent 产品尚未指定，接口保持独立；首批无需兼容所有 CLI/SDK，也不能以仅有 mock 适配器宣告交付。选定适配器后记录安装版本、非交互调用方式、认证方式及真实接入验证结果。
+交付第 4–7 节。先完成通用协议和一个可实际运行的本地适配器，再依次接入四个业务入口。首个适配器采用用户指定的 OpenCode CLI 2.1.3，接口保持独立，不扩展兼容所有 CLI/SDK。非交互调用、认证、工具限制及真实接入验证结果记录于 local_runner/README.md。
 
 ### 第二批：Mission 手动委派美术资产
 
@@ -102,9 +102,9 @@
 
 第一批上下文只含用户选择的文本与引用元数据，不自动附带素材二进制；相关链接不能被当作已读内容。设备令牌不得获取任意团队对象或自动遍历素材库。
 
-### 5.3 待新增数据与 API
+### 5.3 第一批数据与 API
 
-建议新增 `backend/agent_bridge/` 管理设备、辅助请求及其授权，不集成任何供应商 SDK。以下均为新接口，不是已有事实：
+已新增 `backend/agent_bridge/` 管理设备、辅助请求及其授权，不集成任何供应商 SDK。以下为本批新增接口：
 
 - AgentDevice：owner、名称、能力列表、token 摘要、expires_at、revoked_at、last_seen_at。能力和设备名称是非敏感信息，不含供应商令牌。
 - AssistanceRequest：UUID、owner、device、kind（design_polish/template_generate/mission_write/review_assist）、schema_version、关联对象类型/ID（新建草稿可空）、base_version、submission_id（验收必填）、输入快照、状态、attempt_id、lease_expires_at、结构化结果、错误摘要、时间戳、客户端幂等键。
@@ -163,12 +163,22 @@
 - 现有数据流：Vue 表单 → src/api → DRF → missions/services.py → PostgreSQL/事件 → 序列化响应 → 前端更新。新增建议先回填表单，再走此链路，不增设绕过服务的自动保存入口。
 - `components/MarkdownContent.vue` 负责安全 Markdown 展示。素材只能经 `/api/library/files/{id}/` 授权下载，Markdown 引用归属以现有服务校验为准，不能把私有下载地址作为模型已读取附件的证据。
 
-### 8.3 现有测试入口与待新增目录
+### 8.3 测试入口与新增目录
 
 - 后端回归：`backend/missions/tests/test_design_elements.py`、`test_design_dependencies.py`、`test_production_templates.py`、`test_services.py`、`test_submissions.py`、`test_api.py`、`test_concurrency.py`、`test_markdown_references.py`；素材规则另见 `backend/library/tests/`。
 - 前端回归：`frontend/src/tests/designElements.spec.ts`、`productionTemplates.spec.ts`、`missions.spec.ts`、`missionDetailActions.spec.ts`、`assetReferences.spec.ts`、`client.spec.ts`。
-- 待新增建议：`backend/agent_bridge/` 及其测试；`frontend/src/api/agentBridge.ts` 和共用辅助面板/设备设置组件；`local_runner/` 放协议客户端、单一适配器与安装说明。以上目录/文件尚未实现，编码时按最终命名同步文档。
+- 本批新增：`backend/agent_bridge/` 及其 tests；`frontend/src/api/agentBridge.ts`、`components/AssistancePanel.vue`、`views/AgentDevicesView.vue`、`tests/agentBridge.spec.ts`；`local_runner/` 保存协议客户端、OpenCode 适配器、测试与安装说明。
 
-## 9. 本次规格交付记录
+## 9. 第一批交付与验证记录
 
-已核对当前模型、服务、接口、前端入口及测试路径；本次仅更新需求与技术原则，不修改运行时代码，不把上述待实现功能记录为已上线。实现与实际接入验证留待对应批次执行。
+已实现四项辅助、设备授权、请求协议、取消/租约/幂等、有限历史、人工采纳及 OpenCode CLI 2.1.3 适配器。模型供应商通信与凭据始终留在用户本地；服务器不集成供应商 SDK。实际数据模型/API/权限/页面已同步 PROJECT_STRUCTURE.md，技术原则与安装/清理说明已同步 TECH_STACK.md、README.md 和 local_runner/README.md。
+
+2026-10-26 验证：
+
+- PostgreSQL 全套后端回归 246 项完成（245 通过，1 项真实模型测试默认跳过）；最后新增证据摘录校验后，桥接模块 19 项全部通过，包含显式启用的真实模型测试。
+- 前端类型检查、25 个文件共 127 项测试及生产构建通过；Runner 5 项确定性测试通过；迁移一致性、Django check、git diff --check 通过。
+- 使用本机已登录 OpenCode 2.1.3 / deepseek/deepseek-flash，四类虚构输入均完成真实模型调用。隔离测试数据库与临时 HTTP 服务验证领取、回传、候选不写业务、显式保存/验收；测试服务器 Python 进程禁止外网连接，本地 OpenCode 子进程独立访问提供商。
+- 临时文件对抗验证未返回私有哨兵内容、未创建要求的文件；配置禁止工具及集成，不复用用户工作区。验收 evidence 使用输入 JSON Pointer 与逐字摘录，两端拒绝伪造来源；前端显示中文判断与未验证事项。
+- 页面逻辑测试验证预览不生成、候选不自动采纳、草稿变更需比较、过期不能采纳、Markdown 清洗、取消与同幂等键重发。真实闭环为 API/CLI 测试，不宣称进行了人工浏览器逐页验收。
+
+本批不包含生产部署、图像资产文件生成或代码执行委派；第二、三批仍按第 3 节规划。构建有现有大 chunk 提示，不影响构建成功。所有真实测试仅用虚构业务材料，不记录供应商凭据。

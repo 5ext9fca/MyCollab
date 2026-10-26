@@ -61,6 +61,7 @@ async function onLogout() {
         <el-menu-item index="/published">我发布的</el-menu-item>
         <el-menu-item index="/milestones">里程碑</el-menu-item>
         <el-menu-item index="/library">素材库</el-menu-item>
+        <el-menu-item index="/agent-devices">本地 Agent</el-menu-item>
         <el-menu-item v-if="auth.user?.is_staff" index="/manage">管理后台</el-menu-item>
       </el-menu>
       <div class="app-header__user">

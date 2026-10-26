@@ -10,5 +10,6 @@ urlpatterns = [
     path("api/library/", include("library.urls")),
     path("api/members/", MemberListView.as_view(), name="member-list"),
     path("api/", include("notifications.urls")),
+    path("api/", include("agent_bridge.urls")),
     path("api/", include("missions.urls")),
 ]

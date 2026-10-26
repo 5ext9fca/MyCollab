@@ -14,12 +14,16 @@ import {
 import MarkdownEditor from './MarkdownEditor.vue'
 import DesignElementSelect from './DesignElementSelect.vue'
 import AssetSelect from './AssetSelect.vue'
+import AssistancePanel from './AssistancePanel.vue'
 
 const props = withDefaults(
   defineProps<{
     initial?: Partial<MissionFormValues>
     submitLabel?: string
     loading?: boolean
+    objectId?: string
+    baseVersion?: number
+    parentId?: string
   }>(),
   { submitLabel: '保存', loading: false },
 )
@@ -42,6 +46,9 @@ const form = reactive<MissionFormValues>({
   milestone_id: props.initial?.milestone_id ?? null,
 })
 const tagOptions = ref<string[]>([])
+function adoptAssistance(field: string, value: unknown) {
+  if (['title', 'content', 'acceptance_criteria', 'type', 'priority', 'tags'].includes(field)) Object.assign(form, { [field]: value })
+}
 const members = ref<User[]>([])
 const milestones = ref<Milestone[]>([])
 const rules: FormRules = {
@@ -96,6 +103,8 @@ async function onSubmit() {
     label-position="top"
     @submit.prevent="onSubmit"
   >
+    <AssistancePanel kind="mission_write" :object-id="objectId" :base-version="baseVersion" :parent-id="parentId"
+      :draft="{ title: form.title, content: form.content, acceptance_criteria: form.acceptance_criteria, type: form.type, priority: form.priority, tags: form.tags }" @adopt="adoptAssistance" />
     <el-form-item label="标题" prop="title">
       <el-input v-model="form.title" maxlength="200" show-word-limit placeholder="一句话说明要做什么" />
     </el-form-item>

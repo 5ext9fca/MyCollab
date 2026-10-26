@@ -7,6 +7,7 @@
  * Edits and evidence submission stay on the full detail page; the drawer only
  * offers the quick, state-machine-safe actions plus a link to the full page.
  */
+import AssistancePanel from './AssistancePanel.vue'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -557,6 +558,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
     width="520px"
     append-to-body
   >
+    <AssistancePanel v-if="reviewDialogVisible && mission && currentSubmission" kind="review_assist" :draft="{}" :current-comment="reviewComment" :object-id="mission.id" :base-version="mission.version" :submission-id="currentSubmission.id" :review-context="{ content: mission.content, acceptance_criteria: mission.acceptance_criteria, submission: currentSubmission }" @adopt="(field, value) => { if (field === 'comment') reviewComment = String(value) }" />
     <el-form label-position="top">
       <el-form-item v-if="reviewDecision === 'accept' && succeededBuilds.length" label="所验证的构建版本">
         <el-select v-model="reviewBuildId" placeholder="选择构建成功的版本" style="width: 100%">

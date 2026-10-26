@@ -57,6 +57,7 @@ import MissionSubscription from '../components/MissionSubscription.vue'
 import MissionSchedule from '../components/MissionSchedule.vue'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 import MissionForm from '../components/MissionForm.vue'
+import AssistancePanel from '../components/AssistancePanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 
 const props = defineProps<{ id: string }>()
@@ -66,6 +67,7 @@ const mission = ref<Mission | null>(null)
 const events = ref<MissionEvent[]>([])
 const loading = ref(false)
 const editing = ref(false)
+const editBaseVersion = ref(1)
 const members = ref<User[]>([])
 
 const prerequisites = ref<MissionPrerequisiteRef[]>([])
@@ -458,7 +460,7 @@ async function onEditSubmit(values: MissionFormValues) {
   const ok = await run(
     () =>
       updateMission(props.id, {
-        expected_version: mission.value!.version,
+        expected_version: editBaseVersion.value,
         title: values.title,
         content: values.content,
         acceptance_criteria: values.acceptance_criteria,
@@ -649,7 +651,7 @@ function formatDate(value: string | null) {
           转交验收
         </el-button>
         <el-button v-if="allowed.includes('reopen')" @click="onReopen">重新打开</el-button>
-        <el-button v-if="allowed.includes('edit')" @click="editing = !editing">
+        <el-button v-if="allowed.includes('edit')" @click="editing = !editing; if (editing) editBaseVersion = mission.version">
           {{ editing ? '取消编辑' : '编辑' }}
         </el-button>
         <el-button v-if="allowed.includes('cancel')" type="danger" plain @click="onCancel">
@@ -659,7 +661,8 @@ function formatDate(value: string | null) {
       </div>
 
       <el-card v-if="editing" style="margin-bottom: 16px">
-        <MissionForm
+        <el-card v-if="editBaseVersion !== mission.version" shadow="never"><h3>服务器版本已变化，请比较后继续</h3><p>{{ mission.title }}</p><MarkdownContent :source="mission.content" /><MarkdownContent :source="mission.acceptance_criteria" /><el-button @click="editBaseVersion = mission.version">已比较，保留草稿并使用此版本保存</el-button></el-card>
+        <MissionForm :object-id="mission.id" :base-version="editBaseVersion"
           :initial="{
             title: mission.title,
             content: mission.content,
@@ -998,6 +1001,7 @@ function formatDate(value: string | null) {
         title="本次提交没有构建成功的版本，无法通过验收；请退回后重新提交"
         style="margin-bottom: 12px"
       />
+      <AssistancePanel v-if="reviewDialogVisible && mission && currentSubmission" kind="review_assist" :draft="{}" :current-comment="reviewComment" :object-id="mission.id" :base-version="mission.version" :submission-id="currentSubmission.id" :review-context="{ content: mission.content, acceptance_criteria: mission.acceptance_criteria, submission: currentSubmission }" @adopt="(field, value) => { if (field === 'comment') reviewComment = String(value) }" />
       <el-form label-position="top">
         <el-form-item v-if="reviewDecision === 'accept' && succeededBuilds.length" label="所验证的构建版本">
           <el-select v-model="reviewBuildId" placeholder="选择构建成功的版本" style="width: 100%">

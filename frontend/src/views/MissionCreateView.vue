@@ -52,7 +52,7 @@ async function onSubmit(values: MissionFormValues) {
       <h2>发布任务</h2>
     </div>
     <el-card>
-      <MissionForm v-if="ready" :initial="initial" submit-label="发布" :loading="loading" @submit="onSubmit" />
+      <MissionForm v-if="ready" :initial="initial" :parent-id="typeof route.query.parent === 'string' ? route.query.parent : undefined" submit-label="发布" :loading="loading" @submit="onSubmit" />
     </el-card>
   </div>
 </template>

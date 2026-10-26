@@ -32,7 +32,7 @@ async function render(value = detail) {
   ] })
   await router.push('/design/asset'); await router.isReady()
   const wrapper = mount(DesignView, { attachTo: document.body, global: { plugins: [router, ElementPlus], stubs: {
-    ProductionPanel: true, DesignTreeBranch: true, DesignElementSelect: true, AssetSelect: true, ElementMultiSelect: true, MarkdownEditor: defineComponent({ props: ['modelValue'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' }), MissionDetailDrawer: true,
+    AssistancePanel: true, ProductionPanel: true, DesignTreeBranch: true, DesignElementSelect: true, AssetSelect: true, ElementMultiSelect: true, MarkdownEditor: defineComponent({ props: ['modelValue'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' }), MissionDetailDrawer: true,
   } } })
   wrappers.push(wrapper); await flushPromises()
   return wrapper
@@ -78,7 +78,7 @@ describe('设计关联页面', () => {
     expect(wrapper.text()).not.toContain('发布 Mission')
     expect(wrapper.findAll('button').some(b => b.text() === '编辑')).toBe(false)
   })
-  it('版本冲突保留输入并刷新版本，重试携带新版本', async () => {
+  it('版本冲突保留输入，明确比较确认后才使用新版本', async () => {
     const wrapper = await render()
     await wrapper.findAll('button').find(b => b.text() === '编辑')!.trigger('click')
     await flushPromises()
@@ -89,6 +89,9 @@ describe('设计关联页面', () => {
     const save = () => [...document.body.querySelectorAll('button')].find(b => b.textContent?.trim() === '保存')!.click()
     save(); await flushPromises()
     expect(input.value).toBe('保留的新标题')
+    expect(updateDesignElement).toHaveBeenLastCalledWith('asset', expect.objectContaining({ expected_version: 1 }))
+    ;[...document.body.querySelectorAll('button')].find(b => b.textContent?.includes('已比较，保留当前草稿'))!.click()
+    await flushPromises()
     save(); await flushPromises()
     expect(updateDesignElement).toHaveBeenLastCalledWith('asset', expect.objectContaining({ title: '保留的新标题', expected_version: 2 }))
   })

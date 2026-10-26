@@ -173,3 +173,28 @@ docker compose -f deploy/docker-compose.yml exec -T backend python manage.py sen
 ```
 
 命令输出扫描任务数及新增通知数，失败非零退出。同一任务/截止日/提醒类型/接收人只写一次；漏跑后补发当前适用提醒。无需 Redis 或 Celery。
+
+## 本地 Agent 文本辅助
+
+第一批提供设计/资产说明润色、生产模板生成、Mission 编写和验收材料分析。登录后在「本地 Agent」创建设备凭据，在本人电脑运行 Runner，再从对应业务表单预览输入、生成并逐字段采纳；最后仍需手动保存或验收。
+
+服务器和浏览器均不调用模型提供商，也不保管供应商凭据。首个本地适配器是 **OpenCode CLI 2.1.3**；安装、登录、绑定、撤销、权限及排错见 [本地 Runner 说明](local_runner/README.md)。升级后照常运行后端迁移以创建 agent_bridge 表。
+
+服务器每天清理一次超过 30 天的辅助历史（沿用部署 cron，无常驻 worker）：
+
+```cron
+30 3 * * * cd /opt/MyCollabAdvanced/deploy && docker compose exec -T backend python manage.py cleanup_assistance
+```
+
+从仓库根目录运行本地适配器自动化测试，不调用收费模型：
+
+```bash
+python3 -m unittest discover -s local_runner/tests -v
+```
+
+真实闭环测试需本人本机已登录 OpenCode，并明确选择模型。该测试使用独立 PostgreSQL 测试库与临时 HTTP 服务，不修改正常业务数据，但会产生模型调用：
+
+```bash
+cd backend
+MYCOLLAB_LIVE_MODEL=deepseek/deepseek-flash .venv/bin/python manage.py test agent_bridge.tests.test_live_opencode --noinput
+```
