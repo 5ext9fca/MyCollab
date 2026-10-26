@@ -36,7 +36,7 @@ onUnmounted(() => { generation++ })
           </div>
           <div class="selectable-card-content">
             <div class="card-heading">
-              <button type="button" class="card-title" :disabled="busy" @click.stop="read([row.id], row.mission)">{{ row.mission_title }}</button>
+              <button type="button" class="app-link app-link--title" :disabled="busy" @click.stop="read([row.id], row.mission)">{{ row.mission_title }}</button>
               <el-tag :type="row.read_at ? 'info' : 'primary'" size="small">{{ row.read_at ? '已读' : '未读' }}</el-tag>
             </div>
             <p class="notification-summary">{{ row.payload.summary }}</p>

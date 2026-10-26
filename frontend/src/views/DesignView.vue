@@ -112,7 +112,7 @@ async function changed() { await load(); treeRevision.value++ }
                 <ol>
                   <li v-for="(ancestor, index) in element.ancestors" :key="ancestor.id">
                     <span v-if="index" class="meta" aria-hidden="true">/</span>
-                    <router-link class="card-title" :to="{ name: 'design', params: { id: ancestor.id } }">{{ ancestor.title }}</router-link>
+                    <router-link class="app-link app-link--title" :to="{ name: 'design', params: { id: ancestor.id } }">{{ ancestor.title }}</router-link>
                   </li>
                 </ol>
               </nav>
@@ -142,7 +142,7 @@ async function changed() { await load(); treeRevision.value++ }
           <ProductionPanel v-if="element.kind === 'Asset'" :asset="element" @open="selected = $event" @changed="changed" @batch-loaded="hasBatch = $event" />
           <el-card class="section-card" shadow="never">
           <h3>{{ hasBatch ? '其他关联任务' : '关联任务' }}</h3>
-          <ul class="task-list"><li v-for="mission in missions" :key="mission.id"><button type="button" class="card-title" @click="selected = mission.id">{{ mission.title }}</button> <StatusTag :status="mission.status" /><span v-if="mission.is_blocked"> · 受阻</span></li></ul>
+          <ul class="task-list"><li v-for="mission in missions" :key="mission.id"><button type="button" class="app-link app-link--title" @click="selected = mission.id">{{ mission.title }}</button> <StatusTag :status="mission.status" /><span v-if="mission.is_blocked"> · 受阻</span></li></ul>
           <el-empty v-if="!missions.length" description="暂无关联任务" />
           <el-pagination v-if="total > 20" v-model:current-page="page" :page-size="20" :total="total" layout="prev, pager, next" @current-change="load" />
           </el-card>

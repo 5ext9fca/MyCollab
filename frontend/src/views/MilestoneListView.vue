@@ -110,7 +110,7 @@ onMounted(load)
       <el-empty v-if="!loading && !milestones.length" description="暂无里程碑" />
       <el-card v-for="milestone in milestones" :key="milestone.id" class="milestone-card" shadow="never">
         <div class="milestone-card__row">
-          <router-link class="card-title" :to="{ name: 'milestone-detail', params: { id: milestone.id } }">
+          <router-link class="app-link app-link--title" :to="{ name: 'milestone-detail', params: { id: milestone.id } }">
             {{ milestone.name }}
           </router-link>
           <div class="milestone-card__tags">

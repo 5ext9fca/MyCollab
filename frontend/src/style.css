@@ -44,8 +44,9 @@ body {
   cursor: pointer;
 }
 
-.card-title {
-  font-family: inherit;
+/* 通用文字链接，可用于路由链接、锚点及执行动作的原生按钮。 */
+.app-link {
+  font: inherit;
   text-align: left;
   background: none;
   border: 0;
@@ -54,13 +55,17 @@ body {
   line-height: 1.5;
   overflow-wrap: anywhere;
   min-width: 0;
-  font-size: 16px;
-  font-weight: 600;
   color: var(--el-text-color-primary);
   text-decoration: none;
 }
 
-.card-title:hover {
+/* 标题仅增加排版，交互与主题颜色统一来自通用链接样式。 */
+.app-link--title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.app-link:hover {
   color: var(--el-color-primary);
 }
 
@@ -132,8 +137,8 @@ body {
   font-size: 13px;
 }
 
-.card-title:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 4px; border-radius: 2px; }
-.card-title:disabled { cursor: wait; }
+.app-link:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 4px; border-radius: 2px; }
+.app-link:disabled { cursor: wait; }
 .card-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
 .selectable-card-layout { display: flex; align-items: center; gap: 12px; }
 .selectable-card-selection { flex: none; cursor: default; }

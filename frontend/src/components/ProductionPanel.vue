@@ -75,7 +75,7 @@ onBeforeUnmount(() => { seq++; searchSeq++; milestoneSeq++ })
     <template v-if="production.batch">
       <p>模板：{{ production.batch.template_snapshot.name }} · 版本 {{ production.batch.template_version }}。模板后续修改不会改变本批任务。</p>
       <ol><li v-for="item in production.items" :key="item.step_key" class="production-step">
-        <button type="button" class="card-title" @click="emit('open', item.mission.id)">{{ item.mission.title }}</button> <StatusTag :status="item.mission.status" />
+        <button type="button" class="app-link app-link--title" @click="emit('open', item.mission.id)">{{ item.mission.title }}</button> <StatusTag :status="item.mission.status" />
         <p>{{ item.mission.assignee?.display_name ?? '待认领' }}<span v-if="item.mission.is_blocked"> · 受阻</span><span v-if="item.mission.needs_dependency_review"> · 需复核</span></p>
         <p>前置步骤：{{ item.mission.prerequisites?.map(p => p.title).join('、') || '无，可并行' }}</p>
         <el-button @click="emit('open', item.mission.id)">查看任务、成果与验收历史</el-button>

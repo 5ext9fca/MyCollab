@@ -26,7 +26,7 @@ onMounted(load)
       <el-card class="design-item-card" shadow="never">
       <div class="tree-row">
         <el-button v-if="item.has_children && !query && !kind" text :aria-expanded="expanded.has(item.id)" :aria-label="'展开或折叠' + item.title" @click="toggle(item.id)">{{ expanded.has(item.id) ? '−' : '+' }}</el-button>
-        <router-link class="card-title" :to="{ name: 'design', params: { id: item.id } }">{{ item.title }}</router-link>
+        <router-link class="app-link app-link--title" :to="{ name: 'design', params: { id: item.id } }">{{ item.title }}</router-link>
         <small>{{ item.kind === 'Asset' ? '资产' : '设计' }}{{ item.archived ? ' · 已归档' : '' }}</small>
       </div>
       <DesignTreeBranch v-if="expanded.has(item.id)" class="design-children" :parent="item.id" :archived="archived" />

@@ -24,7 +24,7 @@ function open() {
       </div>
       <div class="mission-card__content">
         <div class="mission-card__row">
-          <button type="button" class="card-title" @click.stop="open">{{ mission.title }}</button>
+          <button type="button" class="app-link app-link--title" @click.stop="open">{{ mission.title }}</button>
           <div class="mission-card__tags">
             <el-tag :type="TYPE_TAG[mission.type]" size="small" disable-transitions>
               {{ TYPE_LABELS[mission.type] }}
