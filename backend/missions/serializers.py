@@ -96,6 +96,7 @@ class MissionListSerializer(serializers.ModelSerializer):
     parent = serializers.UUIDField(source="parent_id", read_only=True, allow_null=True)
     milestone = MilestoneBriefSerializer(read_only=True)
     design_element = DesignElementBriefSerializer(read_only=True)
+    assets = DesignElementBriefSerializer(many=True, read_only=True)
     tags = TagSerializer(many=True, read_only=True)
     allowed_actions = serializers.SerializerMethodField()
     # F1/F3 derived flags (never stored).
@@ -124,7 +125,7 @@ class MissionListSerializer(serializers.ModelSerializer):
             "reviewer",
             "parent",
             "milestone",
-            "design_element",
+            "design_element", "assets",
             "planned_start_date", "planned_end_date", "overdue", "dependency_date_conflict_ids", "beyond_milestone_due",
             "tags",
             "version",
@@ -240,6 +241,7 @@ class MissionCreateSerializer(serializers.Serializer):
     planned_start_date = ISODateField(required=False, allow_null=True)
     planned_end_date = ISODateField(required=False, allow_null=True)
     design_element_id = serializers.UUIDField(required=False, allow_null=True)
+    asset_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
     title = serializers.CharField(max_length=200)
     content = serializers.CharField(required=False, allow_blank=True, default="")
     acceptance_criteria = serializers.CharField(required=False, allow_blank=True, default="")
@@ -265,6 +267,7 @@ class MissionUpdateSerializer(serializers.Serializer):
     planned_start_date = ISODateField(required=False, allow_null=True)
     planned_end_date = ISODateField(required=False, allow_null=True)
     design_element_id = serializers.UUIDField(required=False, allow_null=True)
+    asset_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
     expected_version = serializers.IntegerField()
     title = serializers.CharField(max_length=200, required=False)
     content = serializers.CharField(required=False, allow_blank=True)
@@ -499,9 +502,11 @@ class DesignCreateSerializer(StrictInputSerializer):
     content = serializers.CharField(required=False, allow_blank=True, default="")
     kind = serializers.ChoiceField(choices=DesignElement.Kind.choices, required=False, default="Design")
     parent = serializers.UUIDField(required=False, allow_null=True)
+    asset_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
 
 
 class DesignUpdateSerializer(StrictInputSerializer):
+    asset_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
     expected_version = serializers.IntegerField(min_value=1)
     title = serializers.CharField(required=False, max_length=200)
     content = serializers.CharField(required=False, allow_blank=True)
@@ -510,6 +515,8 @@ class DesignUpdateSerializer(StrictInputSerializer):
 
 
 class DesignElementSerializer(serializers.ModelSerializer):
+    assets = DesignElementBriefSerializer(many=True, read_only=True)
+    referencing_designs = DesignElementBriefSerializer(many=True, read_only=True)
     created_by = UserBriefSerializer(read_only=True)
     parent = DesignElementBriefSerializer(read_only=True)
     ancestors = serializers.SerializerMethodField()
@@ -519,7 +526,7 @@ class DesignElementSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DesignElement
-        fields = ["id", "title", "content", "kind", "parent", "ancestors", "created_by", "version", "archived", "created_at", "updated_at", "allowed_actions", "progress", "has_children"]
+        fields = ["id", "title", "content", "kind", "parent", "ancestors", "assets", "referencing_designs", "created_by", "version", "archived", "created_at", "updated_at", "allowed_actions", "progress", "has_children"]
 
     def get_ancestors(self, obj):
         ancestors = []
@@ -538,7 +545,8 @@ class DesignElementSerializer(serializers.ModelSerializer):
 
     def get_progress(self, obj):
         from .services import derived_state_bulk
-        missions = list(obj.missions.exclude(status="Cancelled").select_related("reviewer", "milestone"))
+        related = obj.asset_missions if obj.kind == "Asset" else obj.missions
+        missions = list(related.exclude(status="Cancelled").select_related("reviewer", "milestone"))
         derived = derived_state_bulk(missions)
         done = sum(m.status == "Done" for m in missions)
         return {"effective_total": len(missions), "done": done, "progress": done / len(missions) if missions else None,

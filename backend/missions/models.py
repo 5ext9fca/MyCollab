@@ -111,6 +111,7 @@ class DesignElement(models.Model):
     content = models.TextField(blank=True)
     kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.DESIGN)
     parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="children")
+    assets = models.ManyToManyField("self", symmetrical=False, related_name="referencing_designs", blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="design_elements")
     version = models.PositiveIntegerField(default=1)
     archived = models.BooleanField(default=False)
@@ -189,6 +190,7 @@ class Mission(models.Model):
     planned_start_date = models.DateField(null=True, blank=True)
     planned_end_date = models.DateField(null=True, blank=True)
     design_element = models.ForeignKey(DesignElement, null=True, blank=True, on_delete=models.PROTECT, related_name="missions")
+    assets = models.ManyToManyField(DesignElement, related_name="asset_missions", blank=True)
     current_submission = models.ForeignKey(
         "MissionSubmission",
         on_delete=models.SET_NULL,
@@ -444,6 +446,7 @@ class MissionEventAction(models.TextChoices):
     CANCELLED = "cancelled", "取消"
     CHILD_CREATED = "child_created", "创建子任务"
     SCHEDULE_CHANGED = "schedule_changed", "修改计划日期"
+    ASSETS_CHANGED = "assets_changed", "修改相关资产"
     DESIGN_ELEMENT_CHANGED = "design_element_changed", "修改设计依据"
     TYPE_CHANGED = "type_changed", "修改类型"
     PRIORITY_CHANGED = "priority_changed", "修改优先级"

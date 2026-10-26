@@ -101,6 +101,7 @@ export interface MissionPrerequisiteRef extends MissionRef {
 
 export interface Mission extends ScheduleFields {
   design_element?: DesignElementBrief | null
+  assets?: DesignElementBrief[]
   id: string
   title: string
   status: MissionStatus
@@ -219,6 +220,7 @@ export interface MissionFormValues {
   planned_start_date?: string | null
   planned_end_date?: string | null
   design_element_id?: string | null
+  asset_ids?: string[]
   title: string
   content: string
   acceptance_criteria: string
@@ -234,6 +236,7 @@ export interface MissionCreatePayload {
   planned_start_date?: string | null
   planned_end_date?: string | null
   design_element_id?: string | null
+  asset_ids?: string[]
   title: string
   content?: string
   acceptance_criteria?: string
@@ -250,6 +253,7 @@ export interface MissionUpdatePayload {
   planned_start_date?: string | null
   planned_end_date?: string | null
   design_element_id?: string | null
+  asset_ids?: string[]
   expected_version: number
   title?: string
   content?: string
@@ -450,6 +454,8 @@ export interface DesignElement extends DesignElementBrief {
   content: string
   parent: DesignElementBrief | null
   ancestors: DesignElementBrief[]
+  assets: DesignElementBrief[]
+  referencing_designs: DesignElementBrief[]
   created_by: User
   version: number
   created_at: string
@@ -459,6 +465,7 @@ export interface DesignElement extends DesignElementBrief {
   progress: { effective_total: number; done: number; progress: number | null; blocked: number; revalidation: number }
 }
 export interface DesignInput {
+  asset_ids?: string[]
   title: string
   content: string
   kind: 'Design' | 'Asset'

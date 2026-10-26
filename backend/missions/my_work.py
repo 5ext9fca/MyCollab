@@ -16,7 +16,7 @@ CATEGORIES = ('review', 'returned', 'due_soon', 'overdue', 'unblocked', 'revalid
 
 
 def work_query(user, category, today):
-    qs = Mission.objects.select_related('creator', 'assignee', 'reviewer', 'milestone', 'design_element', 'parent').prefetch_related('tags')
+    qs = Mission.objects.select_related('creator', 'assignee', 'reviewer', 'milestone', 'design_element', 'parent').prefetch_related('tags', 'assets')
     related = Q(creator=user) | Q(assignee=user) | Q(reviewer=user)
     if category == 'review':
         qs = qs.filter(reviewer=user, status='Submitted')

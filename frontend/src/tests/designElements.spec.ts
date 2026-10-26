@@ -14,7 +14,7 @@ vi.mock('../api/missions', () => ({ listMissions: vi.fn() }))
 const empty = { results: [], count: 0, next: null, previous: null }
 const detail: DesignElement = {
   id: 'asset', title: '森林守卫', content: '设计内容', kind: 'Asset', archived: false,
-  parent: null, ancestors: [], created_by: { id: 1, username: 'a', display_name: '作者' },
+  parent: null, ancestors: [], assets: [], referencing_designs: [], created_by: { id: 1, username: 'a', display_name: '作者' },
   version: 1, created_at: '2026-10-25', updated_at: '2026-10-25', allowed_actions: ['edit', 'archive'], has_children: false,
   progress: { effective_total: 0, done: 0, progress: null, blocked: 0, revalidation: 0 },
 }
@@ -32,19 +32,29 @@ async function render(value = detail) {
   ] })
   await router.push('/design/asset'); await router.isReady()
   const wrapper = mount(DesignView, { attachTo: document.body, global: { plugins: [router, ElementPlus], stubs: {
-    ProductionPanel: true, DesignTreeBranch: true, DesignElementSelect: true, MarkdownEditor: defineComponent({ props: ['modelValue'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' }), MissionDetailDrawer: true,
+    ProductionPanel: true, DesignTreeBranch: true, DesignElementSelect: true, AssetSelect: true, MarkdownEditor: defineComponent({ props: ['modelValue'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' }), MissionDetailDrawer: true,
   } } })
   wrappers.push(wrapper); await flushPromises()
   return wrapper
 }
 describe('设计关联页面', () => {
-  it('空进度不展示完成，发布链接携带设计依据，只加载直属任务', async () => {
+  it('空进度不展示完成，资产发布链接携带相关资产，只加载直属任务', async () => {
     const wrapper = await render()
     expect(wrapper.text()).toContain('暂无有效任务')
     expect(wrapper.text()).not.toContain('100%')
     expect(listMissions).toHaveBeenCalledWith({ design_element: 'asset', production_batch: 'none', page: 1 })
-    expect(wrapper.find('a[href="/missions/new?design_element=asset"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/missions/new?asset=asset"]').exists()).toBe(true)
     expect(wrapper.find('a[href="/workspace?view=graph&design_element=asset"]').exists()).toBe(true)
+  })
+  it('设计页展示多项资产，资产页展示反向设计引用', async () => {
+    const design = { id: 'design', title: '收集规则', kind: 'Design' as const, archived: false }
+    const assetPage = await render({ ...detail, referencing_designs: [design] })
+    expect(assetPage.text()).toContain('引用此资产的设计')
+    expect(assetPage.find('a[href="/design/design"]').text()).toBe('收集规则')
+    const designPage = await render({ ...detail, ...design, assets: [detail] })
+    expect(designPage.text()).toContain('引用资产')
+    expect(designPage.find('a[href="/missions/new?design_element=design"]').exists()).toBe(true)
+    expect(designPage.find('a[href="/design/asset"]').text()).toBe('森林守卫')
   })
   it('归档只读条目不显示编辑或发布按钮', async () => {
     const wrapper = await render({ ...detail, archived: true, allowed_actions: [] })

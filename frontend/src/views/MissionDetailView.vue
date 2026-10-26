@@ -119,6 +119,7 @@ const ACTION_LABELS: Record<string, string> = {
   reopened: '重新打开了任务',
   milestone_changed: '修改了里程碑',
   design_element_changed: '修改了设计依据',
+  assets_changed: '修改了相关资产',
   schedule_changed: '修改了计划日期',
   dependency_added: '添加了前置依赖',
   dependency_removed: '移除了前置依赖',
@@ -467,6 +468,7 @@ async function onEditSubmit(values: MissionFormValues) {
         reviewer: values.reviewer_id,
         milestone: values.milestone_id,
         design_element_id: values.design_element_id,
+        asset_ids: values.asset_ids,
         planned_start_date: values.planned_start_date,
         planned_end_date: values.planned_end_date,
       }),
@@ -668,6 +670,7 @@ function formatDate(value: string | null) {
             reviewer_id: mission.reviewer?.id ?? null,
             milestone_id: mission.milestone?.id ?? null,
             design_element_id: mission.design_element?.id ?? null,
+            asset_ids: mission.assets?.map(asset => asset.id) ?? [],
             planned_start_date: mission.planned_start_date,
             planned_end_date: mission.planned_end_date,
           }"
@@ -678,7 +681,7 @@ function formatDate(value: string | null) {
 
       <section class="section">
         <h3>背景与目标</h3>
-        <MissionDesignLink :element="mission.design_element" />
+        <MissionDesignLink :element="mission.design_element" :assets="mission.assets" />
         <MissionSubscription v-if="mission" :mission-id="mission.id" />
         <MissionSchedule :mission="mission" />
         <MarkdownContent :source="mission.content" />

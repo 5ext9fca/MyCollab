@@ -16,7 +16,12 @@ const initial = ref<Partial<MissionFormValues>>({})
 onMounted(async () => {
   try {
     if (typeof route.query.design_element === 'string') initial.value.design_element_id = route.query.design_element
-    else if (typeof route.query.parent === 'string') initial.value.design_element_id = (await getMission(route.query.parent)).design_element?.id ?? null
+    if (typeof route.query.asset === 'string') initial.value.asset_ids = [route.query.asset]
+    if (typeof route.query.parent === 'string') {
+      const parent = await getMission(route.query.parent)
+      initial.value.design_element_id ??= parent.design_element?.id ?? null
+      initial.value.asset_ids ??= parent.assets?.map(asset => asset.id) ?? []
+    }
   } catch { ElMessage.error('加载父任务设计依据失败，可手动选择') }
   finally { ready.value = true }
 })

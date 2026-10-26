@@ -66,7 +66,7 @@ class MissionViewSet(
     def get_queryset(self):
         qs = Mission.objects.select_related(
             "creator", "assignee", "reviewer", "parent", "milestone", "design_element"
-        ).prefetch_related("tags")
+        ).prefetch_related("tags", "assets")
         return apply_mission_filters(qs, self.request.query_params, self.request.user)
 
     def get_serializer_class(self):
@@ -95,6 +95,7 @@ class MissionViewSet(
             reviewer_id=data.get("reviewer_id"),
             milestone_id=data.get("milestone_id"),
             design_element_id=data.get("design_element_id"),
+            asset_ids=data.get("asset_ids"),
             planned_start_date=data.get("planned_start_date"),
             planned_end_date=data.get("planned_end_date"),
         )
@@ -460,7 +461,7 @@ class DesignElementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, vie
         from django.db.models import Q
         from .models import DesignElement
         from .filters import parse_uuid
-        qs = DesignElement.objects.select_related("created_by", "parent")
+        qs = DesignElement.objects.select_related("created_by", "parent").prefetch_related("assets", "referencing_designs")
         if self.action != "list":
             return qs
         params = self.request.query_params
@@ -526,7 +527,7 @@ class DesignElementViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, vie
         batch = ProductionBatch.objects.filter(asset=element).select_related("created_by").first()
         if batch is None:
             return Response({"batch": None, "items": []})
-        items = list(batch.items.select_related("mission__creator", "mission__assignee", "mission__reviewer", "mission__milestone", "mission__design_element").prefetch_related("mission__tags", "mission__dependencies__prerequisite"))
+        items = list(batch.items.select_related("mission__creator", "mission__assignee", "mission__reviewer", "mission__milestone", "mission__design_element").prefetch_related("mission__assets", "mission__tags", "mission__dependencies__prerequisite"))
         derived = services.derived_state_bulk(item.mission for item in items)
         by_key = {}
         for item in items:

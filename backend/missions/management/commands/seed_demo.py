@@ -312,8 +312,9 @@ class Command(BaseCommand):
         # 设计树、资产和模板实例化建立真实生产关系，不手工伪造批次。
         design = services.create_design_element(actor=alice, title="角色移动设计",
             content="## 体验目标\n行走、跳跃与 Dash 连贯。\n\n设计条目用于组织说明与资产，不会自动完成任务。")
-        asset = services.create_design_element(actor=alice, title="主角移动动画", kind="Asset", parent=design.pk,
+        asset = services.create_design_element(actor=alice, title="主角移动动画", kind="Asset",
             content="生产链：原画确认 → 动画制作 → 引擎集成。")
+        services.update_design_element(actor=alice, element_id=design.pk, expected_version=design.version, changes={"asset_ids": [asset.pk]})
         template = services.create_production_template(actor=alice, name="角色动画标准生产链",
             description="一次生成带前置依赖的任务；模板后续修改不会改写既有批次。",
             steps=[

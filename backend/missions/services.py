@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import connection, transaction
 from django.utils import timezone
 from urllib.parse import urlsplit
@@ -429,6 +430,7 @@ def create_mission(
     reviewer_id=None,
     milestone_id=None,
     design_element_id=None,
+    asset_ids=None,
     planned_start_date=None,
     planned_end_date=None,
 ) -> Mission:
@@ -470,10 +472,11 @@ def create_mission(
         priority=priority,
         reviewer=reviewer,
         milestone=milestone,
-        design_element=_resolve_design_element(design_element_id),
+        design_element=_resolve_design_element(design_element_id, kind="Design"),
         planned_start_date=planned_start_date,
         planned_end_date=planned_end_date,
     )
+    mission.assets.set(_resolve_assets(asset_ids or []))
     _apply_tags(mission, tags)
     _record_event(
         mission,
@@ -522,15 +525,25 @@ def update_mission(*, actor, mission_id, expected_version: int, changes: dict) -
     if "design_element_id" in changes:
         target = changes["design_element_id"]
         if str(target or "") != str(mission.design_element_id or ""):
-            if ProductionBatchItem.objects.filter(mission=mission).exists():
-                raise ConflictError("生产步骤不能解除或更换所属资产。", code="production_asset_locked")
             old_id = mission.design_element_id
-            mission.design_element = _resolve_design_element(target)
+            mission.design_element = _resolve_design_element(target, kind="Design")
             _record_event(mission, actor, MissionEventAction.DESIGN_ELEMENT_CHANGED, {
                 "from": str(old_id) if old_id else None,
                 "to": str(mission.design_element_id) if mission.design_element_id else None,
             })
             changed_fields.append("design_element")
+
+    if "asset_ids" in changes:
+        before = sorted(str(pk) for pk in mission.assets.values_list("pk", flat=True))
+        assets = _resolve_assets(changes["asset_ids"], retained=before)
+        after = sorted(str(asset.pk) for asset in assets)
+        batch_item = ProductionBatchItem.objects.filter(mission=mission).select_related("batch").first()
+        if batch_item and str(batch_item.batch.asset_id) not in after:
+            raise ConflictError("生产步骤不能解除所属资产。", code="production_asset_locked")
+        if before != after:
+            mission.assets.set(assets)
+            _record_event(mission, actor, MissionEventAction.ASSETS_CHANGED, {"from": before, "to": after})
+            changed_fields.append("assets")
 
     if "title" in changes:
         title = (changes["title"] or "").strip()
@@ -1250,16 +1263,39 @@ def delete_comment(*, actor, comment_id) -> None:
 
 
 # 设计树写入与 Mission 结构变更共用团队事务锁。
-def _resolve_design_element(element_id):
+def _resolve_design_element(element_id, *, kind=None):
     if element_id is None:
         return None
     try:
         element = DesignElement.objects.get(pk=element_id)
     except (DesignElement.DoesNotExist, ValueError, TypeError):
         raise ValidationFailure("设计条目不存在。", field_errors={"design_element_id": ["不存在。"]})
+    if kind and element.kind != kind:
+        raise ValidationFailure("关联条目类型不匹配。", field_errors={"design_element_id": ["请选择设计说明。"]})
     if element.archived:
         raise ConflictError("不能关联已归档的设计条目。", code="design_archived")
     return element
+
+
+def _resolve_assets(asset_ids, *, retained=()):
+    if not isinstance(asset_ids, (list, tuple)):
+        raise ValidationFailure("相关资产必须为 ID 列表。", field_errors={"asset_ids": ["需要数组。"]})
+    ids = {str(pk) for pk in asset_ids}
+    try:
+        assets = list(DesignElement.objects.filter(pk__in=ids))
+    except (ValueError, TypeError, DjangoValidationError):
+        raise ValidationFailure("资产 ID 无效。", field_errors={"asset_ids": ["无效 ID。"]})
+    if len(assets) != len(ids) or any(asset.kind != "Asset" for asset in assets):
+        raise ValidationFailure("相关资产不存在或类型错误。", field_errors={"asset_ids": ["只能引用资产。"]})
+    if any(asset.archived and str(asset.pk) not in retained for asset in assets):
+        raise ConflictError("不能新增已归档资产的引用。", code="design_archived")
+    return assets
+
+
+def _validate_design_parent(parent, kind):
+    if parent and parent.kind != kind:
+        raise ValidationFailure("设计与资产为同级对象，父条目必须属于同一类型。", field_errors={"parent": ["父条目类型不匹配。"]})
+    return parent
 
 
 def design_allowed_actions(actor, element):
@@ -1275,7 +1311,7 @@ def _design_title(value):
 
 
 @transaction.atomic
-def create_design_element(*, actor, title, content="", kind="Design", parent=None):
+def create_design_element(*, actor, title, content="", kind="Design", parent=None, asset_ids=None):
     _acquire_team_lock()
     if not _is_active_member(actor):
         raise PermissionDenied("只有有效团队成员可以创建设计条目。")
@@ -1283,7 +1319,10 @@ def create_design_element(*, actor, title, content="", kind="Design", parent=Non
         raise ValidationFailure("无效的设计条目类型。")
     assert_markdown_references_allowed(content, actor, field="content")
     element = DesignElement.objects.create(title=_design_title(title), content=content,
-        kind=kind, parent=_resolve_design_element(parent), created_by=actor)
+        kind=kind, parent=_validate_design_parent(_resolve_design_element(parent), kind), created_by=actor)
+    if kind != "Design" and asset_ids:
+        raise ValidationFailure("只有设计可以引用资产。")
+    element.assets.set(_resolve_assets(asset_ids or []))
     DesignElementEvent.objects.create(element=element, actor=actor, action="created")
     return element
 
@@ -1298,15 +1337,20 @@ def update_design_element(*, actor, element_id, expected_version, changes):
     if not design_allowed_actions(actor, element):
         raise PermissionDenied("只有创建者或管理员可以修改设计条目。")
     _check_version(element, expected_version)
-    if set(changes) - {"title", "content", "parent", "archived"}:
+    if set(changes) - {"title", "content", "parent", "archived", "asset_ids"}:
         raise ValidationFailure("包含不支持修改的字段。")
     if element.archived and changes != {"archived": False}:
         raise ConflictError("请先恢复设计条目再编辑。", code="design_archived")
     if "archived" in changes and not isinstance(changes["archived"], bool):
         raise ValidationFailure("归档状态必须是布尔值。")
     old = {"title": element.title, "content": element.content, "parent": str(element.parent_id) if element.parent_id else None, "archived": element.archived}
+    old["asset_ids"] = sorted(str(pk) for pk in element.assets.values_list("pk", flat=True))
+    if "asset_ids" in changes:
+        if element.kind != "Design" and changes["asset_ids"]:
+            raise ValidationFailure("只有设计可以引用资产。")
+        element.assets.set(_resolve_assets(changes["asset_ids"], retained=old["asset_ids"]))
     if "parent" in changes:
-        parent = _resolve_design_element(changes["parent"])
+        parent = _validate_design_parent(_resolve_design_element(changes["parent"]), element.kind)
         cursor = parent
         while cursor:
             if cursor.pk == element.pk:
@@ -1327,6 +1371,7 @@ def update_design_element(*, actor, element_id, expected_version, changes):
     element.version += 1
     element.save()
     new = {"title": element.title, "content": element.content, "parent": str(element.parent_id) if element.parent_id else None, "archived": element.archived}
+    new["asset_ids"] = sorted(str(pk) for pk in element.assets.values_list("pk", flat=True))
     for field, action in (("parent", "moved"), ("archived", "archived" if element.archived else "restored")):
         if old[field] != new[field]:
             DesignElementEvent.objects.create(element=element, actor=actor, action=action, payload={"from": old[field], "to": new[field]})
@@ -1468,7 +1513,7 @@ def instantiate_production(*, actor, element_id, expected_version, template_id, 
     for step in steps:
         mission = create_mission(actor=actor, title=titles[step["key"]], content=step["content"],
             acceptance_criteria=step["acceptance_criteria"], tags=step["tags"], type=step["type"],
-            priority=step["priority"], design_element_id=asset.pk, milestone_id=milestone_id)
+            priority=step["priority"], asset_ids=[asset.pk], milestone_id=milestone_id)
         missions[step["key"]] = mission
         ProductionBatchItem.objects.create(batch=batch, step_key=step["key"], mission=mission)
     for step in steps:

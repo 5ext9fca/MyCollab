@@ -424,7 +424,7 @@ const formatDate = (value: string | null) => (value ? new Date(value).toLocaleSt
         <el-tabs class="drawer__tabs">
           <el-tab-pane label="内容">
             <h4>背景与目标</h4>
-            <MissionDesignLink :element="mission.design_element" />
+            <MissionDesignLink :element="mission.design_element" :assets="mission.assets" />
             <MissionSubscription v-if="mission" :mission-id="mission.id" />
             <MissionSchedule :mission="mission" />
             <MarkdownContent :source="mission.content" />

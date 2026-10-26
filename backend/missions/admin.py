@@ -110,6 +110,8 @@ class MissionAdmin(admin.ModelAdmin):
         "reviewer",
         "milestone",
         "current_submission",
+        "design_element",
+        "assets",
         "version",
         "created_at",
         "updated_at",

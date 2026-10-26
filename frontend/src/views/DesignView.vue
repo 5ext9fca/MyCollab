@@ -9,6 +9,7 @@ import { listMissions } from '../api/missions'
 import type { DesignElement, DesignInput, Mission, MissionEvent } from '../api/types'
 import DesignTreeBranch from '../components/DesignTreeBranch.vue'
 import DesignElementSelect from '../components/DesignElementSelect.vue'
+import AssetSelect from '../components/AssetSelect.vue'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 import MissionDetailDrawer from '../components/MissionDetailDrawer.vue'
@@ -36,7 +37,7 @@ const selected = ref<string | null>(null)
 const dialog = ref(false)
 const editingId = ref<string | null>(null)
 const saving = ref(false)
-const form = reactive<DesignInput>({ title: '', content: '', kind: 'Design', parent: null })
+const form = reactive<DesignInput>({ title: '', content: '', kind: 'Design', parent: null, asset_ids: [] })
 const actionLabels: Record<string, string> = { created: '创建', updated: '修改', moved: '移动', archived: '归档', restored: '恢复', instantiated: '生成生产任务' }
 let seq = 0
 async function load() {
@@ -59,7 +60,7 @@ watch(id, () => { page.value = 1; eventPage.value = 1; element.value = null; sel
 function openEditor(edit = false, child = false) {
   const source = edit ? element.value : null
   editingId.value = source?.id ?? null
-  Object.assign(form, { title: source?.title ?? '', content: source?.content ?? '', kind: source?.kind ?? 'Design', parent: source?.parent?.id ?? (child ? id.value : null) })
+  Object.assign(form, { title: source?.title ?? '', content: source?.content ?? '', kind: source?.kind ?? (child ? element.value?.kind : 'Design') ?? 'Design', parent: source?.parent?.id ?? (child ? id.value : null), asset_ids: source?.assets?.map(asset => asset.id) ?? [] })
   dialog.value = true
 }
 function report(err: unknown) {
@@ -70,7 +71,7 @@ async function save() {
   saving.value = true
   try {
     if (editingId.value && element.value) {
-      await updateDesignElement(editingId.value, { title: form.title, content: form.content, parent: form.parent, expected_version: element.value.version })
+      await updateDesignElement(editingId.value, { title: form.title, content: form.content, parent: form.parent, asset_ids: form.kind === 'Design' ? form.asset_ids : [], expected_version: element.value.version })
     } else await createDesignElement({ ...form })
     dialog.value = false; treeRevision.value++; await load(); ElMessage.success('已保存')
   } catch (err) { report(err); if (err instanceof ApiException && err.status === 409) await load() }
@@ -122,7 +123,7 @@ async function changed() { await load(); treeRevision.value++ }
               </div>
               <p class="meta">创建者：{{ element.created_by.display_name }} · 更新于 {{ new Date(element.updated_at).toLocaleString() }} · 版本 {{ element.version }}</p>
               <div class="toolbar toolbar--flush design-actions" role="group" aria-label="设计条目操作">
-                <router-link v-if="!element.archived" v-slot="{ href, navigate }" custom :to="{ name: 'mission-create', query: { design_element: element.id } }">
+                <router-link v-if="!element.archived" v-slot="{ href, navigate }" custom :to="{ name: 'mission-create', query: element.kind === 'Asset' ? { asset: element.id } : { design_element: element.id } }">
                   <el-button tag="a" type="primary" :href="href" @click="navigate">发布 Mission</el-button>
                 </router-link>
                 <router-link v-slot="{ href, navigate }" custom :to="{ name: 'workspace', query: { view: 'graph', design_element: element.id } }">
@@ -135,6 +136,11 @@ async function changed() { await load(); treeRevision.value++ }
             </div>
           </template>
           <MarkdownContent :source="element.content" />
+          <h3>{{ element.kind === 'Design' ? '引用资产' : '引用此资产的设计' }}</h3>
+          <div class="design-references">
+            <router-link v-for="reference in (element.kind === 'Design' ? element.assets : element.referencing_designs)" :key="reference.id" class="app-link app-link--title" :to="{ name: 'design', params: { id: reference.id } }">{{ reference.title }}{{ reference.archived ? '（已归档）' : '' }}</router-link>
+          </div>
+          <p v-if="!(element.kind === 'Design' ? element.assets : element.referencing_designs)?.length" class="meta">暂无引用</p>
           <h3>直属任务进度</h3>
           <p>{{ element.progress.progress === null ? '暂无有效任务' : `${element.progress.done}/${element.progress.effective_total} 已完成（${Math.round(element.progress.progress * 100)}%）` }} · 受阻 {{ element.progress.blocked }} · 需复核 {{ element.progress.revalidation }}</p>
           <p class="meta">按直接关联的有效 Mission 数量统计，不表示工时或资产验收状态。</p>
@@ -157,8 +163,9 @@ async function changed() { await load(); treeRevision.value++ }
     <el-dialog v-model="dialog" :title="editingId ? '编辑设计条目' : '新建设计条目'" width="min(680px, 95vw)" :close-on-click-modal="!saving">
       <el-form label-position="top" @submit.prevent="save">
         <el-form-item label="标题"><el-input v-model="form.title" maxlength="200" /></el-form-item>
-        <el-form-item label="类型"><el-select v-model="form.kind" :disabled="!!editingId"><el-option label="设计说明" value="Design" /><el-option label="资产" value="Asset" /></el-select></el-form-item>
-        <el-form-item label="父条目"><DesignElementSelect v-model="form.parent" /></el-form-item>
+        <el-form-item label="类型"><el-select v-model="form.kind" :disabled="!!editingId" @change="form.parent = null; form.asset_ids = []"><el-option label="设计说明" value="Design" /><el-option label="资产" value="Asset" /></el-select></el-form-item>
+        <el-form-item :label="form.kind === 'Asset' ? '上级资产' : '上级设计'"><DesignElementSelect v-model="form.parent" :kind="form.kind" /></el-form-item>
+        <el-form-item v-if="form.kind === 'Design'" label="引用资产"><AssetSelect v-model="form.asset_ids" /></el-form-item>
         <el-form-item label="设计内容"><MarkdownEditor v-model="form.content" /></el-form-item>
         <el-button native-type="submit" type="primary" :loading="saving">保存</el-button>
       </el-form>
@@ -167,6 +174,7 @@ async function changed() { await load(); treeRevision.value++ }
   </div>
 </template>
 <style scoped>
+.design-references { display: flex; flex-wrap: wrap; gap: 12px; }
 .design-layout { display: grid; grid-template-columns: minmax(220px, 28%) minmax(0, 1fr); gap: 16px; }
 aside, main { min-width: 0; }
 main h2, main nav { overflow-wrap: anywhere; }

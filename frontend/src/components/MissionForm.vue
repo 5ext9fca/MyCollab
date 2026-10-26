@@ -13,6 +13,7 @@ import {
 } from '../missionMeta'
 import MarkdownEditor from './MarkdownEditor.vue'
 import DesignElementSelect from './DesignElementSelect.vue'
+import AssetSelect from './AssetSelect.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -28,6 +29,7 @@ const emit = defineEmits<{ (e: 'submit', payload: MissionFormValues): void }>()
 const formRef = ref<FormInstance>()
 const form = reactive<MissionFormValues>({
   design_element_id: props.initial?.design_element_id ?? null,
+  asset_ids: [...(props.initial?.asset_ids ?? [])],
   planned_start_date: props.initial?.planned_start_date ?? null,
   planned_end_date: props.initial?.planned_end_date ?? null,
   title: props.initial?.title ?? '',
@@ -71,6 +73,7 @@ async function onSubmit() {
   if (!valid) return
   emit('submit', {
     design_element_id: form.design_element_id || null,
+    asset_ids: [...(form.asset_ids ?? [])],
     planned_start_date: form.planned_start_date || null,
     planned_end_date: form.planned_end_date || null,
     title: form.title,
@@ -143,6 +146,7 @@ async function onSubmit() {
     </el-row>
     <p class="meta">日期仅用于计划与风险提示，不限制认领，不自动调整其他任务。</p>
     <el-form-item label="设计依据"><DesignElementSelect v-model="form.design_element_id" /></el-form-item>
+    <el-form-item label="相关资产"><AssetSelect v-model="form.asset_ids" /></el-form-item>
     <el-form-item label="验收者">
       <el-select
         v-model="form.reviewer_id"

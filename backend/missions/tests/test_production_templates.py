@@ -45,7 +45,8 @@ class ProductionTests(TestCase):
             self.assertIsNone(mission.parent_id)
             self.assertEqual(mission.creator_id, self.owner.pk)
             self.assertEqual(mission.reviewer_id, self.owner.pk)
-            self.assertEqual(mission.design_element_id, self.asset.pk)
+            self.assertIsNone(mission.design_element_id)
+            self.assertEqual(list(mission.assets.all()), [self.asset])
         self.assertEqual(batch.template_snapshot['steps'][4]['prerequisite_keys'], ['animation', 'audio'])
         services.update_production_template(actor=self.other, template_id=self.template.pk, expected_version=1, changes={'steps': [{'key': 'new', 'title': '新流程'}]})
         batch.refresh_from_db()
@@ -55,13 +56,23 @@ class ProductionTests(TestCase):
         with self.assertRaises(ConflictError):
             utils.submit(self.other, integration)
         with self.assertRaises(ConflictError) as caught:
-            services.update_mission(actor=self.owner, mission_id=integration.pk, expected_version=integration.version, changes={'design_element_id': None})
+            services.update_mission(actor=self.owner, mission_id=integration.pk, expected_version=integration.version, changes={'asset_ids': []})
         self.assertEqual(caught.exception.code, 'production_asset_locked')
         response = self.client.get(f'/api/design-elements/{self.asset.pk}/production/')
         self.assertEqual([i['step_key'] for i in response.data['items']], [s['key'] for s in sample_steps()])
-        extra = services.create_mission(actor=self.owner, title='额外工作', design_element_id=self.asset.pk)
+        extra = services.create_mission(actor=self.owner, title='额外工作', asset_ids=[self.asset.pk])
         response = self.client.get('/api/missions/', {'design_element': str(self.asset.pk), 'production_batch': 'none'})
         self.assertEqual([m['id'] for m in response.data['results']], [str(extra.pk)])
+
+    def test_production_task_can_add_design_and_other_assets(self):
+        batch = self.generate()
+        mission = batch.items.first().mission
+        design = services.create_design_element(actor=self.owner, title='动作设计')
+        asset = services.create_design_element(actor=self.owner, title='音效', kind='Asset')
+        mission = services.update_mission(actor=self.owner, mission_id=mission.pk, expected_version=mission.version,
+            changes={'design_element_id': design.pk, 'asset_ids': [self.asset.pk, asset.pk]})
+        self.assertEqual(mission.design_element_id, design.pk)
+        self.assertEqual(set(mission.assets.values_list('pk', flat=True)), {self.asset.pk, asset.pk})
 
     def test_full_pipeline_manual_review_and_reopen(self):
         milestone = services.create_milestone(actor=self.owner, name='交付')

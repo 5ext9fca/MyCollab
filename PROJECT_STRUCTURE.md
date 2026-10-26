@@ -455,17 +455,17 @@ WHERE id = :mission_id
 
 **10. 设计条目与 Mission 关联**
 
-`DesignElement` 保存 UUID、title（1–200 字符）、content（Markdown）、kind（Design/Asset，创建后固定）、parent（可空、自引用 PROTECT）、created_by、version、archived、created_at/updated_at。设计树表达产品结构，与 Mission 拆分、依赖和里程碑相互独立；Asset 表示角色/关卡等交付对象，不是 LibraryFile。Mission 新增可空 `design_element`（PROTECT），最多一个主要设计依据，旧数据默认空，子任务不自动继承；创建表单可预填父任务关联并允许清空。
+`DesignElement` 保存 UUID、title（1–200 字符）、content（Markdown）、kind（Design/Asset，创建后固定）、parent（可空、自引用 PROTECT）、created_by、version、archived、created_at/updated_at。设计与资产是同级对象，复用条目存储和接口，kind 创建后固定；parent 只能指向同类型条目，分别组织设计与资产层级，禁止跨类型父子关系。Design 的 `assets` 是指向 Asset 的非对称多对多引用，反向为 `referencing_designs`；同一资产可供多个设计复用。Asset 表示角色/关卡等交付对象，不是 LibraryFile。Mission 的可空 `design_element`（PROTECT）只接受 Design，最多一个主要设计依据；另以 `assets` 多对多关联相关资产。任务可同时引用两者，也可只关联其中一种或都为空；资产不必属于所选设计的引用集合，不自动同步引用。子任务在服务端不自动继承；创建表单可预填父任务的设计与资产并允许清空。
 
 有效成员可读取和创建；创建者或管理员可修改、移动和归档/恢复。所有写入走 missions/services.py，并记录 DesignElementEvent（element/actor/action/payload/created_at）。树变更先取现有团队事务锁，再行锁及 expected_version 校验，禁止自引用与循环。归档不级联，要求没有未归档直接子条目；恢复要求父节点未归档，归档内容须先恢复再编辑。禁止硬删除。Markdown 素材归属按条目创建者校验，管理员代编辑也不能引用管理员自己的私人素材替代作者素材。
 
-Mission 创建与 PATCH 接受 `design_element_id`（null 解除），返回 design_element 摘要（id/title/kind/archived）。关联修改遵守原任务编辑权限和 Open/InProgress 状态，记录 design_element_changed 事件并递增任务版本。新关联禁止指向归档条目；既有关联保留，编辑无关字段不受影响。设计内容变更不覆盖 Mission 内容、验收标准或成果，不自动重开任务。
+Mission 创建与 PATCH 接受 `design_element_id`（null 解除）及 `asset_ids`（UUID 数组，完整替换，空数组解除，省略不变），返回 design_element 摘要及 assets 摘要数组（id/title/kind/archived）。关联修改遵守原任务编辑权限和 Open/InProgress 状态，记录 design_element_changed / assets_changed 事件并递增任务版本。新关联禁止指向归档条目；既有关联保留，提交原有归档资产引用也允许，解除后不能重新添加。设计引用和任务引用相互独立，归档不级联到引用方。设计内容变更不覆盖 Mission 内容、验收标准或成果，不自动重开任务。
 
-接口：GET/POST `/api/design-elements/`，GET/PATCH `/api/design-elements/{id}/`，GET `/api/design-elements/{id}/events/`。列表和事件分页；列表支持 q、kind、parent（UUID/root）、archived（false 默认/true/all），详情含祖先路径、父节点、allowed_actions、has_children 和直属任务进度。PATCH 必须 expected_version，过期 409；kind 等未知输入拒绝。Mission 列表、工作台概览/依赖图共享 design_element（UUID/none）筛选，只匹配直接关联，不递归到设计后代。
+接口：GET/POST `/api/design-elements/`，GET/PATCH `/api/design-elements/{id}/`，GET `/api/design-elements/{id}/events/`。列表和事件分页；列表支持 q、kind、parent（UUID/root）、archived（false 默认/true/all），详情含祖先路径、父节点、assets、referencing_designs、allowed_actions、has_children 和直属任务进度。设计创建/PATCH 接受 asset_ids 完整替换引用，只有设计创建者或管理员可维护，资产不能引用资产；引用修改与版本及事件同事务保存。PATCH 必须 expected_version，过期 409；kind 等未知输入拒绝。Mission 列表、工作台概览/依赖图共享 design_element（UUID/none）筛选，匹配任务的直接设计依据或直接相关资产，none 表示两者都为空，不递归到设计后代，也不经设计引用间接扩展到资产任务。
 
-`/design` 与 `/design/:id` 的「设计与资产」页面提供懒加载分页树、搜索/类型/归档筛选、Markdown 正文、编辑、归档、祖先跳转、直属任务、分页活动与进度。进度为非 Cancelled 直属 Mission 的 Done/有效数，零分母显示「暂无有效任务」，另列受阻/需复核数；父子 Mission 独立计数，不代表工时或资产验收状态。发布入口预填设计依据；任务详情和抽屉可回到设计条目；任务仍用原抽屉与生命周期操作。编辑版本冲突刷新版本并保留输入，不静默覆盖。
+`/design` 与 `/design/:id` 的「设计与资产」页面提供懒加载分页树、搜索/类型/归档筛选、Markdown 正文、编辑、归档、祖先跳转、直属任务、分页活动与进度。进度为非 Cancelled 直属 Mission 的 Done/有效数，零分母显示「暂无有效任务」，另列受阻/需复核数；父子 Mission 独立计数，不代表工时或资产验收状态。设计页发布入口预填设计依据，资产页发布入口预填相关资产；设计编辑提供资产多选，详情展示引用资产，资产详情展示引用它的设计，所有引用沿用通用链接样式。任务表单分别选择设计与资产，详情和抽屉可回到两类条目；任务仍用原抽屉与生命周期操作。编辑版本冲突刷新版本并保留输入，不静默覆盖。
 
-对应迁移为 `0005_alter_missionevent_action_designelement_and_more.py`；测试入口为 `test_design_elements.py` 与 `frontend/src/tests/designElements.spec.ts`，并保留原任务和工作台回归。
+对应迁移为 `0005_alter_missionevent_action_designelement_and_more.py` 和 `0009_designelement_assets_mission_assets_and_more.py`，后者将既有跨类型父子关系转换为设计引用资产、将旧任务的资产依据移入相关资产；测试入口为 `test_design_elements.py` 与 `frontend/src/tests/designElements.spec.ts`，并保留原任务和工作台回归。
 
 **11. 资产生产模板与批次**
 
@@ -475,7 +475,7 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除），返回 des
 
 仅资产创建者或管理员可生成；资产与模板须未归档、资产 kind 必须 Asset，可选里程碑须 Planned/Active。操作携带资产 expected_version 和 template_version，在团队事务锁及资产/模板行锁下校验，整个批次、Mission、依赖、映射、事件一次提交；失败全部回滚。重复请求返回 `409 production_already_generated`，版本冲突 `409 version_conflict`。生成 Mission 标题为“资产标题 · 步骤标题”（拼接超过 200 字符拒绝），creator/reviewer 为操作者、assignee=null、status=Open、parent=null，关联资产，可统一指定里程碑；字段来自模板快照，依赖通过原 add_dependency 服务建立，不按步骤数组顺序推断。资产版本递增，模板版本不变。
 
-生成任务继续使用原认领、提交、验收、拆分、取消与重新打开；取消前置不会自动解除下游依赖，完成步骤不会自动完成里程碑。生成后模板修改不回写任务，任务编辑也不回写快照。批次任务不得解除或更换 design_element（`409 production_asset_locked`）。其他手工任务仍可正常改绑。
+生成任务继续使用原认领、提交、验收、拆分、取消与重新打开；取消前置不会自动解除下游依赖，完成步骤不会自动完成里程碑。生成后模板修改不回写任务，任务编辑也不回写快照。批次任务的 assets 必须保留批次所属资产（否则 `409 production_asset_locked`），可新增其他相关资产并独立设置设计依据。其他手工任务仍可正常改绑。
 
 接口：GET/POST `/api/production-templates/`，GET/PATCH `/api/production-templates/{id}/`，GET `/{id}/events/`，列表/事件分页，列表支持 q、archived=false/true/all。POST `/api/design-elements/{id}/instantiate/` 接受 template_id/template_version/expected_version/milestone_id，201 返回 batch_id、asset_version、template_version 与步骤到 Mission 的映射；GET `/{id}/production/` 无批次返回 batch:null/items:[]，有批次返回不可变快照和按原步骤排序的当前 Mission 摘要、当前前置关系。Mission 筛选增加 production_batch（UUID/none），用于分页区分生产步骤和其他任务。
 
