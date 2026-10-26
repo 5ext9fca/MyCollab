@@ -159,6 +159,8 @@ npm run build
 
 ## 生产部署
 
+无域名的局域网 IP 与公网 IP HTTPS 部署，见 [deploy/README.md](deploy/README.md)，包含内部 CA、公共 IP 短期证书、客户端信任和续期流程。
+
 ```bash
 cd deploy
 cp .env.example .env     # 填入 DJANGO_SECRET_KEY、POSTGRES_PASSWORD、DOMAIN 等
