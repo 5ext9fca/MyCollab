@@ -631,6 +631,14 @@ function formatDate(value: string | null) {
           验收
         </el-button>
         <el-button
+          v-if="allowed.includes('review')"
+          type="warning"
+          plain
+          @click="openReview('reject')"
+        >
+          退回
+        </el-button>
+        <el-button
           v-if="allowed.includes('transfer_review')"
           type="warning"
           plain
