@@ -728,3 +728,12 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 `desktop/electron/binding.mjs` 的 `DeviceBindings` 通过当前业务 Session 的 `/api/auth/me/` 取得用户身份，再用无 Cookie 的独立请求调用固定 Runner 状态接口，要求设备、用户与协议匹配才加密保存；不信任 renderer 传入的服务器或用户标识。探测禁止重定向、限制 15 秒与 128 KiB 响应，身份切换时拒绝保存/返回旧配置。读取绑定仅返回设备 ID、模型和 OpenCode 路径，永不回显已保存令牌。
 
 桌面 `/agent-devices` 增加本机绑定卡片；新创建设备可自动填入本次令牌，保存成功清除页面令牌。Web 用户仍使用原设备页面。保存配置不启动 Runner 或模型，旧服务器缺少身份字段时拒绝绑定并提示升级。
+
+
+### Runner 平台状态与宿主监测
+
+`local_runner/private_files.py` 统一私有目录和独占锁：POSIX 使用 700/600 与 `flock`，Windows 使用 `msvcrt.locking` 非阻塞锁定第 0 字节，并通过 `windows_security.py` 的原生 DACL 仅授予当前用户访问及子项继承；拒绝状态目录的符号链接/目录联接。权限建立失败时抛错，不回退到 Windows chmod。原子结果文件在私有目录中创建，继续 fsync 后 replace，不改变服务器/设备隔离、结果重传及保留限额。
+
+`parent_process.py` 在 Windows 持有可同步等待的宿主进程句柄，以零超时 `WaitForSingleObject` 探测退出，避免调用 Windows 的 `os.kill(pid, 0)`；POSIX 保留存活探测。监测退出后触发主线程的既有清理路径。Windows 模型子进程树的 Job Object 管理仍待实现，不能据此宣称宿主异常退出清理已完成跨平台验收。
+
+`desktop/scripts/build_sidecar.py --electron` 在本机 Python 3.13 上构建独立 Runner，输出 `desktop/build/runner/mac-arm64`、`mac-x64` 或 `win-x64`；禁止从其他系统伪造目标架构。未加参数时仍保留旧 macOS Tauri 伴侣的 dist 与 sidecar 复制路径。

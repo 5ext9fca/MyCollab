@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -54,7 +55,8 @@ class RecoveryTests(unittest.TestCase):
 
     def test_device_and_server_isolation_and_private_permissions(self):
         path = self.store.save_result(self.request, self.payload)
-        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        if os.name == 'posix':
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         for server, token in [('https://other.com', 'secret'), ('https://example.com', 'other')]:
             self.assertEqual(list(StateStore(self.config, server, token).records()), [])
         self.assertNotIn('secret', path.read_text())

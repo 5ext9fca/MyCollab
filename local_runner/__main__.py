@@ -1,4 +1,5 @@
 import argparse
+import _thread
 from datetime import datetime
 import subprocess
 import ssl
@@ -16,6 +17,7 @@ from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_ope
 
 from .opencode import run, LocalFailure, Cancelled
 from .state import StateStore
+from .parent_process import ParentProcess
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -121,14 +123,23 @@ def run_cli(argv=None):
     if args.parent_pid is not None and args.parent_pid <= 1:
         parser.error("父进程编号无效。")
     if args.parent_pid:
+        try:
+            parent = ParentProcess(args.parent_pid)
+        except OSError:
+            parser.error("无法监测桌面宿主，请重新启动客户端。")
         def watch_parent():
-            while True:
-                try:
-                    os.kill(args.parent_pid, 0)
-                except ProcessLookupError:
+            try:
+                while parent.alive():
+                    time.sleep(1)
+            except OSError:
+                pass
+            finally:
+                parent.close()
+                # 让主线程走既有 finally 清理，Windows 上也不直接 TerminateProcess。
+                if os.name == 'posix':
                     os.kill(os.getpid(), signal.SIGTERM)
-                    return
-                time.sleep(1)
+                else:
+                    _thread.interrupt_main(signal.SIGTERM)
         threading.Thread(target=watch_parent, daemon=True).start()
     path = args.config.expanduser()
     try:

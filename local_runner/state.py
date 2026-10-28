@@ -1,11 +1,12 @@
 """私有执行日志与结果待发箱：恢复上传，不恢复模型执行。"""
-from contextlib import contextmanager
 import hashlib
 import json
 import os
 from pathlib import Path
 import tempfile
 import time
+
+from .private_files import exclusive_lock, private_directory, private_file_descriptor
 
 MAX_RECORDS = 100
 MAX_BYTES = 512 * 1024
@@ -19,7 +20,7 @@ def atomic_json(path, value):
     fd, name = tempfile.mkstemp(prefix='.pending-', dir=path.parent)
     try:
         with os.fdopen(fd, 'wb') as stream:
-            os.fchmod(stream.fileno(), 0o600)
+            private_file_descriptor(stream.fileno())
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
@@ -34,24 +35,11 @@ class StateStore:
         # 绑定服务器和设备，绝不把旧设备结果发给新服务器或新设备。
         identity = hashlib.sha256((server.rstrip('/') + '\0' + token).encode()).hexdigest()
         self.root = Path(config_path).parent / 'runner-state' / identity
-        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.root.chmod(0o700)
-        self.root.parent.chmod(0o700)
+        private_directory(self.root.parent)
+        private_directory(self.root)
 
-    @contextmanager
     def lock(self):
-        # macOS/Linux 的内核锁随进程退出释放，不依赖可能残留的 PID。
-        import fcntl
-        with (self.root / 'runner.lock').open('a+') as stream:
-            os.fchmod(stream.fileno(), 0o600)
-            try:
-                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as exc:
-                raise ValueError('该设备的 Runner 已在运行。') from exc
-            try:
-                yield
-            finally:
-                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+        return exclusive_lock(self.root / 'runner.lock')
 
     def status(self, state, **fields):
         records = list(self.records())

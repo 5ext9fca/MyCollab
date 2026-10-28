@@ -585,3 +585,15 @@ Intel 构建将上述后缀改为 `x86_64-apple-darwin`。测试会监听临时 
 Runner 的匿名管道入口由 `local_runner/tests/test_private_handoff.py` 使用真实 Python CLI 子进程检查，覆盖中文/空格路径、有界读取、错误脱敏及不创建明文配置。Python 3.13 的 Runner 测试共 30 项；本轮普通沙箱运行 28 项通过，另 2 项因本机监听权限受限，授权后单独重跑 `local_runner.tests.test_delivery_integration` 通过。所有检查均不涉及 GUI 或真实模型调用。
 
 桌面绑定使用独立内存 `device-probe` Session，只对已配置服务器的固定状态端点发送设备 Bearer，`credentials: omit`、`redirect: error`；不借用业务 Cookie。后端状态接口的身份字段为加法兼容变更，无新增迁移。GUI 绑定交互测试按用户要求暂缓，核验逻辑通过 Node 测试及后端 API 回归验证。
+
+
+Runner 原生构建与非 GUI 二进制检查（仓库根，使用 Python 3.13）：
+
+```bash
+backend/.venv/bin/python desktop/scripts/build_sidecar.py --electron
+backend/.venv/bin/python desktop/scripts/check_runner.py desktop/build/runner/mac-arm64/mycollab-runner
+```
+
+Windows 使用其 Python 3.13 解释器运行同一构建脚本，将检查路径替换为 `desktop/build/runner/win-x64/mycollab-runner.exe`；Intel macOS 使用 `mac-x64`。验证器创建临时本机 HTTP 服务，仅空领取一次、不执行模型，检查管道配置、中文/空格路径、状态与不落盘令牌，不启动 GUI。
+
+2026-10-29：Runner 回归 34 项完成，33 项通过，1 项 Windows 原生 ACL 测试在 macOS 上明确跳过；macOS arm64 独立 Runner 构建及上述二进制检查通过。Windows 和 Intel macOS 未实际构建/运行，Windows Job Object 进程树和原生 CI 仍待完成。DACL 实现依据 [Microsoft SetNamedSecurityInfoW](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-setnamedsecurityinfow)，文件锁依据 [Python msvcrt](https://docs.python.org/3.13/library/msvcrt.html)；不能以 POSIX 测试替代 Windows 验证。

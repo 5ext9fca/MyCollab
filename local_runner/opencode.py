@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 
+from .private_files import private_directory
 from .protocol import INPUT_LIMIT, RESULT_LIMIT, ProtocolError, bounded_json, validate_result, validate_evidence
 
 SYSTEM = """你是 MyCollab 的文本辅助。只能分析提供的文本，禁止调用任何工具、读取文件、运行命令或浏览网络。
@@ -101,6 +102,7 @@ def run(request, *, model, executable="opencode", heartbeat=lambda: True, timeou
     if version.returncode or version.stdout.strip() != "opencode v2.1.3":
         raise LocalFailure("local_configuration")
     with tempfile.TemporaryDirectory(prefix="mycollab-text-") as directory:
+        private_directory(directory)
         config = configuration()
         path = Path(directory, "opencode.json")
         path.write_text(json.dumps(config), encoding="utf-8")
