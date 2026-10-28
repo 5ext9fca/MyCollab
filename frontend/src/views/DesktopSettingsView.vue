@@ -1,7 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { desktop, type DesktopSettings } from '../platform/desktop'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { desktop, type DesktopSettings, type UpdateState } from '../platform/desktop'
 
+const update = ref<UpdateState>()
+const updateBusy = ref(false)
+const updateLabels: Record<string, string> = { disabled: '此开发包未启用在线更新', idle: '尚未检查', checking: '检查中', current: '已是最新版本', available: '有新版本', downloading: '下载中', ready: '下载完成，等待安装', installing: '正在停止 Runner 并安装', error: '更新失败' }
+let updateTimer: ReturnType<typeof setInterval> | undefined
+onUnmounted(() => clearInterval(updateTimer))
+async function updateAction(action: 'check' | 'download' | 'install') {
+  if (!desktop) return
+  updateBusy.value = true
+  try { update.value = await (action === 'check' ? desktop.checkUpdate() : action === 'download' ? desktop.downloadUpdate() : desktop.installUpdate()) }
+  catch { update.value = await desktop.updateStatus() }
+  finally { updateBusy.value = false }
+}
 const settings = ref<DesktopSettings>()
 const server = ref('')
 const busy = ref(false)
@@ -10,6 +22,8 @@ onMounted(async () => {
   try {
     settings.value = await desktop?.settings()
     server.value = settings.value?.server || ''
+    update.value = await desktop?.updateStatus()
+    updateTimer = setInterval(() => { if (desktop && !document.hidden) void desktop.updateStatus().then(value => { update.value = value }).catch(() => {}) }, 2000)
   } catch { error.value = '无法读取桌面设置。' }
 })
 async function saveServer() {
@@ -69,6 +83,16 @@ async function autostart(value: string | number | boolean) {
         <el-descriptions-item label="Electron">{{ settings.electron }}</el-descriptions-item>
         <el-descriptions-item label="Chromium">{{ settings.chromium }}</el-descriptions-item>
       </el-descriptions>
+    </el-card>
+    <el-card v-if="update" shadow="never">
+      <template #header><b>客户端更新</b></template>
+      <p>{{ updateLabels[update.state] || '更新不可用' }}<span v-if="update.version"> · {{ update.version }}</span></p>
+      <el-alert v-if="update.error" :title="update.error" type="error" :closable="false" />
+      <el-progress v-if="update.state === 'downloading'" :percentage="update.progress" />
+      <p>检查和下载不会停止 Runner。安装会停止 Runner 并退出客户端，请先保存编辑内容、结束文件传输；安装后不会自动启动模型。</p>
+      <el-button :disabled="updateBusy || update.state === 'disabled' || update.downloaded || update.state === 'installing'" @click="updateAction('check')">检查更新</el-button>
+      <el-button :disabled="updateBusy || !update.available || update.downloaded" @click="updateAction('download')">下载更新</el-button>
+      <el-button type="primary" :disabled="updateBusy || !update.downloaded || update.state === 'installing'" @click="updateAction('install')">停止 Runner 并安装更新</el-button>
     </el-card>
     <router-link class="app-link app-link--action" to="/">返回协作页面</router-link>
   </div>

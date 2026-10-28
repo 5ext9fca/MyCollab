@@ -6,6 +6,8 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import electronUpdater from 'electron-updater'
+import { UpdateController, updatePolicy, allowedUpdateURL } from './updates.mjs'
 import { RunnerController } from './runner.mjs'
 import { BindingVault } from './vault.mjs'
 import { DeviceBindings } from './binding.mjs'
@@ -29,6 +31,8 @@ let rendererSession
 let bindings
 /** @type {RunnerController | undefined} */
 let runner
+/** @type {UpdateController} */
+let updates
 let bindingRunner = false
 let finishingQuit = false
 let quitting = false
@@ -124,6 +128,10 @@ function handle(channel, operation) {
 }
 
 function registerIPC() {
+  handle('desktop:update-status', () => updates.snapshot())
+  handle('desktop:update-check', () => updates.check())
+  handle('desktop:update-download', () => updates.download())
+  handle('desktop:update-install', () => updates.install())
   handle('desktop:runner-binding', () => bindings.read())
   handle('desktop:import-legacy-runner', async () => {
     const filename = legacyConfigPath()
@@ -153,7 +161,7 @@ function registerIPC() {
     electron: process.versions.electron, chromium: process.versions.chrome,
     platform: process.platform, arch: process.arch }))
   handle('desktop:set-server', async (value) => {
-    if (changingServer) throw new Error('服务器正在切换。')
+    if (changingServer || finishingQuit) throw new Error('服务器或客户端正在切换。')
     if (typeof value !== 'string' || value.length > 2048) throw new Error('服务器地址无效。')
     const server = serverOrigin(value.trim())
     changingServer = true
@@ -245,6 +253,26 @@ else {
   const runnerDirectory = app.isPackaged ? path.join(process.resourcesPath, 'runner') : path.join(directory, '../build/runner', `${platform}-${process.arch}`)
   runner = new RunnerController([path.join(runnerDirectory, process.platform === 'win32' ? 'mycollab-runner.exe' : 'mycollab-runner')],
     path.join(app.getPath('userData'), 'runner', 'config.json'), () => bindings.verified(), legacyConfigPath())
+  let updater = null
+  if (app.isPackaged) {
+    try {
+      const metadata = JSON.parse(await readFile(path.join(app.getAppPath(), 'package.json'), 'utf8'))
+      const policy = updatePolicy(metadata.mycollabUpdates, process.platform, process.arch)
+      if (policy) {
+        updater = electronUpdater.autoUpdater
+        // 独立更新会话不携带业务 Cookie；所有重定向同样经过固定源限制。
+        updater.netSession.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !allowedUpdateURL(details.url, policy.url) }))
+      }
+    } catch { /* 开发包或不完整发行配置关闭更新入口。 */ }
+  }
+  let updateOwnsQuit = false
+  updates = new UpdateController(updater, async () => {
+    if (finishingQuit || bindingRunner || changingServer) throw new Error('客户端正在处理其他操作。')
+    finishingQuit = true
+    updateOwnsQuit = true
+    await runner?.stop()
+    quitting = true
+  }, () => { if (updateOwnsQuit) { finishingQuit = false; quitting = false; updateOwnsQuit = false } })
   registerIPC()
   createWindow()
   const icon = nativeImage.createFromPath(path.join(directory, '../src-tauri/icons/icon.png')).resize({ width: 18, height: 18 })

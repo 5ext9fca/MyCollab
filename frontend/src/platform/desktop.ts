@@ -11,7 +11,12 @@ export interface DesktopSettings {
 export interface RunnerBindingSummary { deviceId: string; model: string; opencode: string }
 export interface RunnerState { state: string; pending_results: number; rejected_results: number; error: string }
 export interface RunnerDiagnosis { opencode: string; server: string; protocol: number }
+export interface UpdateState { state: string; version: string; progress: number; error: string; available: boolean; downloaded: boolean }
 export interface DesktopBridge {
+  updateStatus(): Promise<UpdateState>
+  checkUpdate(): Promise<UpdateState>
+  downloadUpdate(): Promise<UpdateState>
+  installUpdate(): Promise<UpdateState>
   importLegacyRunner(): Promise<RunnerBindingSummary>
   startRunner(): Promise<RunnerState>
   stopRunner(): Promise<void>
