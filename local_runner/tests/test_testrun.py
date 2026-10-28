@@ -10,6 +10,7 @@ import time
 import unittest
 
 
+@unittest.skipUnless(os.name == "posix", "testrun.sh 是 POSIX 开发启动器；Windows 桌面由原生 Runner 测试覆盖")
 class TestRunTests(unittest.TestCase):
     def test_runner_start_skip_exit_and_cleanup(self):
         for mode in ("missing", "running", "failed"):

@@ -69,7 +69,7 @@ class RunnerCliTests(unittest.TestCase):
         self.config.parent.mkdir(parents=True)
         self.config.write_text(json.dumps({"server": "http://localhost:8000", "device_token": "secret", "model": "provider/model"}))
         self.config.chmod(0o600)
-        expansion = patch("pathlib.Path.expanduser", autospec=True, side_effect=lambda path: Path(str(path).replace("~/", str(self.home) + "/", 1)))
+        expansion = patch("pathlib.Path.expanduser", autospec=True, side_effect=lambda path: self.home.joinpath(*path.parts[1:]) if path.parts and path.parts[0] == "~" else path)
         expansion.start()
         self.addCleanup(expansion.stop)
 
@@ -117,8 +117,8 @@ class RunnerCliTests(unittest.TestCase):
                 self.assertIn("Runner 已停止", output.getvalue())
                 self.assertNotIn("Traceback", output.getvalue())
 
-    @patch("local_runner.opencode.subprocess.run")
-    @patch("local_runner.opencode.subprocess.Popen")
+    @patch("local_runner.opencode.version_check")
+    @patch("local_runner.opencode.spawn")
     def test_interrupt_reaps_model_process_and_removes_temporary_directory(self, popen, version):
         from local_runner.opencode import run
         version.return_value = Mock(returncode=0, stdout="opencode v2.1.3")
@@ -126,10 +126,14 @@ class RunnerCliTests(unittest.TestCase):
         process.stdout.readline.return_value = b""
         process.stdin.write.side_effect = KeyboardInterrupt
         process.poll.return_value = None
-        with patch("local_runner.opencode.os.killpg") as killpg, self.assertRaises(KeyboardInterrupt):
+        with patch("local_runner.opencode.os.killpg", create=True) as killpg, self.assertRaises(KeyboardInterrupt):
             run({"schema_version": 1, "kind": "agent_requirements", "input": {}}, model="provider/model")
-        killpg.assert_called_once()
-        process.wait.assert_called_once_with(timeout=3)
+        if os.name == 'nt':
+            process._mycollab_job.close.assert_called_once()
+            process.wait.assert_called_once_with(timeout=5)
+        else:
+            killpg.assert_called_once()
+            process.wait.assert_called_once_with(timeout=3)
         process.stdout.close.assert_called_once()
         self.assertFalse(Path(popen.call_args.kwargs["cwd"]).exists())
 

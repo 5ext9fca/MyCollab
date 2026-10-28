@@ -11,27 +11,16 @@ import tempfile
 import threading
 import unittest
 
+from local_runner.tests.fixture_cli import model_fixture
+from local_runner.parent_process import ParentProcess
+
 
 class DeliveryIntegrationTests(unittest.TestCase):
     def test_restart_after_server_commit_lost_ack_never_regenerates(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             model_count = root / 'model-count'
-            cli = root / 'opencode'
-            cli.write_text(f'''#!{sys.executable}
-import json
-import os, sys
-from pathlib import Path
-if '--version' in sys.argv:
-    print('opencode v2.1.3')
-else:
-    sys.stdin.read()
-    path = Path({str(model_count)!r})
-    path.write_text(path.read_text() + '1' if path.exists() else '1')
-    result = {{'title':'候选','content':'','summary':'','questions':[]}}
-    print(json.dumps({{'type':'text','part':{{'text':json.dumps(result)}}}}))
-''')
-            cli.chmod(0o700)
+            cli, model = model_fixture(root, 'complete')
             claimed, results = [], []
             class Handler(BaseHTTPRequestHandler):
                 def log_message(self, *args):
@@ -59,7 +48,7 @@ else:
             thread.start()
             try:
                 config = root / 'config.json'
-                config.write_text(json.dumps({'server':f'http://127.0.0.1:{server.server_port}', 'device_token':'test', 'model':'test/model', 'opencode':str(cli)}))
+                config.write_text(json.dumps({'server':f'http://127.0.0.1:{server.server_port}', 'device_token':'test', 'model':model, 'opencode':cli}))
                 config.chmod(0o600)
                 binary = os.environ.get('MYCOLLAB_TEST_RUNNER_BINARY')
                 command = [binary] if binary else [sys.executable, '-m', 'local_runner']
@@ -81,21 +70,7 @@ else:
             root = Path(directory)
             marker = root / 'started'
             stopped = root / 'stopped'
-            cli = root / 'opencode'
-            cli.write_text(f'''#!{sys.executable}
-import sys, time, signal
-from pathlib import Path
-if '--version' in sys.argv:
-    print('opencode v2.1.3'); sys.exit(0)
-sys.stdin.read()
-Path({str(marker)!r}).touch()
-def stop(*args):
-    Path({str(stopped)!r}).touch()
-    sys.exit(0)
-signal.signal(signal.SIGTERM, stop)
-while True: time.sleep(.05)
-''')
-            cli.chmod(0o700)
+            cli, model = model_fixture(root, 'wait')
             class Handler(BaseHTTPRequestHandler):
                 def log_message(self, *args): pass
                 def do_POST(self):
@@ -109,7 +84,7 @@ while True: time.sleep(.05)
             runner = None
             try:
                 config = root / 'config.json'
-                config.write_text(json.dumps({'server':f'http://127.0.0.1:{server.server_port}','device_token':'test','model':'test/model','opencode':str(cli)})); config.chmod(0o600)
+                config.write_text(json.dumps({'server':f'http://127.0.0.1:{server.server_port}','device_token':'test','model':model,'opencode':cli})); config.chmod(0o600)
                 binary = os.environ.get('MYCOLLAB_TEST_RUNNER_BINARY')
                 command = [binary] if binary else [sys.executable, '-m', 'local_runner']
                 runner = subprocess.Popen(command + ['--config',str(config),'--parent-pid',str(parent.pid)], cwd=root if binary else None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -118,9 +93,18 @@ while True: time.sleep(.05)
                     self.assertIsNone(runner.poll())
                     self.assertLess(time.monotonic(), deadline)
                     time.sleep(.05)
-                parent.terminate(); parent.wait(timeout=5)
-                self.assertEqual(runner.wait(timeout=10), 130)
-                self.assertTrue(stopped.exists())
+                model_process = ParentProcess(int(marker.read_text()))
+                try:
+                    parent.terminate(); parent.wait(timeout=5)
+                    self.assertEqual(runner.wait(timeout=10), 130)
+                    deadline = time.monotonic() + 5
+                    while model_process.alive() and time.monotonic() < deadline:
+                        time.sleep(0.05)
+                    self.assertFalse(model_process.alive(), '宿主退出后不能遗留模型进程')
+                    if os.name == 'posix':
+                        self.assertTrue(stopped.exists())
+                finally:
+                    model_process.close()
             finally:
                 if runner:
                     if runner.poll() is None: runner.terminate(); runner.wait(timeout=10)

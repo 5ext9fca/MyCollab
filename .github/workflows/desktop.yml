@@ -62,16 +62,21 @@ jobs:
           npm --prefix desktop run electron:test
       - name: 前端纯逻辑回归
         run: npm --prefix frontend run test -- src/tests/client.spec.ts src/tests/missions.spec.ts src/tests/library.spec.ts src/tests/fileTransferProtocol.spec.ts src/tests/fileTransferController.spec.ts
-      - name: macOS Runner 完整非 GUI 回归
-        if: runner.os == 'macOS'
-        run: python -m unittest discover -s local_runner/tests -v
-      - name: Windows 原生锁、ACL、Job 与管道回归
+      - name: 构建 Windows 测试模型 CLI（不接入供应商）
         if: runner.os == 'Windows'
-        run: python -m unittest local_runner.tests.test_private_files local_runner.tests.test_child_process local_runner.tests.test_private_handoff local_runner.tests.test_control_pipe -v
+        run: |
+          python -m PyInstaller --noconfirm --onefile --console --name fixture-opencode --distpath desktop/build/fixture --workpath desktop/build/fixture-work --specpath desktop/build local_runner/tests/fixtures/opencode.py
+          python -c "import os; from pathlib import Path; p=Path('desktop/build/fixture/fixture-opencode.exe').resolve(); open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8').write('MYCOLLAB_TEST_OPENCODE_BINARY=' + str(p) + '\n')"
+      - name: Runner 完整非 GUI 回归
+        run: python -m unittest discover -s local_runner/tests -v
       - name: 构建并验证原生 Runner
         run: |
           python desktop/scripts/build_sidecar.py --electron
           python desktop/scripts/check_runner.py desktop/build/runner/${{ matrix.target }}/${{ matrix.executable }}
+      - name: 独立 Runner 断线恢复与宿主退出
+        run: |
+          export MYCOLLAB_TEST_RUNNER_BINARY="$(python -c "from pathlib import Path; print(Path('desktop/build/runner/${{ matrix.target }}/${{ matrix.executable }}').resolve())")"
+          python -m unittest local_runner.tests.test_delivery_integration -v
       - name: 构建开发包（不启动窗口）
         run: npm --prefix desktop run electron:pack
       - name: 验证实际包内 Runner

@@ -609,7 +609,7 @@ Electron Runner 控制器的非 GUI 子进程测试覆盖就绪、重复启动�
 
 `.github/workflows/desktop.yml` 配置 PR 路径触发与手动触发，分别使用 `macos-15`（arm64）、`macos-15-intel`（x64）和 `windows-2025`（x64）。标签依据 [GitHub 官方运行器列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。每个平台安装锁文件依赖、执行 Electron 类型和边界测试、前端纯逻辑测试、构建原生 Python 3.13 Runner 与 Electron 开发目录包，再对实际包内 Runner 执行管道及状态检查。macOS 另外检查临时签名完整性。
 
-macOS 执行全部 Runner 非 GUI 测试；Windows 当前执行原生文件锁、ACL、Job、凭据管道与停止管道测试，尚未移植的 POSIX 测试不能视为 Windows 已覆盖。产物以 tar.gz 归档保留可执行权限，保存七天，只作为开发产物，不发布、不安装、不启动窗口、不使用发行密钥。Windows Server CI 不等于 Windows 客户端最低版本验收。工作流已写入但尚未在远端执行；未获推送授权，因此不能宣称三个平台构建已通过。
+三个原生目标均执行完整 Runner 非 GUI 测试发现入口；Windows 使用 PyInstaller 构建测试专用假模型 CLI，覆盖结果恢复、取消、文件锁、ACL、Job、凭据交接与停止。只有 POSIX 权限位、进程组、符号链接及 `testrun.sh` 的专属测试按平台跳过，Windows 对应机制由原生测试覆盖。构建后通过 `MYCOLLAB_TEST_RUNNER_BINARY` 对实际 Runner 二进制额外执行结果确认丢失恢复和宿主退出清理。产物以 tar.gz 归档保留可执行权限，保存七天，只作为开发产物，不发布、不安装、不启动窗口、不使用发行密钥。Windows Server CI 不等于 Windows 客户端最低版本验收。工作流已写入但尚未在远端执行；未获推送授权，因此不能宣称三个平台构建已通过。
 
 旧 macOS 配置导入采用原地复用状态目录与锁的方案，不复制待发箱。新增非 GUI 测试覆盖文件权限、符号链接、有界读取、服务器/用户核验、拒绝覆盖、加密状态标记及固定路径选择；`check_runner.py` 额外尝试竞争启动，验证实际二进制拒绝同状态目录的第二个 Runner。自定义 CA 的旧配置明确拒绝导入，相关信任适配仍待实现。
 
@@ -620,3 +620,5 @@ macOS 执行全部 Runner 非 GUI 测试；Windows 当前执行原生文件锁�
 `electron:pack` 生成更新禁用的开发目录包；`electron:dist` 要求发布环境提供 `MYCOLLAB_UPDATE_URL`（以 `/` 结尾的 HTTPS 目录，每个系统/架构使用独立目录）。Windows 另外要求 `MYCOLLAB_UPDATE_PUBLISHER` 匹配签名证书发布者；构建强制代码签名并保持更新签名验证。macOS 正式构建强制签名及公证，证书与公证认证使用 electron-builder 的标准发布环境配置。脚本生成 `build/electron-config.json`，把更新策略写入包元数据，生成匹配的 `app-update.yml`；始终 `--publish never`，不自动上传或发布。
 
 发布负责人需把同次构建的安装包、ZIP、blockmap 与更新清单放到对应固定目录，先传包再传清单；禁止配置跨域 CDN 跳转，更新网络策略会拒绝。当前没有配置真实发布证书、公证身份及更新服务，不能宣称正式签名发行或线上升级已通过。控制器以注入更新适配器运行非 GUI 测试，覆盖停止失败、并发操作、错误脱敏与手动安装边界，不调用原生安装器。
+
+Windows 测试假 CLI 源码为 `local_runner/tests/fixtures/opencode.py`，由 CI 打包后经 `MYCOLLAB_TEST_OPENCODE_BINARY` 指定；该夹具只在测试中使用，不随客户端分发、不调用供应商。路径由 Python 生成原生绝对路径，避免 Git Bash `/d/...` 路径进入 Windows 子进程环境。
