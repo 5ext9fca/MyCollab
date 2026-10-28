@@ -56,3 +56,30 @@ test('拒绝未登录请求以及超过大小上限的设备响应', async () =>
   await assert.rejects(service.bind(input), /响应过大/)
   assert.equal(stored(), null)
 })
+
+test('修改同一设备配置可沿用加密令牌，仍核验归属且不回显', async () => {
+  const { service, stored } = fixture()
+  await service.bind(input)
+  const result = await service.bind({ ...input, token: '', model: 'new/model', opencode: '/中文 目录/opencode' })
+  assert.equal(result.model, 'new/model')
+  assert.equal(result.opencode, '/中文 目录/opencode')
+  assert.equal(stored().device_token, input.token)
+  assert.equal('device_token' in result, false)
+  service.probe = async () => new Response(null, { status: 403 })
+  await assert.rejects(service.bind({ ...input, token: '' }), /身份验证失败/)
+  assert.equal(stored().model, 'new/model')
+})
+
+test('令牌留空不允许跨设备或无绑定配置，并发启动验证拒绝', async () => {
+  const { service } = fixture()
+  await assert.rejects(service.bind({ ...input, token: '' }), /新的设备令牌/)
+  await service.bind(input)
+  await assert.rejects(service.bind({ ...input, token: '', deviceId: '22222222-2222-2222-2222-222222222222' }), /新的设备令牌/)
+  let release
+  service.probe = () => new Promise(resolve => { release = resolve })
+  const saving = service.bind({ ...input, token: '' })
+  await assert.rejects(service.verified(), /绑定正在处理/)
+  while (!release) await new Promise(resolve => setImmediate(resolve))
+  release(Response.json({ device_id: id, owner_id: '1', schema_versions: [1] }))
+  await saving
+})

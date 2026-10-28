@@ -29,6 +29,7 @@ let rendererSession
 let bindings
 /** @type {RunnerController | undefined} */
 let runner
+let bindingRunner = false
 let finishingQuit = false
 let quitting = false
 let changingServer = false
@@ -123,11 +124,22 @@ function handle(channel, operation) {
 
 function registerIPC() {
   handle('desktop:runner-binding', () => bindings.read())
-  handle('desktop:bind-runner', async input => { await runner?.stop(); return bindings.bind(input) })
-  handle('desktop:runner-start', () => runner?.start())
+  handle('desktop:bind-runner', async input => {
+    if (bindingRunner || finishingQuit || changingServer) throw new Error('本机配置正在切换，请稍后重试。')
+    bindingRunner = true
+    try { await runner?.stop(); return await bindings.bind(input) }
+    finally { bindingRunner = false }
+  })
+  handle('desktop:runner-start', () => {
+    if (bindingRunner || finishingQuit || changingServer) throw new Error('本机配置正在切换，请稍后重试。')
+    return runner?.start()
+  })
   handle('desktop:runner-stop', () => runner?.stop())
   handle('desktop:runner-status', () => runner?.status())
-  handle('desktop:runner-diagnose', () => runner?.diagnose())
+  handle('desktop:runner-diagnose', () => {
+    if (bindingRunner || finishingQuit || changingServer) throw new Error('本机配置正在切换，请稍后重试。')
+    return runner?.diagnose()
+  })
   handle('desktop:settings', () => ({ server: settings.server, localNetwork: settings.localNetwork,
     autostart: app.getLoginItemSettings().openAtLogin, version: app.getVersion(),
     electron: process.versions.electron, chromium: process.versions.chrome,

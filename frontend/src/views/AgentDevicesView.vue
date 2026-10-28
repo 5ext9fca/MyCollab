@@ -96,11 +96,11 @@ onMounted(async () => {
         <el-checkbox-group v-model="capabilities"><el-checkbox v-for="(label, value) in names" :key="value" :value="value">{{ label }}</el-checkbox></el-checkbox-group>
         <el-button native-type="submit" :loading="busy">创建设备凭据</el-button>
       </el-form>
-      <el-card v-if="token" shadow="never"><h3>仅本次展示的设备凭据</h3><p>保存在本机权限为 600 的配置文件中。离开页面后无法找回，可撤销后重新创建。</p><el-input :model-value="token" type="password" show-password readonly aria-label="设备凭据" /><el-button @click="token = ''">隐藏凭据</el-button></el-card>
+      <el-card v-if="token" shadow="never"><h3>仅本次展示的设备凭据</h3><p>请妥善保存，离开页面后无法找回，可撤销后重新创建。桌面客户端可直接在下方加密保存，无须另建明文配置文件。</p><el-input :model-value="token" type="password" show-password readonly aria-label="设备凭据" /><el-button @click="token = ''">隐藏凭据</el-button></el-card>
     </el-card>
     <el-card v-if="desktop" shadow="never" class="section-card">
       <template #header><b>本机 Agent 绑定</b></template>
-      <p v-if="localBinding">本机已保存设备配置。已保存的令牌不会回显，保存不会自动启动模型。</p>
+      <p v-if="localBinding">本机已保存设备配置。已保存的令牌不会回显；修改同一设备的模型或路径时，令牌留空即可沿用。保存不会自动启动模型。</p>
       <p>选择当前账户的设备并填写设备令牌；不要填写模型供应商密钥。新创建设备会自动填入本次令牌。</p>
       <el-form label-position="top" @submit.prevent="bindLocal">
         <el-form-item label="设备"><el-select v-model="selectedDevice"><el-option v-for="device in devices"

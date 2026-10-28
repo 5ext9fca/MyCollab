@@ -68,6 +68,7 @@ export class DeviceBindings {
   }
 
   async verified() {
+    if (this.busy) throw new Error('设备绑定正在处理。')
     const identity = await this.identity()
     const binding = await this.vault.load(identity.transport.server, identity.owner)
     if (!binding) throw new Error('请先绑定本机设备。')
@@ -84,8 +85,15 @@ export class DeviceBindings {
       const identity = await this.identity()
       if (!input || typeof input !== 'object') throw new Error('设备配置无效。')
       const fields = /** @type {Record<string, unknown>} */ (input)
+      let token = fields.token
+      if (token === '') {
+        const existing = await this.vault.load(identity.transport.server, identity.owner)
+        identity.assertCurrent()
+        if (!existing || existing.deviceId !== fields.deviceId) throw new Error('更换设备需要填写新的设备令牌。')
+        token = existing.device_token
+      }
       const binding = validateBinding({ server: identity.transport.server, owner: identity.owner,
-        deviceId: fields.deviceId, device_token: fields.token, model: fields.model, opencode: fields.opencode })
+        deviceId: fields.deviceId, device_token: token, model: fields.model, opencode: fields.opencode })
       if (!/^[\x21-\x7e]{1,128}$/.test(binding.device_token)) throw new Error('设备令牌格式无效。')
       await this.verify(binding)
       identity.assertCurrent()
