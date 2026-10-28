@@ -258,7 +258,7 @@ else {
   const platform = process.platform === 'darwin' ? 'mac' : 'win'
   const runnerDirectory = app.isPackaged ? path.join(process.resourcesPath, 'runner') : path.join(directory, '../build/runner', `${platform}-${process.arch}`)
   runner = new RunnerController([path.join(runnerDirectory, process.platform === 'win32' ? 'mycollab-runner.exe' : 'mycollab-runner')],
-    path.join(app.getPath('userData'), 'runner', 'config.json'), () => bindings.verified(), legacyConfigPath())
+    path.join(app.getPath('userData'), 'runner', 'config.json'), () => bindings.verified(), legacyConfigPath(), () => bindings.local())
   let updater = null
   if (app.isPackaged) {
     try {

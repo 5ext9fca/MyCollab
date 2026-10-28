@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, writeFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -55,4 +56,22 @@ test('缺少可执行文件给出受控错误并清理进程句柄', async t => 
   runner.command = [path.join(tmpdir(), '不存在的-mycollab-runner')]
   await assert.rejects(runner.start(), /无法启动/)
   assert.equal(runner.child, null)
+})
+
+test('自检可使用本地配置解析器，不依赖启动用的在线验证', async t => {
+  const runner = await fixture(t, async () => { throw Error('offline') })
+  runner.resolveLocal = async () => ({ binding, assertCurrent() {} })
+  assert.deepEqual(await runner.diagnose(), { opencode: 'ok', server: 'ok', protocol: 1 })
+  await assert.rejects(runner.start(), /offline/)
+})
+
+
+test('停止期间仍显示同一设备待发箱摘要，不采用旧运行状态或敏感字段', async t => {
+  const runner = await fixture(t)
+  const key = createHash('sha256').update(binding.server + '\0' + binding.device_token).digest('hex')
+  const directory = path.join(path.dirname(runner.configPath), 'runner-state', key)
+  await mkdir(directory, { recursive: true })
+  await writeFile(path.join(directory, 'status.json'), JSON.stringify({ state: 'running', pending_results: 3,
+    rejected_results: 1, request_id: 'private-request', device_token: binding.device_token }))
+  assert.deepEqual(await runner.status(), { state: 'stopped', pending_results: 3, rejected_results: 1, error: '' })
 })

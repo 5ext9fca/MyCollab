@@ -624,3 +624,5 @@ Electron Runner 控制器的非 GUI 子进程测试覆盖就绪、重复启动�
 Windows 测试假 CLI 源码为 `local_runner/tests/fixtures/opencode.py`，由 CI 打包后经 `MYCOLLAB_TEST_OPENCODE_BINARY` 指定；该夹具只在测试中使用，不随客户端分发、不调用供应商。路径由 Python 生成原生绝对路径，避免 Git Bash `/d/...` 路径进入 Windows 子进程环境。
 
 `frontend/src/tests/desktopAuth.spec.ts` 是不挂载组件的 Pinia 状态测试，覆盖桌面停止失败时保留身份、成功退出后才重载。桌面传输测试另覆盖权限拒绝与会话过期区分、过期清理顺序及停止失败保护。
+
+独立 Runner 检查脚本另验证 `--diagnose --control-stdin` 在缺少 OpenCode、服务器拒绝设备时可返回 `unavailable` / `unauthorized`，管道保持打开直到自检结束，不领取或执行模型任务。桌面单元测试区分本地自检解析和在线启动核验，并验证会话代次变化使本地缓存失效。

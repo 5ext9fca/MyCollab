@@ -83,3 +83,20 @@ test('令牌留空不允许跨设备或无绑定配置，并发启动验证拒�
   release(Response.json({ device_id: id, owner_id: '1', schema_versions: [1] }))
   await saving
 })
+
+test('当前身份断网仍可读取自检配置，但启动继续要求在线核验', async () => {
+  const { service, transport } = fixture()
+  await service.bind(input)
+  transport.handle = async () => { throw Error('offline') }
+  service.probe = async () => { throw Error('offline') }
+  assert.equal((await service.local()).binding.device_token, input.token)
+  assert.equal((await service.read()).deviceId, id)
+  await assert.rejects(service.verified(), /offline/)
+  transport.generation++
+  await assert.rejects(service.local(), /身份已改变/)
+})
+
+test('本地自检配置不能在首次未核验身份时读取', async () => {
+  const { service } = fixture()
+  await assert.rejects(service.local(), /先登录/)
+})

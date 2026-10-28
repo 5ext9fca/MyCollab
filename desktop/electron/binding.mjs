@@ -30,7 +30,11 @@ export class DeviceBindings {
   /** @param {() => import('./transport.mjs').BusinessTransport | undefined} current
    * @param {import('./vault.mjs').BindingVault} vault
    * @param {typeof fetch} probe */
-  constructor(current, vault, probe) { this.current = current; this.vault = vault; this.probe = probe; this.busy = false }
+  constructor(current, vault, probe) {
+    this.current = current; this.vault = vault; this.probe = probe; this.busy = false
+    /** @type {{transport: import('./transport.mjs').BusinessTransport, owner: string, assertCurrent: () => void} | null} */
+    this.cachedIdentity = null
+  }
 
   async identity() {
     const transport = this.current()
@@ -45,11 +49,14 @@ export class DeviceBindings {
       }
     }
     assertCurrent()
-    return { transport, owner, assertCurrent }
+    this.cachedIdentity = { transport, owner, assertCurrent }
+    return this.cachedIdentity
   }
 
   async read() {
-    const identity = await this.identity()
+    let identity = this.cachedIdentity
+    try { identity?.assertCurrent() } catch { identity = null }
+    if (!identity) identity = await this.identity()
     const binding = await this.vault.load(identity.transport.server, identity.owner)
     identity.assertCurrent()
     return publicBinding(binding)
@@ -66,6 +73,17 @@ export class DeviceBindings {
         !Array.isArray(status.schema_versions) || !status.schema_versions.includes(1)) {
       throw new Error('设备令牌不属于当前用户或所选设备，请重新创建。')
     }
+  }
+
+  async local() {
+    if (this.busy) throw new Error('设备绑定正在处理。')
+    const identity = this.cachedIdentity
+    if (!identity) throw new Error('请先登录并读取本机绑定。')
+    identity.assertCurrent()
+    const binding = await this.vault.load(identity.transport.server, identity.owner)
+    identity.assertCurrent()
+    if (!binding) throw new Error('请先绑定本机设备。')
+    return { binding, assertCurrent: identity.assertCurrent }
   }
 
   async verified() {

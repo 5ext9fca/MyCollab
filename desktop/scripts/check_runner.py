@@ -37,7 +37,8 @@ try:
     with tempfile.TemporaryDirectory(prefix='mycollab-runner-') as directory:
         config = Path(directory) / '中文 空格' / 'runner.json'
         payload = json.dumps({'server': f'http://127.0.0.1:{server.server_port}',
-                             'device_token': 'smoke-device-secret', 'model': 'fixture/model'}).encode() + b'\n'
+                             'device_token': 'smoke-device-secret', 'model': 'fixture/model',
+                             'opencode': str(config.parent / 'missing-opencode')}).encode() + b'\n'
         command = [str(executable), '--config', str(config), '--config-stdin', '--parent-pid', str(os.getpid())]
         for mode in ['--once', '--status']:
             result = subprocess.run(command + [mode], input=payload, capture_output=True, timeout=30)
@@ -76,6 +77,21 @@ try:
             if process.poll() is None:
                 process.kill()
                 process.communicate(timeout=5)
+        diagnostic = subprocess.Popen(command + ['--diagnose', '--control-stdin'], stdin=subprocess.PIPE,
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            diagnostic.stdin.write(payload)
+            diagnostic.stdin.flush()
+            diagnostic.wait(timeout=30)
+            stdout, stderr = diagnostic.communicate(timeout=5)
+            assert diagnostic.returncode == 0
+            checks = json.loads(stdout)
+            assert checks['opencode'] == 'unavailable' and checks['server'] == 'unauthorized'
+            assert b'smoke-device-secret' not in stdout + stderr
+        finally:
+            if diagnostic.poll() is None:
+                diagnostic.kill()
+                diagnostic.communicate(timeout=5)
         assert len(claims) >= 2
         assert not config.exists()
         for path in Path(directory).rglob('*'):

@@ -8,8 +8,9 @@ import path from 'node:path'
 /** @typedef {{binding: Binding, assertCurrent: () => void}} Verified */
 
 export class RunnerController {
-  /** @param {string[]} command @param {string} configPath @param {() => Promise<Verified>} resolve @param {string | null} [legacyConfigPath] */
-  constructor(command, configPath, resolve, legacyConfigPath = null) {
+  /** @param {string[]} command @param {string} configPath @param {() => Promise<Verified>} resolve @param {string | null} [legacyConfigPath] @param {() => Promise<Verified>} [resolveLocal] */
+  constructor(command, configPath, resolve, legacyConfigPath = null, resolveLocal = resolve) {
+    this.resolveLocal = resolveLocal
     this.legacyConfigPath = legacyConfigPath
     this.command = command; this.configPath = configPath; this.resolve = resolve
     /** @type {import('node:child_process').ChildProcessWithoutNullStreams | null} */
@@ -128,8 +129,10 @@ export class RunnerController {
   async status() {
     const state = this.child ? (this.starting ? 'starting' : 'running') : 'stopped'
     const result = { state, pending_results: 0, rejected_results: 0, error: this.lastError }
-    const identity = this.identity
-    if (!identity) return result
+    let identity = this.identity
+    if (!identity) {
+      try { identity = await this.resolveLocal() } catch { return result }
+    }
     identity.assertCurrent()
     const { binding } = identity
     const key = createHash('sha256').update(binding.server.replace(/\/$/, '') + '\0' + binding.device_token).digest('hex')
@@ -156,7 +159,7 @@ export class RunnerController {
     this.diagnosing = true
     const epoch = this.epoch
     try {
-      const identity = await this.resolve()
+      const identity = await this.resolveLocal()
       identity.assertCurrent()
       if (epoch !== this.epoch) throw new Error('自检已取消。')
       const { child, payload } = this.launch(identity.binding, ['--diagnose', '--control-stdin'])
