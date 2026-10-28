@@ -626,3 +626,7 @@ Windows 测试假 CLI 源码为 `local_runner/tests/fixtures/opencode.py`，由 
 `frontend/src/tests/desktopAuth.spec.ts` 是不挂载组件的 Pinia 状态测试，覆盖桌面停止失败时保留身份、成功退出后才重载。桌面传输测试另覆盖权限拒绝与会话过期区分、过期清理顺序及停止失败保护。
 
 独立 Runner 检查脚本另验证 `--diagnose --control-stdin` 在缺少 OpenCode、服务器拒绝设备时可返回 `unavailable` / `unauthorized`，管道保持打开直到自检结束，不领取或执行模型任务。桌面单元测试区分本地自检解析和在线启动核验，并验证会话代次变化使本地缓存失效。
+
+### macOS 正式打包的公证前置检查
+
+`electron:dist` 在调用打包器前必须通过公证配置检查，不能仅依赖 `notarize: true`：当前锁定打包器在未找到凭据时会警告后跳过公证。支持完整的 `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID` 组合，或 `APPLE_API_KEY`、`APPLE_API_KEY_ID`、`APPLE_API_ISSUER` 组合，或 `APPLE_KEYCHAIN_PROFILE`（可选 `APPLE_KEYCHAIN`）。检查按打包器的账户 → API → 钥匙串优先级执行；残缺的高优先级配置直接失败，不回退。不输出凭据值。此检查只证明配置存在，实际凭据有效性及公证成功仍由发行构建验证；开发包不要求这些凭据。

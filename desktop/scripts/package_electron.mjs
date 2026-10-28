@@ -1,6 +1,7 @@
 /** 开发包使用临时签名；正式产物不得静默回退为未签名分发。 */
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { requireNotarization } from '../electron/release.mjs'
 import { updatePolicy } from '../electron/updates.mjs'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -24,7 +25,10 @@ if (!development) {
   config.extraMetadata.mycollabUpdates = policy
   config.publish = [{ provider: 'generic', url: root, useMultipleRangeRequest: false }]
   if (process.platform === 'win32') config.win = { ...config.win, publisherName: publisher, verifyUpdateCodeSignature: true }
-  else config.mac = { ...config.mac, notarize: true }
+  else {
+    requireNotarization(process.env)
+    config.mac = { ...config.mac, notarize: true }
+  }
 }
 await mkdir(path.join(desktop, 'build'), { recursive: true })
 const generated = path.join(desktop, 'build/electron-config.json')
