@@ -27,3 +27,19 @@ class AgentMetricsTests(TestCase):
         self.assertGreaterEqual(report['queue_wait']['p50_ms'], 10000)
         self.assertEqual(report['execution_and_delivery']['samples'], 1)
         self.assertNotIn('标题', out.getvalue())
+
+    def test_runner_status_is_readonly_and_device_attempt_isolation(self):
+        from rest_framework.test import APIClient
+        user = User.objects.create_user('device-owner')
+        device, token = services.create_device(user, name='原设备', capabilities=['design_polish'])
+        other, other_token = services.create_device(user, name='同账号另一设备', capabilities=['design_polish'])
+        item = services.create_request(user, device_id=device.pk, kind='design_polish', idempotency_key=uuid.uuid4(), draft={'title': '标题', 'content': '', 'kind': 'Asset'})
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(client.post('/api/agent-runner/status/').json()['schema_versions'], [1])
+        item.refresh_from_db()
+        self.assertEqual(item.status, 'queued')
+        item = services.claim(device.pk)
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {other_token}')
+        response = client.post(f'/api/agent-runner/requests/{item.pk}/heartbeat/', {'attempt_id': str(item.attempt_id)}, format='json')
+        self.assertEqual(response.status_code, 404)

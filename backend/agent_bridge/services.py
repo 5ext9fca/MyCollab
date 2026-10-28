@@ -286,7 +286,7 @@ def locked_attempt(device_id, request_id, attempt_id):
     device_available(device)
     device.last_seen_at = timezone.now()
     device.save(update_fields=["last_seen_at"])
-    request = device.requests.select_for_update().filter(pk=request_id, owner=device.owner, kind__in=protocol.KINDS).first()
+    request = device.requests.select_for_update().filter(pk=request_id, device=device, owner=device.owner, kind__in=protocol.KINDS).first()
     if not request:
         raise NotFound()
     if request.attempt_id != attempt_id:

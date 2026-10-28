@@ -497,3 +497,17 @@ backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
 探针需要已存在的有效用户；可用 `--mission-id UUID` 指定详情任务，空库不测详情。每个端点一次预热后统计 p50/p95、最大 SQL 数和 SQL 中位耗时；并非并发压测。Agent 统计最近 1–720 小时内创建的请求，输出样本数；未出现样本返回 null，不将无数据当成零耗时。运行耗时包含模型及回传，不能当作纯模型速度。
 
 前端在开发/构建时设置 `VITE_PERFORMANCE_METRICS=1`。完成工作台操作后，在浏览器控制台调用 `window.mycollabPerformance.snapshot()` 读取最近 200 条记录，`clear()` 清空。记录只有固定事件名、耗时、图规模与完成状态，不含业务文本；切换页面或刷新会影响样本范围，比较时固定设备、任务规模、日期窗口和筛选。
+
+## 19. Runner 恢复与诊断
+
+本批本机进程锁支持 macOS/Linux（POSIX），Windows 尚未验收。配置旁 `runner-state/<identity>/` 保存私有待发结果；旧设备/服务器的结果不能跨配置回传。原有“心跳失败立即停止”“回传最多三次后丢弃”的行为由本节替代：仅在已确认租约内短暂容忍断网，持久化结果按原轮次重传。服务器过期后仍拒收，保留期不是租约延长。
+
+```bash
+backend/.venv/bin/python -m local_runner --diagnose
+backend/.venv/bin/python -m local_runner --status
+backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
+```
+
+诊断不领取任务、不调用收费模型；CLI 版本通过不代表供应商额度或登录一定有效。空闲领取间隔约 3–10 秒（加 0–1 秒抖动），网络失败退避最多 30 秒。恢复的是结果投递；模型本身不自动重试。待发箱错误或存储耗尽时应修复本机存储，不能通过删除执行记录来假定任务可安全重跑。
+
+Runner 可配置可选 `ca_file` 指向管理员提供的 PEM 根证书；用于内部 CA 的 HTTPS，仍进行证书与主机名校验，不提供跳过验证开关。桌面进程通过 `--parent-pid` 启动 Runner；父进程消失时 Runner 收到 SIGTERM 并清理模型子进程。命令行独立运行不受桌面父进程约束。

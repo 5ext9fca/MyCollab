@@ -683,3 +683,12 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - `performance_probe` 在指定有效成员身份下，只读测量任务列表、详情及工作台接口；临时登录会话在结束时删除，不修改任务。它测量本进程服务端处理，不代表浏览器或公网端到端表现。
 - 前端可选记录 `gantt_layout`（布局计算）与 `workspace_reload`（加载至 Vue 更新，不代表 GPU 绘制完成），最多保留 200 条本机样本，不上传。未开启时不保留样本。
 - 验证入口：`common.tests.test_observability`、`agent_bridge.tests.test_metrics`、`frontend/src/tests/performance.spec.ts`。开启及读取方法见 TECH_STACK“性能测量”。
+
+## 本地 Runner 断线恢复
+
+- `local_runner/state.py` 按服务器地址与设备令牌摘要隔离私有状态目录；结果采用原子替换落盘，文件权限 0600、目录 0700。待发箱最多 100 条，每条最多 512 KiB，保留 24 小时；不持久化请求输入或令牌。
+- 领取后先写执行标记，模型结果先落盘再回传。启动时优先回传未确认结果，复用 request/attempt 和原始结果；没有结果的中断执行不自动重跑。服务器的终态、版本、设备和轮次校验仍生效。
+- 非重试型 4xx 拒收的结果留本机到保留期结束，不重复上传、不写业务对象；401/403 停止设备，429/网络/5xx 留待后续回传。每设备本机文件锁阻止重复 Runner。
+- 心跳在上一次已确认租约的保守安全窗口内允许短暂网络失败；明确取消或鉴权失败立即停止，超过安全窗口终止模型。并不延长服务器租约，也不自动重新生成。
+- 新增设备认证的 `POST /api/agent-runner/status/`，只返回协议版本、声明能力、凭据有效期与租约时长，不领取任务。`--diagnose` 检查本机 CLI 版本和服务器协议；`--status` 输出脱敏本地状态。
+- 验证入口：`local_runner/tests/test_recovery.py`、`test_delivery_integration.py`，包含真实本机 HTTP 丢失回传确认与 Runner 重启；供应商调用使用假 CLI。

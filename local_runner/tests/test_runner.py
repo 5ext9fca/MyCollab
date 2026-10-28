@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 import io
 import json
 import os
@@ -110,7 +111,7 @@ class RunnerCliTests(unittest.TestCase):
         for phase in ("claim", "sleep", "execute"):
             with self.subTest(phase=phase):
                 client.return_value.post.side_effect = KeyboardInterrupt if phase == "claim" else None
-                client.return_value.post.return_value = {"id": "request", "attempt_id": "attempt"} if phase == "execute" else None
+                client.return_value.post.return_value = {"id": "request", "attempt_id": "attempt", "lease_expires_at": (datetime.now(timezone.utc) + timedelta(seconds=180)).isoformat()} if phase == "execute" else None
                 with patch("local_runner.__main__.time.sleep", side_effect=KeyboardInterrupt), patch("local_runner.__main__.run", side_effect=KeyboardInterrupt), patch("sys.stderr", new_callable=io.StringIO) as output:
                     self.assertEqual(main([]), 130)
                 self.assertIn("Runner 已停止", output.getvalue())
@@ -152,3 +153,10 @@ class RunnerCliTests(unittest.TestCase):
         with patch("sys.stderr", new_callable=io.StringIO):
             self.assertEqual(main([]), 130)
         self.assertEqual(signal.getsignal(signal.SIGTERM), previous)
+
+
+class DiagnosticTests(unittest.TestCase):
+    def test_custom_ca_is_used_without_disabling_verification(self):
+        with patch("local_runner.__main__.ssl.create_default_context") as context:
+            BridgeClient("https://example.com", "secret", ca_file="/tmp/team-ca.pem")
+        context.assert_called_once_with(cafile="/tmp/team-ca.pem")
