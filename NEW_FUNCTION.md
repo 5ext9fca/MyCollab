@@ -1,253 +1,160 @@
-> 此文件原统一 Agent Panel 方案已归档至 `feature/agent-delegation`，以下内容不再是主分支待实现需求。主分支改为本地 LLM 整理并导出 Agent 需求 Markdown；已实现结构与规则见 `PROJECT_STRUCTURE.md` 的“Agent 需求文档导出”。
+# 新功能：迁移 Electron 并交付 Windows / macOS 完整桌面客户端
 
-# NEW_FUNCTION — 统一 Agent Panel 实现方案
+## 1. 决策、目标与状态
 
-## 1. 目标与本次范围
+用户已确认：开发完整桌面客户端，支持 Windows 与 macOS，桌面宿主从 Tauri 迁移至 Electron。本文件替换此前已归档的统一 Agent Panel 方案，是本次完整需求与分阶段开发计划；本次仅编写计划，以下新增能力尚未实现。
 
-在现有 Mission 协作流程上统一本地 Agent 的入口、执行状态和成果展示。Agent 是用户拥有、可替换的执行资源；MyCollab 管理业务权限，本地 Runner 管理执行环境和本机授权。
+交付目标是用户安装一个 App 后，在其中完成现有 MyCollab 业务流程、本地 Agent 配置与运行、文件直传，不再依赖浏览器承载主要业务页面。保留 Web 端，两个入口复用同一套 Vue 业务代码和 Django 服务。
 
-本文是待实施规格，已按当前 Django + Vue + Python Runner 结构修正；不表示以下新增功能已经实现。首批交付轻量统一面板，不要求实现全功能 Agent WebUI，也不要求先完成聊天、流式输出、工具审批或会话恢复。
+“完整打包”包括 Electron、Chromium、Vue 静态资源及内置 Python 的 Runner 可执行文件；不包括把 Django/PostgreSQL 部署到每台用户电脑。OpenCode 仍由用户本机安装并完成供应商登录，App 提供检查与引导；不得宣称包含模型账户、模型费用或离线推理环境。
 
-用户可以在 Mission 详情选择委派类型与自己的设备，预览需求后发起执行，查看进度、取消或明确新建执行，并将已发布成果引用到人工提交草稿。设计、资产说明、生产模板、Mission 编写和验收辅助继续保留各自表单入口，不强制都绑定到一个已存在的 Mission。
+首批目标平台为 Windows x64、macOS arm64 与 x64，分别构建与验收；Windows arm64 和 Linux 不在本次承诺范围。最低系统版本在第一阶段依据所选 Electron 的官方支持范围确定并记录，不凭开发机成功推定所有系统受支持。
 
-后续可按需增加设备能力发现、工作区选择、交互会话和有限事件展示；这些扩展不能阻塞首批交付。
+## 2. 当前已实现的基础与缺口
 
-## 2. 强制边界
+### 2.1 业务前端
 
-- **新增服务器负担最小化**：服务器仅做认证、业务授权、有界任务交接、协议校验、有限结果与成果存储。全部 LLM/图像提供商通信、登录、凭据保管、认证刷新和输出下载由用户本地 Agent 环境承担。
-- 复用 Django/PostgreSQL 与 HTTPS 短轮询；首批不新增 WebSocket Gateway、Redis、Celery、模型 SDK、远程终端或服务端构建/测试。浏览器不连接用户 localhost，不代理本地 OpenCode 服务。
-- 复用现有 `local_runner/` Python 程序，不另建 Node Worker。Worker 是本文对 Runner 的职责称呼，不是第二个进程产品。首批继续命令行安装、配置和启动；系统服务安装器、配对登录向导和跨平台打包另行实施。
-- 服务器只传业务需求和本地注册的标识，不能指定本机绝对路径、任意 shell 命令或扩大本地权限。供应商凭据不能进入 SPA、任务正文、服务器或上传日志。
-- 代码在基于固定 Git 提交导出的独立副本执行，保持当前原仓库保护；不得改为直接编辑用户原目录。独立目录不是操作系统安全沙箱。
-- Agent 完成只表示候选或成果已返回；认领、提交和验收继续由人操作。不得自动提交 Mission、验收、应用补丁到原仓库、push、创建 PR、合并或部署。
-- 多用户不等于设备共享：首批只允许使用本人设备。团队成员查看 Mission 不获得操作他人设备、读取私有会话或批准本地工具的权限。
+`frontend/` 使用 Vue 3、TypeScript、Element Plus、Pinia、Vue Router 与 Vite：
 
-## 3. 当前已经实现的基础
+- `src/router/index.ts` 使用 `createWebHistory()`，已有登录、注册、我的工作、任务广场、工作区、任务创建/详情、认领/发布列表、里程碑、设计、生产模板、素材库、通知、设备、文件直传和 `/manage` 管理页；路由守卫区分登录与管理员。
+- `src/api/client.ts` 统一请求、FormData、取消信号、CSRF 与 `{code, message, field_errors}` 错误。当前依赖相对 `/api/`、`credentials: 'same-origin'` 和 `document.cookie`，不能原样假设适用于本地页面访问远程 Django。
+- `src/api/auth.ts` 提供 `/api/auth/login/`、`logout/`、`me/`、`register/`；`client.ts` 从 `/api/auth/csrf/` 初始化 CSRF。`src/stores/auth.ts` 保存业务登录状态。
+- `src/api/library.ts` 以 FormData 上传，Markdown 使用接口返回的文件 URL；私有图片、链接与下载不全部经过 JSON 请求封装，迁移时必须覆盖资源加载链路。
+- `src/components/MarkdownContent.vue` 负责清洗 Markdown；`src/style.css` 提供卡片与 `app-link` 规范。桌面整合继续复用。
+- `src/api/agentBridge.ts` 提供设备及文本辅助请求；当前包括四类文本辅助与 `agent_requirements` 需求文档整理导出。不得把旧方案中的图像执行、代码委派、交互会话或远程工具审批当作主分支已有能力。
 
-### 3.1 后端结构与模型
+### 2.2 后端、模型与数据流
 
-`backend/agent_bridge/` 已提供设备认证、请求队列、租约、取消、过期、幂等和协议校验：
+服务端继续使用 Django/DRF/PostgreSQL：
 
-- `models.py` 的 `AgentDevice`：owner、name、capabilities、token_digest、expires_at、revoked_at、last_seen_at。设备令牌仅创建时展示，服务器保存摘要。没有工作区注册表、Agent 实例表或实时连接状态字段。
-- `AssistanceRequest`：owner/device、kind、object_id、base_version、submission_id、input、status、attempt_id、lease_expires_at、expires_at、result、error、stopped_at、retry_of、idempotency_key 与 payload_digest。
-- 七类 kind：`design_polish`、`template_generate`、`mission_write`、`review_assist`、`image_generate`、`image_edit`、`code_implement`。这是业务任务能力，不是 Agent 品牌或模型列表。
-- 请求状态固定为 `queued/running/awaiting_selection/succeeded/failed/cancelled/expired`。每设备最多一个 running，请求创建限制每用户最多三个活跃请求。已有幂等键与 attempt_id 校验。
-- `services.py` 负责设备及交接逻辑；`authentication.py` 限定 Runner 使用设备 Bearer，浏览器使用 Session + CSRF；`protocol.py`、`image_protocol.py`、`code_protocol.py` 为两端复用的纯 Python 有界协议。
+- `backend/accounts/` 提供 Session 登录、用户与注册审批；桌面普通业务身份与 Runner 设备身份必须分开。
+- `backend/missions/services.py` 承载 Mission 业务写入，保留事务锁、状态机与 `expected_version` 乐观锁，冲突仍返回 409；客户端不能直接修改数据库或绕过服务层。
+- `backend/library/` 文件按用户隔离，经 `/api/library/files/` 上传/列表、`/api/library/files/{id}/` 授权访问/删除；禁止公开 MEDIA_ROOT。Markdown 仍只允许作者自己的素材引用及允许的外链。
+- `backend/agent_bridge/models.py` 的 `AgentDevice` 有 owner、capabilities、token_digest、expires_at、revoked_at、last_seen_at；设备令牌服务端仅存摘要。
+- `AssistanceRequest` 有 owner/device、kind、input/result、base_version、submission_id、status、claimed_at、attempt_id、lease_expires_at、expires_at、stopped_at、retry_of、idempotency_key、payload_digest。状态为 queued/running/succeeded/failed/cancelled/expired；每设备最多一个 running，保留幂等与租约校验，不新增重复状态机。
+- `backend/agent_bridge/urls.py` 提供 `/api/agent-devices/`、设备 `revoke/`、`/api/assistance-requests/`、请求详情与 `cancel/`；浏览器业务接口使用 Session + CSRF。Runner 使用设备 Bearer 访问 `/api/agent-runner/status/`、`claim/`、`requests/{id}/heartbeat/`、`result/`，不能将此令牌用于一般业务 API。
 
-`backend/missions/models.py` 已有成果领域对象：
+现有数据流为：业务前端提交辅助需求 → Django 有界交接 → 本地 Runner 领取并调用 OpenCode → 幂等回传结果 → 用户审阅/采纳或导出文档。迁移仅改变桌面承载与本地接入体验，不自动提交 Mission、验收、执行代码、push 或部署。
 
-- `MissionExecution`：图像执行，关联 request、Mission、Asset、actor、业务版本、前一执行、参考素材与选择集合。
-- `ExecutionCandidate`：图像候选摘要、尺寸及已上传 LibraryFile；`SubmissionExecutionArtifact` 固定提交轮次引用。
-- `CodeExecution`：关联 request、Mission、actor、mission_version、repository_key、version、previous、manifest、report 与 patch。
-- `SubmissionCodeExecution`：固定提交轮次的代码成果引用。
+### 2.3 桌面伴侣与 Runner
 
-业务写入经过 `backend/missions/services.py` 入口，其中复用 `execution_services.py` 和 `code_services.py`；视图不绕过服务层。文件保存和删除经过 `backend/library/services.py`。
+- `desktop/src/App.vue` 是独立配置面板；`desktop/src/bridge.ts` 调用 Tauri 的配置读写、自检、Runner 启停/状态、网站打开、自启动及更新命令。
+- `desktop/src-tauri/src/main.rs` 已有原生命令、托盘、单实例、关闭隐藏、父子进程生命周期和更新互斥；只加载本地页面。当前不是完整业务客户端。
+- `desktop/scripts/build_sidecar.py` 使用 PyInstaller 打包 Runner，明确只支持 macOS/Python 3.13；当前产物实际验证过 macOS arm64，不能据此宣称 Windows 或 Intel 已支持。
+- `local_runner/__main__.py` 负责配置、BridgeClient、领取、执行、自检、状态与父进程监测；`local_runner/opencode.py` 调用 OpenCode，当前验证版本为 2.1.3。
+- `local_runner/state.py` 按服务器和设备令牌派生隔离目录，原子保存结果后再上传；待发箱最多 100 条、每条最多 512 KiB、保留 24 小时。恢复只重传原结果，不自动重新调用付费模型。
+- 现有 POSIX `fcntl.flock`、`os.fchmod`、进程组信号与父 PID 探测需要 Windows 适配。只把 Rust 换成 Node 或生成 `.exe` 不等于完成跨平台移植。
+- 原 macOS 配置位于 `~/.config/MyCollab/mycollab-runner.json`；配置与待发箱迁移需保留设备身份，避免两个宿主同时启动同一设备。
 
-**不新建重复的 AgentRun 状态机。** 首批 UI 中的“执行记录”是现有请求与对应成果对象的展示投影。以 request_id 标识一次交接，以 execution_id 标识成果记录；取消、重试及提交关联不能混用这两个 ID。
+### 2.4 文件直传
 
-不是每个请求都有 Mission 或 workspace：设计与模板辅助可能独立存在，Mission 编写可能发生在创建前，图像执行关联 Asset，只有代码执行需要 repository_key。不得给全部 AssistanceRequest 增加必填 Mission/工作区关系。
+`frontend/src/transfers/controller.ts`、`protocol.ts`、`views/FileTransferView.vue` 及 `src/api/transfers.ts` 实现 WebRTC DataChannel 直传；`backend/transfers/urls.py` 提供 `/api/file-transfers/`、`join/` 和会话操作接口。Django 只承担有界信令，文件不经服务器中转。
 
-### 3.2 当前接口
+当前 `iceServers: []`，无 STUN/TURN；单文件最多 100 MiB，接收端校验大小与 SHA-256 后才允许成功/下载。没有后台接收、断点续传或多 GB 承诺。已有 Chrome 默认 mDNS 连接失败而测试专用原始 IP 候选通过的记录，说明 Chromium 不能替代网络可达性验证。
 
-以下路径均以 `/api/` 为前缀并保留结尾斜杠。首批复用，不另建 `/api/agent/runs` 系列。
+## 3. 目标架构与强制边界
 
-浏览器接口：
+### 3.1 统一前端与桌面宿主
 
-- `GET/POST agent-devices/`：本人设备列表与创建；`POST agent-devices/{id}/revoke/`：撤销。
-- `GET/POST assistance-requests/`：本人请求历史与四类文本请求创建；`GET assistance-requests/{id}/`、`POST assistance-requests/{id}/cancel/`。
-- `GET mission-executions/?mission={id}`、`POST mission-executions/`：图像历史与创建；`GET mission-executions/{id}/`、`POST mission-executions/{id}/cancel/`。
-- `GET code-executions/?mission={id}`、`POST code-executions/`：代码历史与创建；`GET code-executions/{id}/`、`POST code-executions/{id}/cancel/`。
-- 现有 `POST missions/{id}/submit/` 接收人工填写的提交内容，可附带 `execution_candidate_ids` 和 `code_execution_ids`；使用现有提交/验收权限与状态校验。
+- `frontend/` 保持唯一业务页面实现；新增平台适配层，区分 Web 的浏览器能力与桌面的窄接口。禁止复制整套页面到 `desktop/` 后分别维护。
+- `desktop/` 改为 Electron 主进程、preload、打包与桌面测试入口；建议新增 `desktop/electron/`，具体文件拆分由实现确定。主进程管理窗口、会话、资源访问、Runner、托盘、文件对话框、凭据与更新。
+- 渲染进程加载随包分发的 Vue 资源。使用明确的应用协议/路由回退方案，覆盖刷新、深链和资源路径；不能仅用 `file://` 打开产物后忽略路由与安全上下文。
+- 本地控制页并入业务导航；Web 端继续提供原有业务页面，对仅本地可用操作给出准确说明。
+- Electron/Chromium 版本固定并记录，建立定期安全升级与回归流程；开发用 Node 版本不等于 Electron 内置 Node 版本。
 
-Runner 接口（只接受设备认证，写入须绑定当前 attempt）：
+### 3.2 认证与文件访问
 
-- `POST agent-runner/claim/`。
-- `POST agent-runner/requests/{request_id}/heartbeat/`、`result/`。
-- 图像：同一请求路径下的 `references/{file_id}/`、`candidates/`、`selection/`、`candidates/{key}/upload/`、`complete/`，均为 POST。
-- 代码：同一请求路径下的 `code-manifest/` 与 `code-publish/`，均为 POST；后者上传 patch/report。
+首选方案是主进程持有按服务器隔离的业务会话，以受限请求适配层复用 Django Session + CSRF。第一阶段必须完成登录和私有图片的可运行验证，确定 Cookie 保存、CSRF 获取/轮换、请求 Origin/Referer、资源协议与重定向规则；普通浏览器认证规则不得放宽。
 
-代码创建的关键字段为 mission_id、device_id、repository_key、expected_version、instructions、idempotency_key、previous_id。图像创建额外需要 asset_id、asset_version、kind 和 reference_ids。统一面板保留各类型字段与两端校验，不能将图像/代码请求发到只支持文本创建的接口。
+- 不向 renderer 暴露 HttpOnly 会话值、已保存设备令牌或供应商凭据；不保存用户登录密码。
+- 请求仅能到用户配置并验证的服务地址及允许的业务路径/方法；禁止任意 URL 代理、任意请求头注入、跨源重定向携带凭据或将业务凭据发给 Markdown 外链。
+- 统一处理 JSON、multipart、私有图片、下载、导出、取消、错误码与会话过期；大文件使用有界流/分块，不通过通用 IPC 复制无限制缓冲。
+- Markdown 中持久化的素材链接保持现有规范，桌面映射仅在显示/访问层处理，不能把本机协议或绝对路径写回服务器。
+- 切换服务器或账户、退出登录时停止当前 Runner 和轮询，清理对应渲染状态、资源 URL 与会话，阻止旧响应进入新账户界面；旧设备待发箱仍隔离保存，不能转交新身份。
+- HTTPS 严格校验证书；若支持自定义 CA，应限定到指定服务器并覆盖业务与 Runner 请求。禁止关闭证书校验、全局关闭 Web 安全或取消服务端 CSRF 检查。
+- 若上述会话方案无法满足约束，先更新本规格和相关认证规则，明确替代协议与测试，再实施；不得悄悄用设备令牌替代用户登录。
 
-现有权限需要准确区分：设备及原始辅助请求按用户隔离；图像/代码执行历史与已发布成果在当前单团队中可查看，创建/取消受服务层权限限制。素材列表按所有者隔离，下载通过认证 API，不能把 MEDIA_ROOT 公开为静态目录。尚未发布的本地补丁、图片正文和原始 Agent 日志不因此变成团队可见。
+### 3.3 本地权限边界
 
-### 3.3 当前前端
+renderer 禁用 Node integration，启用 context isolation 与 sandbox；preload 只暴露固定、可校验的操作，不暴露通用 shell、文件系统、IPC 或 HTTP 客户端。主进程校验调用来源、参数、路径与当前身份；严格限制导航、新窗口、权限请求及外链协议。远程网页和用户 Markdown 不获得本地 Agent 控制权。
 
-前端是 Vue 3 + TypeScript + Element Plus + Pinia + Vue Router，不使用 React hooks 或 TSX 组件树：
+设备凭据采用系统保护存储，配置与待发箱按当前 OS 用户隔离；Windows 使用实际 ACL/平台机制，不把 POSIX chmod 当作同等保障。Runner 读取凭据的交接方式必须避免命令行参数、日志与模型子进程继承泄漏。首次配置可受控导入旧配置，保存后不再回显令牌。
 
-- `frontend/src/api/agentBridge.ts`：设备与文本请求；`executions.ts`：图像；`codeExecutions.ts`：代码；`types.ts`：提交与成果类型。
-- `components/AssistancePanel.vue`：四类文本辅助，预览输入、候选逐字段采纳和过期检查。
-- `components/MissionExecutionPanel.vue`：图像委派、历史及成果引用。
-- `components/MissionCodePanel.vue`：代码委派、历史及成果引用。
-- `components/CodeReport.vue`：摘要、基线、文件列表、补丁下载和本地验证结果。
-- `views/MissionDetailView.vue` 与 `components/MissionDetailDrawer.vue` 已嵌入图像/代码面板；完整详情支持采纳到提交草稿，抽屉保留跳转完整详情的操作。
-- `views/AgentDevicesView.vue` 已负责设备创建、撤销和请求历史。设计、模板、Mission 表单、验收对话框已有文本辅助入口。
+## 4. Windows / macOS Runner 与桌面体验
 
-API 统一通过 `src/api/` 的请求封装处理 CSRF/错误；Markdown 使用 `MarkdownContent.vue` 清洗，链接使用 app-link，卡片沿用项目 Element Plus 规范。
+1. 抽取平台相关的文件锁、原子写入权限、进程树终止和父进程存活机制。Windows 可采用 Job Object 等受控进程树方案，必须验证宿主崩溃后模型子进程不遗留；不能仅终止直接子进程。
+2. 针对三个目标架构，在相应系统构建独立 Runner；安装后不要求 Python、Rust、Node 或源码。验证带空格/中文路径、CLI 路径、证书路径和权限错误。
+3. 保留租约、取消、退避、状态、待发箱与结果幂等语义。网络失败、App 崩溃或更新不得触发重复模型调用；401/403、撤销和过期必须明确停止。
+4. 将设备创建/绑定、模型与 OpenCode 路径、诊断、启动/停止、脱敏状态、待发结果提示整合进客户端。设备必须属于当前用户和服务器，绑定不成立时禁止启动。
+5. 实现托盘、单实例、关闭隐藏、明确退出和可选开机启动；首次安装不默认自动启动 Runner。切换身份与退出要等待停止结果，异常时显示真实状态。
+6. 隐藏窗口期间允许已启动的 Runner 按设置继续运行；退出必须停止。文件直传首批仍要求页面保持打开，不承诺隐藏/休眠期间持续传输；发生中断必须有提示和重试入口。
+7. macOS 旧伴侣采用受控导入与手动安装新客户端的迁移路径；校验旧进程已停止后再启用新宿主，不能假设 Tauri updater 可直接更新为 Electron。导入失败保留原文件与可恢复信息，不自动删除旧待发箱。
 
-### 3.4 当前本地执行结构
+## 5. WebRTC 专项要求
 
-- `local_runner/__main__.py`：配置读取、BridgeClient、领取与按 kind 分发。配置保存在本机，POSIX 权限 600；模型子进程不接收 MyCollab 设备凭据。
-- `opencode.py`：四类文本任务，独立无工具会话。
-- `opencode_code.py`：代码任务专用 OpenCode 配置，限定读写路径，禁止 shell 和外部集成；同时设置规范 cwd/PWD。
-- `code_workspace.py`：本地 repositories 注册表、固定基线导出与实际 diff；`code_verification.py`：仅运行本地配置的 argv；`code_execution.py`：清单、本地审查与明确发布。
-- `codex_image.py`、`images.py`：Codex 图像生成/编辑、本地候选预览、显式选择后上传。
-- 当前文本/代码适配验证版本是 OpenCode CLI 2.1.3，图像是 Codex CLI 0.164.0；这表示仓库已验证范围，不代表所有版本或账户都支持。供应商登录仍由各 CLI 本地完成。
-- 当前使用结构化 CLI 输出，不解析 ANSI 终端文本；没有通用交互会话 API、浏览器聊天或远程权限审批。
+Electron 内核一致性是迁移收益之一，不作为默认网络一定可用的证明。保留当前协议与完整性校验，优先验证默认配置下的真实双机互通。
 
-本地 repositories 将 repository_key 映射为 path、baseline、writable_paths、verification。`--list-repositories` 可列出可用标识；服务器不持有绝对路径。现有 `--select REQUEST_ID --keys ...` 发布选中图片，`--publish-code REQUEST_ID` 发布人工检查后的代码成果；这些操作不是网页按钮已具备的能力。
+- 验证 Windows↔Windows、macOS↔macOS、Windows↔macOS，以及桌面客户端↔受支持浏览器；覆盖空文件、普通文件、100 MiB、篡改拒收、配对后取消、传输中取消与双方退出。
+- 覆盖局域网权限拒绝/恢复、防火墙受限、VPN/多网卡、断网/重连、休眠/唤醒；部分网络允许明确失败，但不得假成功、无限等待或遗留会话。
+- 记录 OS、架构、Electron/Chromium 版本、ICE 阶段、建立连接耗时、吞吐与失败分类；默认不上传原始 SDP、局域网地址或文件正文。
+- 发布验收不得使用测试专用原始 IP 开关代替默认配置测试，不要求用户全局修改浏览器或系统安全设置。
+- 本期仍为局域网直传，不新增 STUN/TURN 或服务端文件中转。若后续需要跨网成功率保障，另行定义中继部署、费用、隐私和访问控制，并同步现有技术约束。
 
-## 4. 首批：统一轻量面板（必须实现的新增部分）
+## 6. 分阶段开发与完成条件
 
-### 4.1 页面与组件
+### 阶段一：Electron 骨架与纵向验证
 
-新增 `frontend/src/components/AgentPanel.vue`，以 Mission 为上下文统一图像与代码委派入口。优先组合、抽取已有组件，保留它们的服务与成果逻辑，不一次性重写所有辅助表单。
+确定 Electron、打包工具、最低 OS 与架构矩阵，添加锁文件和构建入口；搭建 main/preload/renderer 边界。使用现有 Vue 完成“选择服务器 → 登录 → 任务详情 → 私有图片 → 上传/下载 → 退出”的纵向流程，并运行最小 WebRTC 双机探针。
 
-面板提供：
+完成条件：Windows 与 macOS 都有可安装的开发验证包；认证/资源访问方案有实际证据，Web 端未回归；记录尚未覆盖的架构，不将探针成功写成完整客户端交付。
 
-1. 委派类型切换：代码实现、图像生成/编辑；只展示与当前 Mission、设备能力匹配的操作。
-2. 执行配置：本人设备、代码 repository_key 或图像 Asset/参考图、初始要求、输入快照预览。模型/供应商选择留在本地配置。
-3. 状态与历史：请求状态、创建时间、过期时间、失效原因、取消状态、成果摘要。首批可以按类型切换历史，不必实现跨接口全局排序与分页。
-4. 操作：明确创建、取消、基于旧执行创建新版本；网络重试沿用幂等键，用户明确重新生成才使用新键。不能把“重试”实现为恢复旧 attempt。
-5. 成果：复用 CodeReport、已上传图像预览及引用到提交草稿；代码 diff 使用补丁下载与本机查看即可，无须内嵌逐行 diff 编辑器。
-6. 本地待办提示：图片等待本地选择，代码等待本地审查发布；显示不含令牌和本机私有路径的 CLI 操作说明。浏览器不能代替本地发布确认。
+### 阶段二：迁移 Runner 与现有伴侣能力
 
-Mission 完整详情与抽屉使用同一 AgentPanel；完整详情接收采纳事件更新原提交草稿，抽屉继续使用现有完整页入口。设计/资产、生产模板、Mission 编写与验收表单保留 AssistancePanel，统一标题、状态文案等可复用展示，不丢失表单上下文或把候选自动保存。
+完成第 4 节跨平台生命周期、系统凭据存储、设备绑定、诊断、单实例、托盘、自启动及旧配置导入。复用 Python 协议与恢复实现，不另造 Node 模型 Worker。
 
-设备页继续复用已有注册/撤销方式，不新建配对后端。展示 last_seen_at 时标注“最近联系”，不能把历史时间当作实时在线证明，也不要求设备在线才能先排队。
+完成条件：两系统实际打包 Runner 通过“服务端已收结果但确认丢失”的恢复测试及宿主崩溃清理测试；不重复模型调用、不跨服务器/设备回传，旧伴侣与新客户端不会双重领取。
 
-### 4.2 前端数据组织
+### 阶段三：整合完整业务前端
 
-保留三个 API 模块的领域类型；需要共享展示时增加判别联合类型（例如 text/image/code），保留 request_id、execution_id、kind 和原始状态。公共逻辑可放入 Vue composable，但不要为统一 UI 引入第二套后端写接口、缓存框架或全局状态机。
+逐一覆盖当前所有业务路由：Mission 全流程与评论、工作区/图布局、设计/模板、里程碑、素材库、通知、注册审批及管理、本地文本辅助和 Agent 需求文档导出。统一导航、加载/错误状态和桌面设置；浏览器打开外链和本地保存使用平台适配层。
 
-面板打开且存在活跃请求时按现有约 15 秒频率轮询；切换 Mission、关闭抽屉、组件卸载或全部终态后停止对应轮询，避免新旧组件同时请求。失败退避，重新打开先取当前状态。状态未知不触发自动重建任务。
+完成条件：桌面中可以完成原有完整业务操作，无须跳回浏览器；管理员与普通用户权限准确；CSRF、409 冲突、附件授权、Markdown 清洗、跨账户隔离和离线提示均有回归覆盖。离线时禁止伪装保存成功，本期不做离线编辑同步。
 
-首批“进度”是生命周期状态，不是百分比、token 流或工具执行日志。无真实执行耗时字段时不要用 created_at 到当前时间冒充模型耗时。
+### 阶段四：WebRTC 与稳定性验收
 
-### 4.3 首批不要求的 UI
+执行第 5 节真实网络矩阵；测试窗口隐藏/恢复、长时间待机、系统睡眠、网络变化、App 异常退出与重开。测量冷启动、空闲内存、关键页面耗时、传输峰值内存和包体，记录可复现基线及明显回归，不能用主观“更快”代替数据。
 
-聊天续写、逐 token 输出、工具活动时间线、Web 工具审批、代码编辑器、内嵌完整 OpenCode WebUI、远程终端、供应商登录/模型管理、会话恢复与跨设备迁移均不作为首批验收条件。用户仍可在本机使用 Agent 自身工具查看详细输出。
+完成条件：支持矩阵内的默认局域网环境能完成跨系统传输；受限网络能正确诊断/失败；测试报告标明设备和环境。未拥有的物理设备或未运行的场景明确列为未验收。
 
-首批原则上不需要数据库迁移或新服务依赖；只有实现中确认现有接口无法支持明确需求时才增加最小字段/接口，并同步规格。不可为了组件重组提前创建 AgentRun、Workspace、Session 三套表。
+### 阶段五：安装、签名、更新与迁移收尾
 
-## 5. 首批端到端流程与状态含义
+建立 Windows/macOS 原生构建流水线，提供 Windows 安装程序和 macOS 安装产物；对实际发布包执行签名验证，macOS 完成 Developer ID 签名/公证，Windows 配置代码签名。更新端点固定、使用 HTTPS，验证更新包真实性与平台/架构匹配；私钥仅放发布环境。
 
-代码流程：
+覆盖全新安装、旧版升级、下载失败、签名错误、更新中断、运行中 Runner 的更新互斥与失败恢复。更新不能默认中断模型任务或悄悄重跑；停止后才可替换二进制。未配置证书或更新源时明确为开发验证包，签名分发和线上更新仍是未完成项。
 
-1. 用户在本人 InProgress Mission 选择本人代码设备，填写本地已配置的 repository_key，预览后创建 CodeExecution + AssistanceRequest。
-2. Runner 主动领取，按本地白名单解析仓库，将固定提交导出到独立副本，再执行代码 Agent 与本地允许的验证命令。
-3. 实际补丁、报告和日志留在本机；服务器先接收有界摘要清单，状态进入 awaiting_selection，面板显示“等待本地审查并发布”。
-4. 用户本机检查后执行 `--publish-code`，只上传同一补丁与报告。服务器校验摘要、版本与权限后标记 succeeded。
-5. 用户在完整详情引用到提交草稿，补充人工验证说明并提交，由验收者处理。测试 failed/timeout/not_run 必须如实展示，服务器未复跑测试。
+功能与验收通过后删除废弃 Tauri 依赖、Rust 宿主、旧构建脚本及过期说明，保留仍复用的 Runner 入口与测试。同步 TECH_STACK、PROJECT_STRUCTURE、desktop/README；README/TUTORIAL 只增加已交付的用户安装和操作说明。不得把计划中的 Electron 描述成当前已运行实现。
 
-图像流程类似，但需要关联 Asset；编辑需要授权参考图。Runner 本地生成/转换/预览，用户明确选择后仅上传选中成果，再由人引用提交。统一面板不上传未选候选或把本地文件路径作为下载地址。
+## 7. 测试入口与交付规则
 
-四类文本继续“上下文预览 → 本地生成 → 有界结构化候选 → 人工逐字段采纳 → 原表单保存/验收”。
+现有入口：
 
-状态映射只修改文案，不另建 completed/starting/interrupted 等持久状态：queued 等待设备，running 本地执行，awaiting_selection 按图像/代码显示不同待办，succeeded 候选/已发布成果可用，failed/cancelled/expired 为终态。
+- 前端：`frontend/src/tests/client.spec.ts`、`library.spec.ts`、`agentBridge.spec.ts`、`agentRequirementsExport.spec.ts`、`fileTransferProtocol.spec.ts`、`fileTransferController.spec.ts`，以及其余业务组件测试；真实浏览器传输为 `frontend/e2e/file-transfer.spec.ts`。
+- 后端：`backend/accounts/tests.py`、`backend/agent_bridge/tests/test_bridge.py`、`test_requirements.py`、`test_metrics.py`、`backend/missions/tests/` 和 `backend/transfers/tests.py`；浏览器隔离验收入口 `transfers.test_browser`。
+- Runner：`local_runner/tests/test_runner.py`、`test_recovery.py`、`test_delivery_integration.py`、`test_testrun.py`。
+- 旧桌面：`desktop/src/App.spec.ts`、Rust 宿主内测试和 `desktop/scripts/smoke_fixture.py`。迁移测试意图，不能仅删除旧测试而不验证替代行为。
 
-连接健康与执行状态独立理解：目前是约 30 秒心跳、180 秒租约，Runner 续租失败时尽力停止进程组，服务器在租约失效后拒绝旧 attempt。浏览器离线不终止 Runner；Runner 离线不能保证本地或供应商立刻停止。不得在重连后将 expired 改回 running 或接收旧结果。待选择/发布窗口现为 24 小时，文本总时限 15 分钟，图像/代码执行总时限 30 分钟。
+新增 Electron 测试覆盖实际 main/preload 边界、拒绝非法 IPC、导航/外链限制、会话隔离、资源授权与打包后的 Runner 生命周期。使用假 CLI 做确定性测试；诊断不调用模型，真实供应商验收单独记录，不能用 mock 宣称供应商可用。
 
-## 6. 第二批：本地能力发现与适配器整理（可独立实施）
+按改动范围执行：
 
-目的：减少手工填写 repository_key，支持多个本地 Agent 实现；不是重做已有供应商接入。
+- 后端：在 `backend/` 依次运行 `.venv/bin/python manage.py makemigrations --check --dry-run`、`check`、`test`；事务/并发测试必须使用 PostgreSQL。
+- 前端：在 `frontend/` 运行 `npm run type-check`、`npm run test`、`npm run build`。
+- Runner：使用 Python 3.13 执行 `python -m unittest discover -s local_runner/tests -v`；增加 Windows/macOS 各自打包后二进制验收，不能只测源代码。
+- Electron：第一阶段建立并记录类型检查、测试、构建与安装包 smoke 命令；两系统运行实际产物。现有 Tauri 命令不作为新客户端验证命令。
+- 每阶段提交代码、必要测试与已实现文档；所有新增数据模型/API/权限变化同步 PROJECT_STRUCTURE，技术约束变化同步 TECH_STACK 与适用规则。未来计划保持未完成标识，不提前修改当前实现说明。
 
-### 6.1 复用适配器
+最终交付需同时满足完整业务前端、跨平台 Runner、文件直传、安装与发行要求。不得以仅包裹远程网站、单平台开发包或只有 Electron 空壳作为“完整客户端完成”。
 
-在 local_runner 内抽取 Python 适配器注册与分发接口，区分任务能力和交互能力：
+## 8. 本次范围外
 
-- 任务能力继续使用七个 kind，不以 opencode/codex 名称替代业务类型。
-- 交互能力单独声明 supports_followup、supports_resume、supports_tool_events、supports_permission_requests、supports_cancel；没有验证过的能力默认 false。
-- 第一阶段适配接口只需能力检查、一次执行、取消及结果规范化。会话创建、续写和权限回复作为可选接口，不能要求所有适配器实现。
-- 复用现有 OpenCode 文本/代码和 Codex 图像实现。图像适配器不冒充通用代码 Agent；更换品牌不得绕过每类成果协议及本地审核。
-
-### 6.2 最小设备描述协议（待新增，非现有接口）
-
-可新增 `POST /api/agent-runner/descriptor/`（设备 Bearer）及 `GET /api/agent-devices/{id}/descriptor/`（仅设备所有者 Session）。在现有设备旁保存一份有界描述快照及上报时间，不新建服务器本地路径表：
-
-- protocol_version、descriptor_revision、最多 16 个 Agent 标识/展示名/声明能力，最多 100 个 workspace 描述。
-- workspace 使用当前 repository_key 作为设备内唯一标识，只含展示名和允许的 Agent 标识；不包含绝对路径、Git URL、验证 argv、环境变量或登录信息。
-- 本地上报不能扩大设备创建时授权的 kinds；可用能力取服务器授权与本地声明交集，Runner 执行时再次检查配置。
-- 首批已有单适配器路由继续可用；真正允许选择多个适配器时，再为请求快照增加可选 adapter_id 及两端严格校验，不能仅加下拉框却忽略执行端选择。
-- 描述只在启动、配置变化或低频刷新时发送；限制请求大小（建议 64 KiB），过期描述标注陈旧，设备撤销后不能更新。刷新不等于 Agent 一定可用。
-
-网页有新描述时展示工作区/Agent 下拉选择；没有描述仍允许按现有方式输入标识。本机注册表是权限权威，服务器描述不是本地授权。此批需要新增模型字段/迁移与严格序列化测试，不属于首批必需项。
-
-## 7. 第三批：有限交互与会话（按需扩展）
-
-保留原需求中的追问、活动展示、工具审批与恢复方向，但必须先验证所选本地 Agent 的实际协议和受支持版本，再确定实现范围。不能把现有非交互 CLI 包装为已经支持 session/prompt/permission API。
-
-### 7.1 传输与数据模型
-
-默认仍用 HTTPS 轮询。若增加交互，在现有 request/attempt 下增加有界命令与事件记录，而不是另起一套任务状态机：
-
-- 命令包含 command_id、request_id、attempt_id、类型、有限 payload、有效期及处理状态；设备主动领取，本地持久去重后处理。ACK 只代表收取，不能当作执行完成。
-- 事件按 request/attempt 保存递增 seq 和客户端去重 ID，分页按游标读取；只接收当前认证设备、当前 attempt 的允许事件。事件不能直接覆写业务终态。
-- 单次运行建议最多 1000 条、累计 1 MiB 共享事件，单条不超过 8 KiB；本地聚合限速，不逐 token 写数据库。达到上限只停止细节上传，最终结果仍走现有有界成果接口。
-- 新增路由仍放在 agent_bridge 下，分别使用 Session 与 DeviceAuthentication，不开放通用 HTTP 代理。具体路由和状态迁移在这一批实现前补齐规格。
-- 只有测量证实延迟要求无法由轮询满足时才评估 SSE/WSS，并同步 TECH_STACK 的部署、连接限额和维护成本；当前 ASGI 入口只是 Django 应用，不是现成 Gateway。
-
-### 7.2 权限与本地会话
-
-本地持久化 request_id/attempt_id 到 Agent session 的映射；私有 session 标识、工作路径及原始日志留本地。服务端只保存需要展示的能力与会话可用性。
-
-追问、取消及审批默认仅发起人/设备所有者操作。原始消息和工具事件默认私有；新建会话数据不能继承当前团队可读的成果历史权限。需要团队共享时另行增加明确分享动作与逐资源权限测试。
-
-工具审批只允许对本地已允许、仍待决的具体操作作一次决定，绑定 request、attempt、session、permission_id 与操作摘要；过期、撤销、会话变化或重复响应不得授权新操作。默认拒绝超时请求；网页批准不能扩大本地白名单，也不能开启现有代码 Agent 禁用的 shell。未经本地用户配置允许的操作应直接拒绝，无须弹出可批准按钮。
-
-恢复仅在适配器支持、租约/业务版本仍有效且本地状态一致时提供。旧任务已过期或取消时，以明确新执行承载后续工作，不复活终态；不得自动重做付费模型调用。若需放宽租约容忍断线，必须同步重新设计时限、独占约束、迟到结果和停止确认测试。
-
-### 7.3 可选展示与后续能力
-
-轻量消息列表、有限活动时间线、只读 diff、单次权限卡片按已验证能力逐项开放。无能力时隐藏入口并解释，不制造假进度。ACP 适配器、会话恢复、设备共享、多执行并发均为后续独立需求；ACP 不能替代 MyCollab 设备认证、Mission 权限和交接协议。
-
-不要求提供完整 Agent WebUI。若以后需要，作为单独需求评估本地访问方式、身份与资源隔离，不在此方案中建设公网反向隧道或任意接口代理。
-
-## 8. 安全、保留与业务一致性
-
-- Mission 图像/代码执行仅当前认领人对 InProgress 任务创建，校验 expected_version；图像还校验 Asset 版本及关联。修改、改派、取消或提交后必须沿用现有失效检查。
-- Session 与设备 Bearer 不混用。设备令牌到期、撤销或用户停用后不可领取/续租/上传；服务端资源关系取数据库，不信任客户端 owner/device 声明。
-- 对象版本、提交轮次、活跃限额和幂等校验继续在事务内执行；错误沿用项目统一结构。不得新增通用字段更新绕过状态机。
-- 当前代码补丁最多 2 MiB，报告最多 128 KiB，最多 200 个改动文件；实际 diff 与本地验证结果是证据，模型摘要不能证明测试通过。代码本地审查后才上传正文，原始日志不上传。
-- 图像候选最多四张，每张 20 MiB，按现有 PNG/像素协议校验；转换在本地，服务器不下载模型输出 URL。参考素材仅按授权接口获取。
-- `cleanup_assistance` 已负责请求过期与历史清理；图像/代码保留成果和提交关联，清除旧输入/结果快照。后续共享事件建议默认保留七天并复用清理入口，不删除已引用交付证据；撤销设备不等于删除所有已分享成果。
-- 本地日志、未选图像、未发布补丁和供应商会话由用户本地管理。任何新增上报都须采用字段白名单及体积限制，不把原始 Agent 事件任意 JSON 透传到服务器。
-
-## 9. 实施顺序与验收
-
-### 第一批验收：统一入口即可交付
-
-1. 新增 AgentPanel 并接入完整详情/抽屉，复用图像、代码面板及现有 API；设计/模板等文本入口保持可用。
-2. 设备和能力过滤正确；代码仓库标识与图像 Asset/参考图不会相互串用；创建前可审查实际发送上下文。
-3. 状态、取消、新执行、幂等与失效提示保持准确；组件切换/关闭后停止轮询，不重复领取或调用模型。
-4. 未本地发布的成果不可在网页直接引用；已发布成果引用到原提交草稿，仍需人工提交和验收；失败的本地验证不会显示为通过。
-5. 浏览器刷新/离线不导致创建第二次付费调用；其他用户不能操作设备或执行，团队已发布成果仍按现有权限显示。
-6. 现有三类执行闭环回归通过，不需要 Chat、WSS、工具审批、ACP 或完整 Agent WebUI 才算完成。
-
-### 第二批验收：发现与可替换适配器
-
-验证 descriptor 的所有者隔离、字段/体积限制、能力交集、过期提示与本地再次授权；验证未知仓库/适配器拒绝执行，不泄漏本机路径。已有配置仍可运行，适配器抽取不改变成果协议与明确发布流程。
-
-### 第三批验收：逐能力交付
-
-每次只启用已验证的交互能力。覆盖重复命令去重、乱序/重复事件、断线游标恢复、迟到结果拒绝、权限超时与重放、跨用户访问、过期任务不可恢复、取消后的进程停止确认。真实供应商测试与确定性适配器测试分别记录，不能互相替代。
-
-### 测试入口与验证命令
-
-现有后端测试在 `backend/agent_bridge/tests/test_bridge.py`、`test_images.py`、`test_image_roundtrip.py`、`test_code.py`、`test_code_roundtrip.py`；Mission 业务回归在 `backend/missions/tests/`。真实 OpenCode 文本测试入口为 `test_live_opencode.py`，需要已配置本地环境，不作为普通回归的付费依赖。
-
-前端重点复用 `frontend/src/tests/agentBridge.spec.ts`、`missionExecution.spec.ts`、`missionCode.spec.ts`，增加统一面板入口、生命周期与事件转发测试。本地回归在 `local_runner/tests/`，继续验证 cwd/PWD、隔离副本、白名单、真实退出码、补丁/报告摘要及发布幂等。
-
-实现后的验证按修改范围执行并如实记录：
-
-- 后端在 backend 中运行 `.venv/bin/python manage.py makemigrations --check --dry-run`、`check`、`test`；事务/并发测试使用 PostgreSQL。
-- 前端在 frontend 中运行 `npm run type-check`、`npm run test`、`npm run build`。
-- 本地执行改动在根目录运行 `local_runner/.venv/bin/python -m unittest discover -s local_runner/tests -v`。
-- 真实接入使用用户已配置的本地 CLI 和隔离示例仓库；服务器禁止提供商网络访问，检查原仓库未被修改、只有授权成果上传。新增 UI 记录实际浏览器验收情况，组件测试不能表述为人工浏览器验收。
-
-## 10. 编码与文档交付要求
-
-实施时以本文提供的结构和直接相关源文件为起点，信息不足再扩大阅读，不把通读整个项目当作固定步骤。首批优先完成现有能力的统一体验，不重复实现设备系统、队列、代码隔离和图像成果协议。
-
-每批完成后，将实际数据模型、API、权限、页面和业务规则同步到 PROJECT_STRUCTURE.md；仅在技术约束发生变化时更新 TECH_STACK.md，本地配置/命令变化同步 local_runner/README.md 与主 README。保持“已实现”与“计划”明确分开，不将未来交互接口写成当前能力。
-
-本次修正只更新 NEW_FUNCTION.md 的实现方案，不实施上述新增面板或扩展协议。
+不迁移 Django/Vue 技术栈，不嵌入本地数据库/服务端，不实现离线编辑同步、云端 Agent、远程终端、代码/图像执行、通用 Agent 聊天或工具审批；不恢复旧归档方案。不新增 TURN、中转存储、后台接收、断点续传或多 GB 文件支持。上述能力如需加入，另行定义业务权限与验收范围。
