@@ -604,3 +604,9 @@ Windows 模型树使用 [Microsoft Job Objects](https://learn.microsoft.com/en-u
 Runner 最新回归共 39 项：37 项通过，Windows 原生 DACL 与 Job 测试 2 项在 macOS 跳过。`check_runner.py` 增加打包后持续运行、停止管道 EOF、退出码和停止状态检查，仍不启动 GUI 或调用模型。
 
 Electron Runner 控制器的非 GUI 子进程测试覆盖就绪、重复启动、启动取消、EOF 停止、自检脱敏与缺失程序；业务传输测试覆盖停止失败时保留会话。打包前必须先运行 `backend/.venv/bin/python desktop/scripts/build_sidecar.py --electron`（仓库根目录），打包脚本拒绝缺少本平台 Runner 的产物；electron-builder 将其复制到 `resources/runner`。`--desktop-events` 仅供私有控制管道，在获得设备锁后输出就绪事件。
+
+### 桌面原生 CI（不启动 GUI）
+
+`.github/workflows/desktop.yml` 配置 PR 路径触发与手动触发，分别使用 `macos-15`（arm64）、`macos-15-intel`（x64）和 `windows-2025`（x64）。标签依据 [GitHub 官方运行器列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。每个平台安装锁文件依赖、执行 Electron 类型和边界测试、前端纯逻辑测试、构建原生 Python 3.13 Runner 与 Electron 开发目录包，再对实际包内 Runner 执行管道及状态检查。macOS 另外检查临时签名完整性。
+
+macOS 执行全部 Runner 非 GUI 测试；Windows 当前执行原生文件锁、ACL、Job、凭据管道与停止管道测试，尚未移植的 POSIX 测试不能视为 Windows 已覆盖。产物以 tar.gz 归档保留可执行权限，保存七天，只作为开发产物，不发布、不安装、不启动窗口、不使用发行密钥。Windows Server CI 不等于 Windows 客户端最低版本验收。工作流已写入但尚未在远端执行；未获推送授权，因此不能宣称三个平台构建已通过。

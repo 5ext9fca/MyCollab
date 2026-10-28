@@ -1,0 +1,93 @@
+name: 桌面非 GUI 构建
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/desktop.yml'
+      - 'desktop/**'
+      - 'frontend/**'
+      - 'local_runner/**'
+permissions:
+  contents: read
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    name: ${{ matrix.target }} 非 GUI 检查
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: mac-arm64
+            executable: mycollab-runner
+            packaged: mac-arm64/MyCollab.app/Contents/Resources/runner/mycollab-runner
+          - os: macos-15-intel
+            target: mac-x64
+            executable: mycollab-runner
+            packaged: mac/MyCollab.app/Contents/Resources/runner/mycollab-runner
+          - os: windows-2025
+            target: win-x64
+            executable: mycollab-runner.exe
+            packaged: win-unpacked/resources/runner/mycollab-runner.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            desktop/package-lock.json
+            frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: 安装锁定依赖
+        run: |
+          npm ci --prefix desktop
+          npm ci --prefix frontend
+          python -m pip install PyInstaller==6.22.3
+      - name: 桌面边界与子进程检查
+        run: |
+          npm --prefix desktop run electron:check
+          npm --prefix desktop run electron:test
+      - name: 前端纯逻辑回归
+        run: npm --prefix frontend run test -- src/tests/client.spec.ts src/tests/missions.spec.ts src/tests/library.spec.ts src/tests/fileTransferProtocol.spec.ts src/tests/fileTransferController.spec.ts
+      - name: macOS Runner 完整非 GUI 回归
+        if: runner.os == 'macOS'
+        run: python -m unittest discover -s local_runner/tests -v
+      - name: Windows 原生锁、ACL、Job 与管道回归
+        if: runner.os == 'Windows'
+        run: python -m unittest local_runner.tests.test_private_files local_runner.tests.test_child_process local_runner.tests.test_private_handoff local_runner.tests.test_control_pipe -v
+      - name: 构建并验证原生 Runner
+        run: |
+          python desktop/scripts/build_sidecar.py --electron
+          python desktop/scripts/check_runner.py desktop/build/runner/${{ matrix.target }}/${{ matrix.executable }}
+      - name: 构建开发包（不启动窗口）
+        run: npm --prefix desktop run electron:pack
+      - name: 验证实际包内 Runner
+        run: python desktop/scripts/check_runner.py desktop/build/electron/${{ matrix.packaged }}
+      - name: 验证 macOS 开发签名完整性
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          bundle=$(find desktop/build/electron -maxdepth 2 -name MyCollab.app -type d)
+          codesign --verify --deep --strict "$bundle"
+      - name: 归档开发包并保留可执行权限
+        shell: bash
+        run: tar -czf desktop-${{ matrix.target }}-development.tar.gz -C desktop/build/electron .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}-development
+          path: desktop-${{ matrix.target }}-development.tar.gz
+          retention-days: 7
+          if-no-files-found: error
