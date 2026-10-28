@@ -610,3 +610,5 @@ Electron Runner 控制器的非 GUI 子进程测试覆盖就绪、重复启动�
 `.github/workflows/desktop.yml` 配置 PR 路径触发与手动触发，分别使用 `macos-15`（arm64）、`macos-15-intel`（x64）和 `windows-2025`（x64）。标签依据 [GitHub 官方运行器列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。每个平台安装锁文件依赖、执行 Electron 类型和边界测试、前端纯逻辑测试、构建原生 Python 3.13 Runner 与 Electron 开发目录包，再对实际包内 Runner 执行管道及状态检查。macOS 另外检查临时签名完整性。
 
 macOS 执行全部 Runner 非 GUI 测试；Windows 当前执行原生文件锁、ACL、Job、凭据管道与停止管道测试，尚未移植的 POSIX 测试不能视为 Windows 已覆盖。产物以 tar.gz 归档保留可执行权限，保存七天，只作为开发产物，不发布、不安装、不启动窗口、不使用发行密钥。Windows Server CI 不等于 Windows 客户端最低版本验收。工作流已写入但尚未在远端执行；未获推送授权，因此不能宣称三个平台构建已通过。
+
+旧 macOS 配置导入采用原地复用状态目录与锁的方案，不复制待发箱。新增非 GUI 测试覆盖文件权限、符号链接、有界读取、服务器/用户核验、拒绝覆盖、加密状态标记及固定路径选择；`check_runner.py` 额外尝试竞争启动，验证实际二进制拒绝同状态目录的第二个 Runner。自定义 CA 的旧配置明确拒绝导入，相关信任适配仍待实现。

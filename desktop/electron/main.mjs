@@ -35,6 +35,7 @@ let quitting = false
 let changingServer = false
 let settings = { server: '', localNetwork: false }
 const frontend = app.isPackaged ? path.join(process.resourcesPath, 'frontend') : path.resolve(directory, '../../frontend/dist')
+const legacyConfigPath = () => process.platform === 'darwin' ? path.join(app.getPath('home'), '.config/MyCollab/mycollab-runner.json') : null
 const configPath = () => path.join(app.getPath('userData'), 'desktop.json')
 /** @param {number} status @param {string} code @param {string} message */
 const errorResponse = (status, code, message) => Response.json({ code, message, field_errors: {} }, { status })
@@ -124,6 +125,13 @@ function handle(channel, operation) {
 
 function registerIPC() {
   handle('desktop:runner-binding', () => bindings.read())
+  handle('desktop:import-legacy-runner', async () => {
+    const filename = legacyConfigPath()
+    if (!filename || bindingRunner || finishingQuit || changingServer) throw new Error('当前无法导入旧伴侣。')
+    bindingRunner = true
+    try { await runner?.stop(); return await bindings.importLegacy(filename) }
+    finally { bindingRunner = false }
+  })
   handle('desktop:bind-runner', async input => {
     if (bindingRunner || finishingQuit || changingServer) throw new Error('本机配置正在切换，请稍后重试。')
     bindingRunner = true
@@ -236,7 +244,7 @@ else {
   const platform = process.platform === 'darwin' ? 'mac' : 'win'
   const runnerDirectory = app.isPackaged ? path.join(process.resourcesPath, 'runner') : path.join(directory, '../build/runner', `${platform}-${process.arch}`)
   runner = new RunnerController([path.join(runnerDirectory, process.platform === 'win32' ? 'mycollab-runner.exe' : 'mycollab-runner')],
-    path.join(app.getPath('userData'), 'runner', 'config.json'), () => bindings.verified())
+    path.join(app.getPath('userData'), 'runner', 'config.json'), () => bindings.verified(), legacyConfigPath())
   registerIPC()
   createWindow()
   const icon = nativeImage.createFromPath(path.join(directory, '../src-tauri/icons/icon.png')).resize({ width: 18, height: 18 })

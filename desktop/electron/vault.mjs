@@ -4,7 +4,7 @@ import { mkdir, open, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { serverOrigin } from './transport.mjs'
 
-/** @typedef {{server: string, owner: string, deviceId: string, device_token: string, model: string, opencode: string}} RunnerBinding */
+/** @typedef {{server: string, owner: string, deviceId: string, device_token: string, model: string, opencode: string, legacyState?: boolean}} RunnerBinding */
 const LIMIT = 128 * 1024
 
 /** @param {unknown} input @returns {RunnerBinding} */
@@ -21,7 +21,7 @@ export function validateBinding(input) {
     throw new Error('设备身份无效。')
   }
   // 只保留固定字段，避免把供应商凭据或任意附加配置交给 Runner。
-  const result = { server: serverOrigin(binding.server), owner: binding.owner, deviceId: binding.deviceId,
+  const result = { ...(binding.legacyState === true ? { legacyState: true } : {}), server: serverOrigin(binding.server), owner: binding.owner, deviceId: binding.deviceId,
     device_token: binding.device_token, model: binding.model, opencode: binding.opencode }
   if (Buffer.byteLength(JSON.stringify(result)) > 30 * 1024) throw new Error('设备配置过大。')
   return result

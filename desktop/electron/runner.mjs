@@ -8,8 +8,9 @@ import path from 'node:path'
 /** @typedef {{binding: Binding, assertCurrent: () => void}} Verified */
 
 export class RunnerController {
-  /** @param {string[]} command @param {string} configPath @param {() => Promise<Verified>} resolve */
-  constructor(command, configPath, resolve) {
+  /** @param {string[]} command @param {string} configPath @param {() => Promise<Verified>} resolve @param {string | null} [legacyConfigPath] */
+  constructor(command, configPath, resolve, legacyConfigPath = null) {
+    this.legacyConfigPath = legacyConfigPath
     this.command = command; this.configPath = configPath; this.resolve = resolve
     /** @type {import('node:child_process').ChildProcessWithoutNullStreams | null} */
     this.child = null
@@ -25,12 +26,19 @@ export class RunnerController {
     this.epoch = 0; this.starting = false; this.lastError = ''
   }
 
+  /** @param {Binding} binding */
+  stateConfig(binding) {
+    if (!binding.legacyState) return this.configPath
+    if (!this.legacyConfigPath) throw new Error('此平台不支持旧伴侣状态目录。')
+    return this.legacyConfigPath
+  }
+
   /** @param {Binding} binding @param {string[]} flags */
   launch(binding, flags) {
     /** @type {NodeJS.ProcessEnv} */
     const env = { ...process.env, PYTHONIOENCODING: 'utf-8' }
     for (const key of Object.keys(env)) if (key.startsWith('MYCOLLAB_')) delete env[key]
-    const child = spawn(this.command[0], [...this.command.slice(1), '--config', this.configPath,
+    const child = spawn(this.command[0], [...this.command.slice(1), '--config', this.stateConfig(binding),
       '--config-stdin', '--parent-pid', String(process.pid), ...flags], {
       windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env,
     })
@@ -127,7 +135,7 @@ export class RunnerController {
     const key = createHash('sha256').update(binding.server.replace(/\/$/, '') + '\0' + binding.device_token).digest('hex')
     let file
     try {
-      file = await open(path.join(path.dirname(this.configPath), 'runner-state', key, 'status.json'), 'r')
+      file = await open(path.join(path.dirname(this.stateConfig(binding)), 'runner-state', key, 'status.json'), 'r')
       const buffer = Buffer.alloc(8193)
       const { bytesRead } = await file.read(buffer, 0, buffer.length, 0)
       if (bytesRead > 8192) throw new Error("状态文件过大。")

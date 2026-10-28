@@ -14,6 +14,7 @@ const localToken = ref('')
 const selectedDevice = ref('')
 const model = ref('')
 const opencode = ref('opencode')
+const canImportLegacy = ref(false)
 const localBinding = ref<RunnerBindingSummary | null>(null)
 const runnerState = ref<RunnerState>({ state: 'stopped', pending_results: 0, rejected_results: 0, error: '' })
 const diagnosis = ref<RunnerDiagnosis | null>(null)
@@ -70,12 +71,24 @@ async function bindLocal() {
   } catch { error.value = '本机绑定失败：请确认设备令牌属于当前账户与所选设备、服务器已更新并且系统钥匙串可用。' }
   finally { busy.value = false }
 }
+async function importLegacy() {
+  if (!desktop) return
+  busy.value = true; error.value = ''
+  try {
+    const saved = await desktop.importLegacyRunner()
+    localBinding.value = saved
+    selectedDevice.value = saved.deviceId; model.value = saved.model; opencode.value = saved.opencode
+    localToken.value = ''; token.value = ''
+  } catch { error.value = '导入失败：请确认旧配置仅本人可读写、已登录对应服务器与账户、没有现有绑定且未使用自定义 CA。原配置保持不变。' }
+  finally { busy.value = false }
+}
 onMounted(async () => {
   await load()
   if (!desktop) return
   await refreshRunner()
   statusTimer = setInterval(refreshRunner, 5000)
   try {
+    canImportLegacy.value = (await desktop.settings()).platform === 'darwin'
     localBinding.value = await desktop.runnerBinding()
     if (localBinding.value) {
       selectedDevice.value = localBinding.value.deviceId
@@ -102,6 +115,11 @@ onMounted(async () => {
       <template #header><b>本机 Agent 绑定</b></template>
       <p v-if="localBinding">本机已保存设备配置。已保存的令牌不会回显；修改同一设备的模型或路径时，令牌留空即可沿用。保存不会自动启动模型。</p>
       <p>选择当前账户的设备并填写设备令牌；不要填写模型供应商密钥。新创建设备会自动填入本次令牌。</p>
+      <el-card v-if="canImportLegacy && !localBinding" shadow="never">
+        <h3>导入旧 macOS 伴侣</h3>
+        <p>先退出旧伴侣并关闭其开机启动，再导入本机默认配置。原配置和待回传结果会保留；新客户端复用原状态目录及独占锁，旧 Runner 未停止时不能启动新 Runner。导入不会自动启动模型。</p>
+        <el-button :disabled="busy" @click="importLegacy">导入旧伴侣配置</el-button>
+      </el-card>
       <el-form label-position="top" @submit.prevent="bindLocal">
         <el-form-item label="设备"><el-select v-model="selectedDevice"><el-option v-for="device in devices"
           :key="device.id" :label="device.name" :value="device.id" :disabled="!!device.revoked_at" /></el-select></el-form-item>

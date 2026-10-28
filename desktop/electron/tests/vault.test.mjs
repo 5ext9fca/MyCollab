@@ -78,3 +78,9 @@ test('系统密钥轮换后重新加密且保留同一设备身份', async t => 
   assert.notDeepEqual(after, before)
   assert.deepEqual(await vault.load(binding.server, '1'), binding)
 })
+
+test('旧状态目录标记加密持久化，不能携带任意状态路径', async t => {
+  const { vault } = await fixture(t)
+  await vault.save({ ...binding, legacyState: true, configPath: '/untrusted/path' })
+  assert.deepEqual(await vault.load(binding.server, binding.owner), { ...binding, legacyState: true })
+})

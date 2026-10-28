@@ -12,6 +12,7 @@ export interface RunnerBindingSummary { deviceId: string; model: string; opencod
 export interface RunnerState { state: string; pending_results: number; rejected_results: number; error: string }
 export interface RunnerDiagnosis { opencode: string; server: string; protocol: number }
 export interface DesktopBridge {
+  importLegacyRunner(): Promise<RunnerBindingSummary>
   startRunner(): Promise<RunnerState>
   stopRunner(): Promise<void>
   runnerStatus(): Promise<RunnerState>

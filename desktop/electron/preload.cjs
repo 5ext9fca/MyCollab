@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
 // 每个操作单独声明；不暴露任意 IPC、网络、路径或进程执行能力。
 contextBridge.exposeInMainWorld('mycollabDesktop', Object.freeze({
+  importLegacyRunner: () => ipcRenderer.invoke('desktop:import-legacy-runner'),
   startRunner: () => ipcRenderer.invoke('desktop:runner-start'),
   stopRunner: () => ipcRenderer.invoke('desktop:runner-stop'),
   runnerStatus: () => ipcRenderer.invoke('desktop:runner-status'),

@@ -62,6 +62,9 @@ try:
                 time.sleep(0.05)
             else:
                 raise SystemExit('Runner 未进入空闲状态。')
+            competing = subprocess.run(command + ['--once'], input=payload, capture_output=True, timeout=15)
+            assert competing.returncode != 0, '同一状态目录不允许两个 Runner 同时运行'
+            assert b'smoke-device-secret' not in competing.stdout + competing.stderr
             process.stdin.close()
             process.stdin = None
             stdout, stderr = process.communicate(timeout=20)
