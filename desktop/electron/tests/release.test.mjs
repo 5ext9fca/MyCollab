@@ -30,6 +30,6 @@ test('开发包剥离账户、证书和钥匙串身份，保留运行环境且�
     APPLE_APP_SPECIFIC_PASSWORD: 'apple-password', APPLE_API_KEY: 'api-key',
     csc_name: 'windows-case-insensitive-identity', CSC_IDENTITY_AUTO_DISCOVERY: 'true' }
   const original = { ...source }
-  assert.deepEqual(developmentEnvironment(source), { PATH: '/bin', TEMP: '/tmp', CSC_IDENTITY_AUTO_DISCOVERY: 'false' })
+  assert.deepEqual(developmentEnvironment(source), { PATH: '/bin', TEMP: '/tmp', CSC_IDENTITY_AUTO_DISCOVERY: 'false', CSC_FOR_PULL_REQUEST: 'true' })
   assert.deepEqual(source, original)
 })

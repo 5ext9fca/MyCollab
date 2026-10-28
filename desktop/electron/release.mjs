@@ -26,5 +26,7 @@ export function developmentEnvironment(source) {
     if (/^(?:WIN_)?CSC_/i.test(key) || /^APPLE_/i.test(key)) delete env[key]
   }
   env.CSC_IDENTITY_AUTO_DISCOVERY = 'false'
+  // PR 默认跳过包括临时签名在内的所有签名；此环境已剥离发行身份，打包参数固定使用临时签名。
+  env.CSC_FOR_PULL_REQUEST = 'true'
   return env
 }
