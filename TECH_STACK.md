@@ -579,3 +579,7 @@ Intel 构建将上述后缀改为 `x86_64-apple-darwin`。测试会监听临时 
 本次不执行 GUI 测试与验收（包括组件交互、真实窗口、安装交互和双机界面验收）。已选择性运行前端 API 和文件传输纯逻辑测试：`npm run test -- src/tests/client.spec.ts src/tests/missions.spec.ts src/tests/library.spec.ts src/tests/fileTransferProtocol.spec.ts src/tests/fileTransferController.spec.ts`。这些测试不渲染组件，不替代真实 Electron 会话、系统权限、GUI 或跨系统验证。
 
 2026-10-29 已以临时签名生成 `desktop/build/electron/mac-arm64/MyCollab.app`（约 259 MiB），通过 `codesign --verify --deep --strict`；静态核对 ASAR 内 4 个宿主模块及资源目录的 68 个共享前端文件与当前构建一致。未启动应用，不代表 GUI、登录或 WebRTC 实测通过。
+
+桌面凭据模块使用 Electron 45 的异步 `safeStorage` 接口（[官方说明](https://www.electronjs.org/docs/latest/api/safe-storage)）；主进程后续注入系统实现。当前 Node 测试以独立 AES-GCM 测试适配器验证密文落盘、身份隔离、篡改拒绝、密钥轮换与失败保留旧文件，不调用钥匙串，也不代表 Windows DPAPI/macOS 钥匙串实机验收。`electron:check` 包含该模块的严格类型检查。
+
+Runner 的匿名管道入口由 `local_runner/tests/test_private_handoff.py` 使用真实 Python CLI 子进程检查，覆盖中文/空格路径、有界读取、错误脱敏及不创建明文配置。Python 3.13 的 Runner 测试共 30 项；本轮普通沙箱运行 28 项通过，另 2 项因本机监听权限受限，授权后单独重跑 `local_runner.tests.test_delivery_integration` 通过。所有检查均不涉及 GUI 或真实模型调用。

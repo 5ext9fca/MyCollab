@@ -111,6 +111,8 @@ def run_cli(argv=None):
     parser = argparse.ArgumentParser(description="MyCollab 本地 OpenCode 文本辅助 Runner")
     parser.add_argument("--config", type=Path, default=Path("~/.config/MyCollab/mycollab-runner.json"),
                         help="配置文件（默认：~/.config/MyCollab/mycollab-runner.json）")
+    parser.add_argument("--config-stdin", action="store_true",
+                        help="从标准输入读取一行私有配置；--config 仅决定状态目录，不写入凭据")
     parser.add_argument("--once", action="store_true", help="只领取一次，用于接入验证")
     parser.add_argument("--diagnose", action="store_true", help="检查配置、版本及服务器，不领取任务或调用模型")
     parser.add_argument("--status", action="store_true", help="读取脱敏本地运行状态")
@@ -130,9 +132,16 @@ def run_cli(argv=None):
         threading.Thread(target=watch_parent, daemon=True).start()
     path = args.config.expanduser()
     try:
-        if os.name == "posix" and path.stat().st_mode & 0o077:
-            parser.error("配置文件必须仅本人可读写，请先 chmod 600。")
-        config = json.loads(path.read_text(encoding="utf-8"))
+        if args.config_stdin:
+            # 宿主通过匿名管道交接凭据，不放入 argv、环境或明文临时文件。
+            raw = sys.stdin.buffer.readline(32 * 1024 + 1)
+            if not raw or len(raw) > 32 * 1024 or not raw.endswith(b"\n"):
+                parser.error("标准输入配置必须是最多 32 KiB、以换行结束的一行 JSON。")
+            config = json.loads(raw.decode("utf-8"))
+        else:
+            if os.name == "posix" and path.stat().st_mode & 0o077:
+                parser.error("配置文件必须仅本人可读写，请先 chmod 600。")
+            config = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         parser.error(f"配置文件不存在：{path}。请创建配置文件，或使用 --config 指定路径。")
     except OSError:
