@@ -61,7 +61,13 @@ function configureServer(server) {
   const key = createHash('sha256').update(server).digest('hex')
   // 业务会话与渲染页面彻底分离；退出应用后不保留登录 Cookie。
   const businessSession = session.fromPartition('business-' + key, { cache: false })
-  transport = new BusinessTransport(server, businessSession, { beforeIdentityChange: async () => { await runner?.stop() } })
+  const next = new BusinessTransport(server, businessSession, {
+    beforeIdentityChange: async () => { await runner?.stop() },
+    onIdentityExpired: async () => {
+      if (transport === next && window && !changingServer) await window.loadURL(APP_ORIGIN + '/login')
+    },
+  })
+  transport = next
 }
 
 /** @param {Request & {initiatorOrigin?: string}} request */

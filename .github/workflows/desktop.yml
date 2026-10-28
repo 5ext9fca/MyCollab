@@ -61,7 +61,7 @@ jobs:
           npm --prefix desktop run electron:check
           npm --prefix desktop run electron:test
       - name: 前端纯逻辑回归
-        run: npm --prefix frontend run test -- src/tests/client.spec.ts src/tests/missions.spec.ts src/tests/library.spec.ts src/tests/fileTransferProtocol.spec.ts src/tests/fileTransferController.spec.ts
+        run: npm --prefix frontend run test -- src/tests/desktopAuth.spec.ts src/tests/client.spec.ts src/tests/missions.spec.ts src/tests/library.spec.ts src/tests/fileTransferProtocol.spec.ts src/tests/fileTransferController.spec.ts
       - name: 构建 Windows 测试模型 CLI（不接入供应商）
         if: runner.os == 'Windows'
         run: |

@@ -33,11 +33,15 @@ export function apiTarget(request, server) {
 
 export class BusinessTransport {
   /** @param {string} server @param {Pick<import('electron').Session, 'fetch' | 'cookies' | 'clearStorageData'>} session
-   * @param {{beforeIdentityChange?: () => Promise<void>}} options */
-  constructor(server, session, { beforeIdentityChange = async () => {} } = {}) {
+   * @param {{beforeIdentityChange?: () => Promise<void>, onIdentityExpired?: () => Promise<void>}} options */
+  constructor(server, session, { beforeIdentityChange = async () => {}, onIdentityExpired = async () => {} } = {}) {
     this.server = serverOrigin(server)
     this.session = session
     this.beforeIdentityChange = beforeIdentityChange
+    this.onIdentityExpired = onIdentityExpired
+    this.authenticated = false
+    /** @type {Promise<void> | null} */
+    this.expiration = null
     this.generation = 0
     /** @type {Set<AbortController>} */
     this.controllers = new Set()
@@ -52,6 +56,7 @@ export class BusinessTransport {
       this.generation++
       for (const controller of this.controllers) controller.abort()
       await this.session.clearStorageData()
+      this.authenticated = false
     } finally { this.changingIdentity = false }
   }
 
@@ -68,13 +73,41 @@ export class BusinessTransport {
       catch (error) { this.changingIdentity = false; throw error }
     }
     try {
+      if (identityChange && pathname === '/api/auth/logout/') {
+        try { const response = await this.forward(request, target, true); await response.body?.cancel() }
+        catch { /* 已停止 Runner；断网也可以完成本机退出。 */ }
+        await this.session.clearStorageData()
+        this.authenticated = false
+        return new Response(null, { status: 204 })
+      }
       return await this.forward(request, target, identityChange)
-    } finally {
-      try {
-        // 即使网络断开，退出也必须抹去本地业务会话。
-        if (identityChange && pathname === '/api/auth/logout/') await this.session.clearStorageData()
-      } finally { if (identityChange) this.changingIdentity = false }
+    } finally { if (identityChange) this.changingIdentity = false }
+  }
+
+  /** @param {Response} response @param {string} target @param {AbortSignal} signal */
+  async isExpired(response, target, signal) {
+    if (!this.authenticated || ![401, 403].includes(response.status)) return false
+    const pathname = new URL(target).pathname
+    if (pathname.startsWith('/api/auth/') && pathname !== '/api/auth/me/') return false
+    if (pathname === '/api/auth/me/') return true
+    // 普通权限拒绝或 CSRF 失败并不等于会话失效；只用只读身份端点确认。
+    try {
+      const identity = await this.session.fetch(this.server + '/api/auth/me/', {
+        redirect: 'error', credentials: 'include', signal,
+      })
+      await identity.body?.cancel()
+      return [401, 403].includes(identity.status)
+    } catch { return false } // 断网无法证明身份过期，保留原业务拒绝。
+  }
+
+  expire() {
+    if (!this.expiration) {
+      this.expiration = (async () => {
+        await this.clear()
+        await this.onIdentityExpired()
+      })().finally(() => { this.expiration = null })
     }
+    return this.expiration
   }
 
   /** @param {Request} request @param {string} target @param {boolean} identityChange */
@@ -82,7 +115,7 @@ export class BusinessTransport {
     if (identityChange) {
       this.generation++
       for (const controller of this.controllers) controller.abort()
-      if (new URL(target).pathname === '/api/auth/login/') await this.session.clearStorageData()
+      if (new URL(target).pathname === '/api/auth/login/') { await this.session.clearStorageData(); this.authenticated = false }
     }
     const generation = this.generation
     const controller = new AbortController()
@@ -128,6 +161,17 @@ export class BusinessTransport {
         await response.body?.cancel()
         throw new Error('登录身份已改变，请重新加载。')
       }
+      if (await this.isExpired(response, target, controller.signal)) {
+        await response.body?.cancel()
+        if (generation !== this.generation) throw new Error('登录身份已改变。')
+        await this.expire()
+        return Response.json({ code: 'not_authenticated', message: '登录已过期，请重新登录。', field_errors: {} }, { status: 401 })
+      }
+      if (generation !== this.generation || this.changingIdentity && !identityChange) {
+        await response.body?.cancel()
+        throw new Error('登录身份已改变。')
+      }
+      if (response.ok && ['/api/auth/login/', '/api/auth/me/'].includes(new URL(target).pathname)) this.authenticated = true
       const outgoing = new Headers()
       for (const name of ['content-type', 'content-disposition', 'content-range', 'accept-ranges']) {
         const value = response.headers.get(name)

@@ -76,7 +76,7 @@ test('网络失败时退出仍清除业务 Cookie', async () => {
   let cleared = false
   session.clearStorageData = async () => { cleared = true }
   session.fetch = async () => { throw new Error('offline') }
-  await assert.rejects(transport.handle(request('/api/auth/logout/', { method: 'POST' })), /offline/)
+  assert.equal((await transport.handle(request('/api/auth/logout/', { method: 'POST' }))).status, 204)
   assert.equal(cleared, true)
   assert.equal(transport.changingIdentity, false)
 })
@@ -104,4 +104,58 @@ test('停止 Runner 失败时保留业务会话并拒绝登录退出', async () 
     assert.equal(calls.length, 0)
     assert.equal(transport.changingIdentity, false)
   }
+})
+
+test('业务拒绝经身份端点确认过期后停止 Runner、取消旧流并清会话', async () => {
+  const { transport, session } = fixture()
+  await (await transport.handle(request('/api/auth/me/'))).text()
+  const file = await transport.handle(request('/api/library/files/abc/'))
+  const events = []
+  transport.beforeIdentityChange = async () => { events.push('stopped') }
+  session.clearStorageData = async () => { events.push('cleared') }
+  transport.onIdentityExpired = async () => { events.push('login') }
+  session.fetch = async () => Response.json({}, { status: 403 })
+  const response = await transport.handle(request('/api/missions/'))
+  assert.equal(response.status, 401)
+  assert.deepEqual(events, ['stopped', 'cleared', 'login'])
+  assert.equal(transport.authenticated, false)
+  await assert.rejects(file.text())
+})
+
+test('普通权限拒绝与 CSRF 错误不会误清登录', async () => {
+  const { transport, session } = fixture()
+  await (await transport.handle(request('/api/auth/me/'))).text()
+  let stopped = false
+  transport.beforeIdentityChange = async () => { stopped = true }
+  session.fetch = async url => Response.json({}, { status: url.endsWith('/auth/me/') ? 200 : 403 })
+  const response = await transport.handle(request('/api/admin/users/'))
+  assert.equal(response.status, 403)
+  await response.text()
+  assert.equal(stopped, false)
+  assert.equal(transport.authenticated, true)
+})
+
+test('确认会话过期但停止失败时不清 Cookie 或跳转', async () => {
+  const { transport, session } = fixture()
+  await (await transport.handle(request('/api/auth/me/'))).text()
+  transport.beforeIdentityChange = async () => { throw Error('stop failed') }
+  session.fetch = async () => Response.json({}, { status: 403 })
+  session.clearStorageData = async () => { assert.fail('停止失败不得清会话') }
+  transport.onIdentityExpired = async () => { assert.fail('停止失败不得重载页面') }
+  await assert.rejects(transport.handle(request('/api/auth/me/')), /stop failed/)
+  assert.equal(transport.changingIdentity, false)
+})
+
+test('身份探测断网不能把普通拒绝升级成过期退出', async () => {
+  const { transport, session } = fixture()
+  await (await transport.handle(request('/api/auth/me/'))).text()
+  transport.beforeIdentityChange = async () => { assert.fail('断网不应强制退出') }
+  session.fetch = async url => {
+    if (url.endsWith('/auth/me/')) throw Error('offline')
+    return Response.json({}, { status: 403 })
+  }
+  const response = await transport.handle(request('/api/admin/users/'))
+  assert.equal(response.status, 403)
+  await response.text()
+  assert.equal(transport.authenticated, true)
 })

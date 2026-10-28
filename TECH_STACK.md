@@ -576,7 +576,7 @@ Intel 构建将上述后缀改为 `x86_64-apple-darwin`。测试会监听临时 
 - `npm run electron:setup`：下载开发运行所需的 Electron 可执行文件，不启动应用。
 - `npm run electron:dev`：确保 Electron 已安装后构建并启动 GUI；依本次用户要求，当前不执行。
 
-本次不执行 GUI 测试与验收（包括组件交互、真实窗口、安装交互和双机界面验收）。已选择性运行前端 API 和文件传输纯逻辑测试：`npm run test -- src/tests/client.spec.ts src/tests/missions.spec.ts src/tests/library.spec.ts src/tests/fileTransferProtocol.spec.ts src/tests/fileTransferController.spec.ts`。这些测试不渲染组件，不替代真实 Electron 会话、系统权限、GUI 或跨系统验证。
+本次不执行 GUI 测试与验收（包括组件交互、真实窗口、安装交互和双机界面验收）。已选择性运行前端 API 和文件传输纯逻辑测试：`npm run test -- src/tests/desktopAuth.spec.ts src/tests/client.spec.ts src/tests/missions.spec.ts src/tests/library.spec.ts src/tests/fileTransferProtocol.spec.ts src/tests/fileTransferController.spec.ts`。这些测试不渲染组件，不替代真实 Electron 会话、系统权限、GUI 或跨系统验证。
 
 2026-10-29 已以临时签名生成 `desktop/build/electron/mac-arm64/MyCollab.app`（约 259 MiB），通过 `codesign --verify --deep --strict`；静态核对 ASAR 内 4 个宿主模块及资源目录的 68 个共享前端文件与当前构建一致。未启动应用，不代表 GUI、登录或 WebRTC 实测通过。
 
@@ -622,3 +622,5 @@ Electron Runner 控制器的非 GUI 子进程测试覆盖就绪、重复启动�
 发布负责人需把同次构建的安装包、ZIP、blockmap 与更新清单放到对应固定目录，先传包再传清单；禁止配置跨域 CDN 跳转，更新网络策略会拒绝。当前没有配置真实发布证书、公证身份及更新服务，不能宣称正式签名发行或线上升级已通过。控制器以注入更新适配器运行非 GUI 测试，覆盖停止失败、并发操作、错误脱敏与手动安装边界，不调用原生安装器。
 
 Windows 测试假 CLI 源码为 `local_runner/tests/fixtures/opencode.py`，由 CI 打包后经 `MYCOLLAB_TEST_OPENCODE_BINARY` 指定；该夹具只在测试中使用，不随客户端分发、不调用供应商。路径由 Python 生成原生绝对路径，避免 Git Bash `/d/...` 路径进入 Windows 子进程环境。
+
+`frontend/src/tests/desktopAuth.spec.ts` 是不挂载组件的 Pinia 状态测试，覆盖桌面停止失败时保留身份、成功退出后才重载。桌面传输测试另覆盖权限拒绝与会话过期区分、过期清理顺序及停止失败保护。
