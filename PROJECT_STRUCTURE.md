@@ -770,3 +770,5 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 `.github/workflows/desktop-release.yml` 是默认分支手动触发的正式包入口，复用原生非 GUI CI 后在分平台发行环境签名、公证、验证包内 Runner 与系统签名；`desktop/scripts/collect_release.py` 归档安装包、更新清单、校验摘要和提交信息。不发布到更新服务，不新增业务数据或接口。配置方式与未执行状态见 TECH_STACK“手动构建正式发行产物”。
 
 开发打包从子进程环境剥离签名与公证身份，macOS 仅临时签名且不公证，Windows 不执行签名；正式打包继续强制签名与 macOS 公证，不受开发隔离逻辑影响。
+
+页面生成的 Markdown 与已校验接收文件仍通过 Blob 下载，不通过 IPC 搬运文件内容。`desktop/electron/downloads.mjs` 只接收当前主窗口主框架的本地 Blob 保存，使用 Chromium 原生保存对话框；身份切换、退出或安装更新在 Runner 停止成功后取消未完成保存，切换期间拒绝新保存。保存中断显示通用错误，用户主动取消不报错；已保存完成的文件不受清理影响。

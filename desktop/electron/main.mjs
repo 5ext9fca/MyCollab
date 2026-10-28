@@ -8,6 +8,7 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import electronUpdater from 'electron-updater'
 import { UpdateController, updatePolicy, allowedUpdateURL } from './updates.mjs'
+import { BlobDownloads } from './downloads.mjs'
 import { RunnerController } from './runner.mjs'
 import { BindingVault } from './vault.mjs'
 import { DeviceBindings } from './binding.mjs'
@@ -37,6 +38,7 @@ let bindingRunner = false
 let finishingQuit = false
 let quitting = false
 let changingServer = false
+const blobDownloads = new BlobDownloads(() => dialog.showErrorBox('文件保存失败', '文件未能完整保存，请检查目标目录权限和可用空间，再从原页面重试。'))
 let settings = { server: '', localNetwork: false }
 const frontend = app.isPackaged ? path.join(process.resourcesPath, 'frontend') : path.resolve(directory, '../../frontend/dist')
 const legacyConfigPath = () => process.platform === 'darwin' ? path.join(app.getPath('home'), '.config/MyCollab/mycollab-runner.json') : null
@@ -62,7 +64,7 @@ function configureServer(server) {
   // 业务会话与渲染页面彻底分离；退出应用后不保留登录 Cookie。
   const businessSession = session.fromPartition('business-' + key, { cache: false })
   const next = new BusinessTransport(server, businessSession, {
-    beforeIdentityChange: async () => { await runner?.stop() },
+    beforeIdentityChange: async () => { await runner?.stop(); blobDownloads.cancel() },
     onIdentityExpired: async () => {
       if (transport === next && window && !changingServer) await window.loadURL(APP_ORIGIN + '/login')
     },
@@ -230,7 +232,7 @@ else {
     event.preventDefault()
     if (finishingQuit) return
     finishingQuit = true
-    void (runner?.stop() || Promise.resolve()).then(() => { quitting = true; app.quit() }).catch(() => {
+    void (runner?.stop() || Promise.resolve()).then(() => { blobDownloads.cancel(); quitting = true; app.quit() }).catch(() => {
       finishingQuit = false
       reveal()
       dialog.showErrorBox('Runner 尚未停止', '客户端保持打开，请稍后再次停止 Runner，再退出。')
@@ -243,6 +245,10 @@ else {
   } catch { settings = { server: '', localNetwork: false } }
   configureServer(settings.server)
   rendererSession = session.fromPartition('renderer', { cache: false })
+  rendererSession.on('will-download', (event, item, contents, frame) => {
+    blobDownloads.accept(event, item, contents, frame, window?.webContents,
+      !!transport && !transport.changingIdentity && !changingServer && !finishingQuit)
+  })
   rendererSession.setPermissionRequestHandler((contents, permission, callback, details) => {
     callback(contents === window?.webContents && details.isMainFrame === true &&
       allowPermission(permission, details.requestingUrl, settings.localNetwork))
@@ -277,6 +283,7 @@ else {
     finishingQuit = true
     updateOwnsQuit = true
     await runner?.stop()
+    blobDownloads.cancel()
     quitting = true
   }, () => { if (updateOwnsQuit) { finishingQuit = false; quitting = false; updateOwnsQuit = false } })
   registerIPC()

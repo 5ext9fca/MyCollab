@@ -647,3 +647,5 @@ Windows 测试假 CLI 源码为 `local_runner/tests/fixtures/opencode.py`，由 
 正式构建后检查实际包内 Runner；macOS 执行 `codesign --verify --deep --strict`、`xcrun stapler validate` 和 `spctl --assess --type execute`；Windows 使用 `Get-AuthenticodeSignature` 检查应用、Runner 和唯一安装器，必须返回 `Valid`。这些非 GUI 检查不替代首次安装、更新恢复或用户交互验收。
 
 `desktop/scripts/collect_release.py` 只收集顶层安装包（macOS DMG/ZIP、Windows EXE）、对应 `latest*.yml` 与 blockmap，生成 `SHA256SUMS.txt` 和包含提交及目标的 `build-info.json`，不归档整个构建目录或调试配置。缺少安装包/清单、同类型多个安装包或输出目录已有文件时失败，防止混入旧产物。工作流归档保存 14 天；下载同次构建的归档后，仍由发布负责人按前述顺序上传更新服务。测试命令：`backend/.venv/bin/python -m unittest discover -s desktop/scripts -p test_collect_release.py -v`。
+
+页面 Blob 导出与接收文件保存通过 Session 的 `will-download` 和 DownloadItem 交给 Chromium 管理，不开放文件系统 IPC。使用 Electron 45 的下载来源主框架参数校验调用方；保存失败只返回通用提示，不记录路径或正文。依据 [Electron DownloadItem](https://www.electronjs.org/docs/latest/api/download-item) 与 [Session 下载事件](https://www.electronjs.org/docs/latest/api/session#event-will-download)。非 GUI 注入对象测试覆盖来源、身份切换取消、完成清理和中断提示；系统保存对话框、真实 Blob 下载和跨平台磁盘失败尚未进行 GUI 验收。
