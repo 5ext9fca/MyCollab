@@ -675,3 +675,11 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - 前端 API 集中在 `api/transfers.ts`，复用 request 的 CSRF/错误处理并使用 15 秒请求超时。活动状态约每秒轮询，错误指数退避至 8 秒，连续 4 次失败停止；终态停止。收集 ICE 最多 10 秒，缓冲等待最多 30 秒，accepted 状态 60 秒无文件处理进展失败。
 - 浏览器 SHA-256 依赖安全上下文：局域网访问使用受信任 HTTPS（本机开发 localhost 可用）。用户需允许浏览器与操作系统的局域网访问；防火墙和 mDNS/UDP 可达性仍影响 WebRTC。文件校验使用完整缓冲，100 MiB 文件峰值内存高于文件大小，不承诺多 GB 支持。
 - `cleanup_transfers` 删除总期限已过的会话，部署每 5 分钟运行一次；不依赖 Redis/Celery/WebSocket。测试入口：`transfers.tests` 覆盖状态、权限、CSRF、大小、checksum、过期和并发配对；`fileTransferProtocol.spec.ts` 覆盖标准 SHA-256、损坏/截断拒收及背压，`fileTransferController.spec.ts` 覆盖确认、取消竞态、未本地验证禁止成功和轮询停止；`transfers.test_browser` 显式启用后以隔离 PostgreSQL 测试库和真实 Chrome/Chromium 页面运行 `frontend/e2e/file-transfer.spec.ts`。
+
+## 性能与 Agent 接入指标
+
+- `common/observability.py` 的可选中间件记录 API 路由模板、HTTP 状态、请求耗时、SQL 次数/耗时及团队锁等待；不记录 SQL、正文、用户、查询参数或凭据。`missions/services.py` 保留原团队锁，仅增加计时。
+- `AssistanceRequest.claimed_at`（迁移 `0007`）在首次领取时写入，心跳不覆盖；`agent_metrics` 读取状态分布、创建至领取、领取至完成回传的耗时。旧记录不回填虚构时间，统计不执行清理或调用模型。
+- `performance_probe` 在指定有效成员身份下，只读测量任务列表、详情及工作台接口；临时登录会话在结束时删除，不修改任务。它测量本进程服务端处理，不代表浏览器或公网端到端表现。
+- 前端可选记录 `gantt_layout`（布局计算）与 `workspace_reload`（加载至 Vue 更新，不代表 GPU 绘制完成），最多保留 200 条本机样本，不上传。未开启时不保留样本。
+- 验证入口：`common.tests.test_observability`、`agent_bridge.tests.test_metrics`、`frontend/src/tests/performance.spec.ts`。开启及读取方法见 TECH_STACK“性能测量”。

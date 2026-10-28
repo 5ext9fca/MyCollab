@@ -482,3 +482,18 @@ backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
 
 
 2026-10-26 真实需求文档验收：`MYCOLLAB_LIVE_MODEL=deepseek/deepseek-flash` 运行 `agent_bridge.tests.test_requirements_live`，浏览器 API 创建请求、真实本地 OpenCode 整理、Bearer 回传、浏览器 API 读取均通过；输出包含 Markdown 章节及 Mission 来源 ID，任务状态与版本未改变。服务端进程限制为本机网络，供应商调用仅在本地 OpenCode 子进程；这不等同于浏览器人工验收。
+
+## 18. 性能测量
+
+性能指标先于技术栈迁移。默认不采集；生产可设置 `MYCOLLAB_PERFORMANCE_SAMPLE_RATE=0.1` 采样 10% API 请求，设为 `1` 全量记录，`0` 关闭。JSON 日志写入标准错误，由部署方收集和轮转；`X-Request-ID` 仅在采样请求返回。SQL 耗时包含锁等待，不能与团队锁耗时相加。流式下载的后续传输不计入请求处理耗时。
+
+后端先迁移，随后可在 `backend/` 执行：
+
+```bash
+.venv/bin/python manage.py performance_probe --username alice --iterations 20
+.venv/bin/python manage.py agent_metrics --hours 24
+```
+
+探针需要已存在的有效用户；可用 `--mission-id UUID` 指定详情任务，空库不测详情。每个端点一次预热后统计 p50/p95、最大 SQL 数和 SQL 中位耗时；并非并发压测。Agent 统计最近 1–720 小时内创建的请求，输出样本数；未出现样本返回 null，不将无数据当成零耗时。运行耗时包含模型及回传，不能当作纯模型速度。
+
+前端在开发/构建时设置 `VITE_PERFORMANCE_METRICS=1`。完成工作台操作后，在浏览器控制台调用 `window.mycollabPerformance.snapshot()` 读取最近 200 条记录，`clear()` 清空。记录只有固定事件名、耗时、图规模与完成状态，不含业务文本；切换页面或刷新会影响样本范围，比较时固定设备、任务规模、日期窗口和筛选。

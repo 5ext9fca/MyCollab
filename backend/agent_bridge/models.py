@@ -46,6 +46,7 @@ class AssistanceRequest(models.Model):
     submission_id = models.UUIDField(null=True, blank=True)
     input = models.JSONField(default=dict)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.QUEUED)
+    claimed_at = models.DateTimeField(null=True, blank=True)
     attempt_id = models.UUIDField(null=True, blank=True)
     lease_expires_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField()

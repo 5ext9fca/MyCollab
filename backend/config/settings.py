@@ -52,6 +52,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "common.observability.PerformanceMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -159,4 +160,14 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
     ],
+}
+
+# 性能日志不包含正文、凭据、查询字符串或 SQL；采样率默认关闭。
+PERFORMANCE_SAMPLE_RATE = float(os.environ.get("MYCOLLAB_PERFORMANCE_SAMPLE_RATE", "0"))
+if not 0 <= PERFORMANCE_SAMPLE_RATE <= 1:
+    raise ImproperlyConfigured("MYCOLLAB_PERFORMANCE_SAMPLE_RATE 须为 0–1。")
+LOGGING = {
+    "version": 1, "disable_existing_loggers": False,
+    "handlers": {"performance_console": {"class": "logging.StreamHandler"}},
+    "loggers": {"mycollab.performance": {"handlers": ["performance_console"], "level": "INFO", "propagate": False}},
 }
