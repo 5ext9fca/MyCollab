@@ -703,3 +703,7 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - `desktop/scripts/build_sidecar.py` 将 Python 3.13 Runner 打包进 macOS 应用，用户无需安装 Python。当前仅 macOS，其他平台未宣称支持；Intel 需在对应架构另行构建验收。
 - 更新器仅接受发布构建注入的 HTTPS 地址与签名公钥；没有发布配置时明确提示手动更新。业务 Session/CSRF 与设备权限没有改变，无额外本机 HTTP 服务。
 - 测试入口：桌面 Vue 交互测试、Rust 地址/进程测试、Runner 真实 HTTP 与进程退出集成测试。构建与发布说明见 TECH_STACK“桌面伴侣构建”。
+
+### Electron 客户端迁移中的传输模块
+
+`desktop/electron/transport.mjs` 提供待接入 Electron 主进程的 `BusinessTransport`。仅允许本地 `mycollab://app/api/` 下现有业务路由，转发到配置的 HTTPS 服务器（本机开发允许 HTTP），拒绝 Runner API、其他来源、任意请求头与重定向。主进程会话提供 Cookie 与 CSRF；响应过滤 Cookie、禁止缓存并隔离附件脚本。登录前清理旧会话，退出先通知服务端再清理，身份变更中断旧请求与资源流。该模块尚未接入运行中的 Tauri 伴侣，不代表完整 Electron 客户端已交付。
