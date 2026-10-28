@@ -1,5 +1,5 @@
-# Vue 3 + TypeScript + Vite
+# MyCollab 前端
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+用户功能与操作见 [项目 README](../README.md) 和 [协作教程](../TUTORIAL.md)。
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+维护入口见 [AGENTS](../AGENTS.md)，目录与页面职责见 [PROJECT_STRUCTURE](../PROJECT_STRUCTURE.md#仓库目录与职责)，技术约束、开发与验证命令见 [TECH_STACK](../TECH_STACK.md)。

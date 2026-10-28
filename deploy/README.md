@@ -340,7 +340,7 @@ typeof crypto.subtle?.digest
 
 两台设备登录同一个部署地址，打开“文件互传”：发送端选择小文件、生成配对码；接收端输入码、核对信息并确认接收。双方保持页面打开，接收端 SHA-256 一致后保存文件。再测接近 100 MiB 的文件与传输中取消。
 
-浏览器或系统询问局域网访问权限时允许本站。HTTPS 成功与 WebRTC 成功是两个独立条件：即使网站位于公网，同局域网设备仍可能因 mDNS、UDP、防火墙或浏览器权限而无法直连。本机曾复现默认 mDNS 受限；临时原始 IP 模式的自动测试成功不替代实际双机验收。详细测试入口见[项目 README](../README.md#局域网文件互传)。
+浏览器或系统询问局域网访问权限时允许本站。HTTPS 成功与 WebRTC 成功是两个独立条件：即使网站位于公网，同局域网设备仍可能因 mDNS、UDP、防火墙或浏览器权限而无法直连。本机曾复现默认 mDNS 受限；临时原始 IP 模式的自动测试成功不替代实际双机验收。详细测试入口见[浏览器文件直传验收](../TECH_STACK.md#浏览器文件直传验收)。
 
 ### 4.3 定时清理
 
@@ -350,7 +350,7 @@ typeof crypto.subtle?.digest
 */5 * * * * cd /opt/MyCollabAdvanced/deploy && /usr/bin/docker compose exec -T backend python manage.py cleanup_transfers
 ```
 
-日期提醒和本地 Agent 历史清理沿用[项目 README](../README.md)中的其他计划任务；它们不负责 TLS 证书续期。
+日期提醒和本地 Agent 历史清理沿用[技术文档](../TECH_STACK.md#16-部署与升级操作)中的其他计划任务；它们不负责 TLS 证书续期。
 
 ### 4.4 更新与数据保留
 

@@ -1,5 +1,36 @@
+# PROJECT_STRUCTURE
 
-下面给出一个适用于**小型团队内部协作**的 MVP 方案：用户可以发布 Mission、认领未分配的 Mission，并将其拆成可独立认领的子 Mission。
+本文面向开发者与维护 Agent，记录当前目录职责、数据模型、接口、权限、页面与业务规则。用户使用说明见 [README](README.md) 与 [TUTORIAL](TUTORIAL.md)；技术约束及开发、验证、部署命令见 [TECH_STACK](TECH_STACK.md)。
+
+## 仓库目录与职责
+
+```text
+backend/              Django API
+  config/             settings、URL、WSGI、统一异常处理
+  common/             跨 app 共享的领域异常
+  accounts/           认证、注册申请与管理员审批
+  missions/           任务、设计资产、生产模板、里程碑、服务层与测试
+  library/            用户素材、授权下载与 Markdown 引用校验
+  notifications/      站内通知、任务订阅与日期提醒
+  agent_bridge/       本地 Agent 设备、文本请求交接与结果协议
+  transfers/          浏览器文件直传会话、信令与清理
+frontend/src/         Vue SPA
+  api/                类型化 API 客户端
+  components/         共享组件
+  composables/        组合式逻辑与甘特布局
+  router/、stores/    页面路由与共享状态
+  views/              页面
+  transfers/          浏览器直传协议
+  workspace/          工作台辅助逻辑
+  tests/              前端测试
+local_runner/         用户本机 OpenCode 适配器及测试
+deploy/               Caddy、生产 Compose 与部署操作指南
+.cursor/rules/        AGENTS 索引的项目规则
+docker-compose.yml    本地 PostgreSQL
+testrun.sh            本地环境启动脚本
+```
+
+业务写入通过对应服务层：Mission 流程走 `backend/missions/services.py`，注册审批走 `backend/accounts/services.py`，素材上传/删除走 `backend/library/services.py`。API 与 Django Admin 复用业务校验，不绕过状态机。其他模块的职责与接口见下方对应功能章节。
 
 核心原则是：**每个 Mission 都是完整的任务单元；父子关系表达拆分关系，每个节点分别保存内容、发起者、认领者和状态。**
 
@@ -401,7 +432,7 @@ WHERE id = :mission_id
 - 迁移新增 `type=Task`、`priority=P2`、`reviewer=creator`、`milestone=null`，为任务补充默认值。
 - 不保留任何旧版兼容层：`Mission.result` 字段与 `MissionSubmission.is_legacy` 已移除，也不再提供旧数据回填；`submit` 不接受 `result` 别名，`review` 不接受 `approve` 旧决定名。
 - 当前进度任务使用 `current_submission_id` 指向最新一轮提交；历史轮次以 `MissionSubmission` 记录，永不覆盖。
-- `python manage.py seed_demo` 通过服务层创建一组样板数据（见 `README.md`），用于本地开发与演示；`--reset` 会先清空任务、里程碑、标签与样板用户再重建。
+- `python manage.py seed_demo` 通过服务层创建样板数据，用于本地开发与演示；`--reset` 的删除范围、引用保护与账号保留规则见下文“本地演示场景”，操作命令见 `TECH_STACK.md` 第 15 节。
 
 **8.10 前端**
 
@@ -509,7 +540,7 @@ Mission 创建与 PATCH 接受 `design_element_id`（null 解除）及 `asset_id
 - 新评论不存正文，编辑/删除不另发通知；计划日期/优先级/里程碑实际变化合并为一个通知，空改动不发。任务事件、通知与业务同事务提交。直接依赖真假翻转触发解除或 Done 下游需复核通知，不自动重开任务，不传播多跳。
 - `/notifications` 收件箱：GET `/api/notifications/` 按 read=all/unread/read 标准分页；GET `summary/` 返回 unread_count；POST `read/` 接受 1–100 个唯一 ids，全部归属预检、原子幂等已读，其他人/不存在统一 404。只看列表不标已读，点击或明确批量操作才标记。
 - GET/PUT `/api/missions/{id}/subscription/` 仅本人，首次 expected_version=0，后续带版本，并发更新冲突 409；不影响 Mission 版本。管理员不能访问他人私人通知/订阅。
-- `send_mission_reminders` 命令在团队锁与任务行锁内复查当前日期/状态/角色，按任务+截止日+kind 幂等写入。支持重跑、漏跑、改期；不提醒 Done/Cancelled。部署调度见 README，服务端时区由 DJANGO_TIME_ZONE 控制。
+- `send_mission_reminders` 命令在团队锁与任务行锁内复查当前日期/状态/角色，按任务+截止日+kind 幂等写入。支持重跑、漏跑、改期；不提醒 Done/Cancelled。部署调度见 TECH_STACK 第 16 节，服务端时区由 DJANGO_TIME_ZONE 控制。
 
 ## 保存任务筛选
 

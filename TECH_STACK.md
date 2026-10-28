@@ -65,18 +65,7 @@
 
 ## 4. 代码组织与业务入口
 
-推荐在同一个仓库中维护以下目录。它们是初始化建议，不表示这些文件已经存在。
-
-| 路径 | 内容 |
-| --- | --- |
-| `frontend/` | Vue 应用、组件、页面、API 客户端、测试 |
-| `backend/config/` | Django settings、URL、WSGI 配置 |
-| `backend/common/` | 跨 app 共享的基础模块（如领域异常） |
-| `backend/accounts/` | 用户、团队成员、注册审批与认证接口 |
-| `backend/missions/` | Mission、标签、权限、状态流转、活动记录 |
-| `backend/library/` | 用户素材库：上传、授权下载、Markdown 引用校验 |
-| `backend/notifications/` | 有通知需求时添加 |
-| `deploy/` | Caddy 与部署配置 |
+当前目录与职责统一见 [PROJECT_STRUCTURE](PROJECT_STRUCTURE.md#仓库目录与职责)。业务入口遵守以下约束。
 
 业务写入 SHOULD 集中在 `missions/services.py`、`accounts/services.py` 或同等职责的模块中，例如：
 
@@ -240,7 +229,7 @@ Redis、后台任务队列、WebSocket、独立搜索服务与 Kubernetes 不属
 13. 独立验收与成果：发起者/认领者/验收者可分离，仅当前验收者或管理员验收；转交后旧验收者被拒；每轮成果不可覆盖；重新打开需原因并保留历史，成员失效、祖先完成、里程碑关闭正确处理。
 14. 证据引用：非法引用/空 revision/跨提交构建被拒；成功构建与选择验证版本规则；无构建文档任务凭人工说明验收；并发验收、并发环、里程碑完成与加任务互斥。
 
-后端测试、迁移检查、前端类型检查、前端测试和生产构建的真实命令已记录在 `README.md` 与 `AGENTS.md`。新增或修改脚本时同步更新这两处；不得把尚未创建的脚本写成可直接运行的命令。
+后端测试、迁移检查、前端类型检查、前端测试和生产构建的命令统一记录在本文第 15 节，规则入口见 `AGENTS.md`。新增或修改脚本时同步更新命令与相关规则；不得把尚未创建的脚本写成可直接运行的命令。
 
 每次交付应说明修改内容、验证结果与未完成事项。不得声称未执行的测试已通过；依赖、迁移或部署配置变化应同步更新相应说明。
 
@@ -288,3 +277,208 @@ Redis、后台任务队列、WebSocket、独立搜索服务与 Kubernetes 不属
 - 此会话是 expected_version 规则的明确例外：通过参与者身份、页面凭据、事务行锁、一次性状态转换、不可覆盖 SDP 和幂等终态保证一致性。写入口经 missions/services.py 转交独立 transfers 服务，不改变 Mission 状态。
 - 局域网部署 MUST 使用受信任 HTTPS 以支持 Web Crypto；本机 localhost 开发可例外。浏览器/系统局域网权限及 UDP/mDNS 必须可用；不能以普通 HTTP/IP 可访问推定 WebRTC 一定可用。
 - 增加 @playwright/test 开发依赖用于真实浏览器验收，无运行时依赖。显式浏览器测试使用独立 PostgreSQL 测试库，Vite 的 MYCOLLAB_TEST_API_TARGET 仅用于将测试代理指向 LiveServer；默认开发代理仍为 127.0.0.1:8000，changeOrigin 保持 false。
+
+
+## 15. 本地开发与验证操作
+
+本节面向开发者与维护 Agent；用户功能入口见 [README](README.md)，协作教程见 [TUTORIAL](TUTORIAL.md)。
+
+### 本地开发
+
+需要 Python 3.13、Node 24+、Docker。数据库用 PostgreSQL（并发测试依赖它，不能用 SQLite）。
+
+```bash
+# 1. 启动本地 PostgreSQL
+docker compose up -d
+
+# 2. 后端
+cd backend
+python3.13 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py createsuperuser   # 或 shell 里 create_user
+.venv/bin/python manage.py runserver         # http://127.0.0.1:8000
+
+# 3. 前端（另开一个终端）
+cd frontend
+npm install
+npm run dev                                  # http://127.0.0.1:5173
+```
+
+已有其他 Python 版本的 `backend/.venv` 时，先停止后端与 LocalRunner，再重建虚拟环境（只删除依赖环境，不删除数据库或素材）：
+
+```bash
+cd backend
+rm -rf .venv
+python3.13 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+Vite 开发服务器把 `/api` 代理到 Django，代理不改变 Host/Origin，因此 Session Cookie 与 CSRF 在开发环境可直接工作。
+
+#### 一键启动测试环境
+
+在仓库根目录运行（也支持从其他目录使用脚本绝对路径）：
+
+```bash
+./testrun.sh
+./testrun.sh --seed  # 可选：创建演示数据，已存在时跳过
+```
+
+脚本检查 Python 3.13、Node 24+ 和 Docker Compose；首次缺少虚拟环境或依赖时自动安装，因此首次运行需联网。随后启动根目录 Compose 的 PostgreSQL 并等待就绪，执行迁移和系统检查，同时启动 Django 与 Vite。访问 `http://127.0.0.1:5173`；端口 8000 或 5173 被占用时直接提示退出，不终止已有服务。
+
+使用本地 `127.0.0.1:5432/mycollab` 数据库及本地开发账号配置，保留已有数据，不读取生产部署配置。按 Ctrl+C 停止本次前后端与 LocalRunner 进程，PostgreSQL 容器继续运行；需要时可在根目录手动执行 `docker compose stop db`。前端保留热更新，后端使用 `--noreload` 以可靠清理进程，修改后端代码后需重启脚本。
+
+`./testrun.sh` 在前后端就绪后自动启动 LocalRunner，读取 `~/.config/MyCollab/mycollab-runner.json`；配置缺失时提示并跳过，Runner 退出时提示且保持前后端运行，不自动重启。Ctrl-C 或终止脚本时一并停止本次 Runner，通过 SIGTERM 复用模型进程清理，数据库与数据保留。启动前应确认配置中的服务器地址和设备凭据属于预期环境；Runner 仍使用该配置，不覆盖服务器地址。此启动流程不改变数据模型、接口或权限。
+
+这是供浏览器体验功能的本地环境启动入口；自动化测试仍使用下方“验证命令”。
+
+### 演示数据
+
+本地开发可一键生成样板数据；所有场景通过服务层执行真实流程，计划日期相对生成当天计算：
+
+```bash
+cd backend
+.venv/bin/python manage.py seed_demo         # 不存在样板数据时创建
+.venv/bin/python manage.py seed_demo --reset # 重建演示账号的业务数据，保留账号与其他成员数据
+```
+
+首次创建的演示账号为 `alice`、`bob`、`carol`、`dave`、`erin`，密码统一为 `demo12345`。重建保留已有账号及其有效密码，修复旧版示例的空密码，不修改管理员权限。
+
+- 用 `alice` 查看待验收、临期、逾期和需复核；用 `bob` 查看退回待改、解除阻塞和私有筛选。
+- 任务覆盖五种状态、父子拆分、前置阻塞、人工验收、退回、上游重开后的下游复核，以及源码/构建证据。
+- 工作台甘特图展示完整日期、仅交付日期、未排期任务；任务广场可体验选择当前页与批量计划修改。
+- 设计目录包含设计树、动画资产、三步生产模板及实例化批次；保存筛选包含团队阻塞、需复核、未来七天计划和个人认领条件。
+- 通知包含业务事件、评论、临期/逾期提醒、已读/未读；详情中可以体验关注与静音。
+- 打开“示例导览：当前能力与边界”任务阅读体验顺序。系统不自动排期、执行构建或完成下游任务；构建链接是示意地址，未预置私人素材文件。提醒的持续更新仍需运行 `send_mission_reminders` 或配置外部定时调度。
+
+`--reset` 会删除上述演示账号创建的任务、里程碑、设计、模板、批次，以及名称以“示例 · ”开头的筛选，再重建场景；保留账号、个人素材、其他筛选及共享标签。请勿把这五个账号用于需要长期保留的业务数据。其他成员引用演示任务时拒绝重建；受保护的其他引用也会使事务回滚。
+
+### 验证命令
+
+```bash
+# 后端：迁移检查 + 系统检查 + 测试（在 backend/ 下）
+.venv/bin/python manage.py makemigrations --check --dry-run
+.venv/bin/python manage.py check
+.venv/bin/python manage.py test
+
+# 前端：类型检查 + 单元测试 + 生产构建（在 frontend/ 下）
+npm run type-check
+npm run test
+npm run build
+```
+
+后端测试使用 Django 测试框架，其中 `missions/tests/test_concurrency.py` 用多线程 + 独立连接验证「并发认领只有一个成功」，**必须在 PostgreSQL 上运行**。
+
+### 本地 Agent 自动化验证
+
+从仓库根目录运行本地适配器自动化测试，不调用收费模型：
+
+```bash
+backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
+```
+
+真实闭环测试需本人本机已登录 OpenCode，并明确选择模型。该测试使用独立 PostgreSQL 测试库与临时 HTTP 服务，不修改正常业务数据，但会产生模型调用：
+
+```bash
+cd backend
+MYCOLLAB_LIVE_MODEL=deepseek/deepseek-flash .venv/bin/python manage.py test agent_bridge.tests.test_live_opencode --noinput
+```
+
+### 浏览器文件直传验收
+
+真实浏览器验收使用隔离 PostgreSQL 测试库，不修改业务数据、不调用模型。先在 `frontend/` 执行 `npm ci` 和 `npx playwright install chromium`，然后在 `backend/` 执行：
+
+```bash
+MYCOLLAB_BROWSER_TEST=1 POSTGRES_DB=mycollab_browser .venv/bin/python manage.py test transfers.test_browser --noinput
+```
+
+已有 Google Chrome 时可增加 `MYCOLLAB_BROWSER_CHANNEL=chrome`，无需下载 Chromium。测试自动启动临时 Django 服务及 localhost:5179 的 Vite，执行 `npm run test:transfer`；该 npm 命令依赖测试服务和测试用户，不作为单独启动应用的命令。覆盖空文件、普通文件、100 MiB 文件下载摘要一致、篡改字节拒收和取消；同机两个独立浏览器会话不能替代实际两台设备的网络环境验收。失败截图/trace 保存在 `frontend/test-results/`，不提交版本库。
+
+若自动验收机器的 mDNS 解析受限，可在上述验收命令中额外设置 `MYCOLLAB_TEST_RAW_IP=1` 进行对照测试：仅让临时 Chrome/Chromium 测试进程使用原始 IP 候选，不修改系统或日常浏览器设置，也不改变应用代码。该模式下通过的结果证明文件传输及校验协议可用，不证明默认 mDNS 或真实跨设备网络可达；实际部署仍需正常浏览器双机验证。
+
+文档重组前已有的本机验收记录（本次未重跑）：Chrome 默认 mDNS 候选未能建立连接，独立 WebRTC 探针也复现该现象；临时测试浏览器启用原始 IP 候选后，6 项真实浏览器测试全部通过（空文件、约 2 MiB、100 MiB、字节篡改拒收、配对后取消、传输中取消）。桌面与 390px 窄屏截图已检查。未修改系统或日常浏览器权限；真实两台设备的默认浏览器环境仍需部署后验证。
+
+## 16. 部署与升级操作
+
+### 生产部署
+
+无域名的局域网 IP 与公网 IP HTTPS 部署，见 [deploy/README.md](deploy/README.md)，包含内部 CA、公共 IP 短期证书、客户端信任和续期流程。
+
+```bash
+cd deploy
+cp .env.example .env     # 填入 DJANGO_SECRET_KEY、POSTGRES_PASSWORD、DOMAIN 等
+docker compose up -d --build
+```
+
+Caddy 在同一域名下按 `/api/*`、`/admin/*`、`/static/*`、其余交给 SPA 的顺序处理请求；数据库只在内部网络开放。上传的附件保存在 `media_data` 卷（`/app/media`），Caddy 不提供该目录，下载一律经 `GET /api/library/files/{id}/`。备份、关闭 DEBUG、使用真实密钥等要求见 `TECH_STACK.md` 第 9 节。
+
+#### 站内日期提醒调度
+
+后端 `DJANGO_TIME_ZONE` 默认 `UTC`，需要中国自然日口径时在部署环境中设置为 `Asia/Shanghai`，重建 backend 后生效。任务待办、保存视图相对日期和提醒使用同一服务端日期。
+
+生产服务器可通过 cron 每天运行一次（替换 `/opt/MyCollabAdvanced` 为实际路径，运行用户须有 Docker 权限）：
+
+```cron
+0 8 * * * cd /opt/MyCollabAdvanced/deploy && docker compose exec -T backend python manage.py send_mission_reminders >> /var/log/mycollab-reminders.log 2>&1
+```
+
+cron 的 08:00 使用宿主机时区；确认宿主机时区与期望调度时间一致，并确保日志路径可写、配置日志轮转及非零退出监控。手动重跑：
+
+```bash
+docker compose -f deploy/docker-compose.yml exec -T backend python manage.py send_mission_reminders
+```
+
+命令输出扫描任务数及新增通知数，失败非零退出。同一任务/截止日/提醒类型/接收人只写一次；漏跑后补发当前适用提醒。无需 Redis 或 Celery。
+
+### 本地 Agent 历史清理
+
+服务器每天清理一次超过 30 天的辅助历史（沿用部署 cron，无常驻 worker）：
+
+```cron
+30 3 * * * cd /opt/MyCollabAdvanced/deploy && docker compose exec -T backend python manage.py cleanup_assistance
+```
+
+### Agent 需求文档升级
+
+图像、代码委派和权限审批已保存到本地分支 `feature/agent-delegation`，主分支以需求文档导出替代。
+
+升级仍需执行 `python manage.py migrate`。**本次迁移删除旧图像/代码执行、对话审批、成果提交关联及旧委派请求**，保留 Mission、普通提交正文与素材文件。需要历史数据时先备份数据库；feature 分支保存的是代码，验证旧功能应使用独立数据库。原实现交付时尚未在业务数据库执行该删除迁移；当前部署是否已应用须检查目标环境的迁移记录。
+
+### 文件互传清理
+
+升级后执行后端迁移 `python manage.py migrate`。
+
+每 5 分钟清理过期配对、信令和文件元信息：
+
+```cron
+*/5 * * * * cd /opt/MyCollabAdvanced/deploy && docker compose exec -T backend python manage.py cleanup_transfers
+```
+
+## 17. 本地 Runner 实现与历史验证
+
+以下记录从 Runner 使用指南迁入，本次文档重组未重新运行这些验证。
+
+### Runner 实现与协议边界
+
+每次调用创建临时目录和专用 `mycollab-text` Agent，以显式配置路径启动 `opencode run --standalone --format json`，经标准输入传递文本，避免需求出现在进程参数中。禁用全部工具权限，并使用 `tool.use` 与 `integration.use` 拒绝策略；不复用用户工作区或已有会话。模型子进程不接收 MyCollab 凭据。此模式禁止读取源码、执行命令、浏览链接、使用 MCP/技能或生成文件。
+
+Runner 不修改用户 OpenCode 全局配置，也不搬运供应商凭据。OpenCode 自身在本机保存的会话和日志受它自己的管理策略控制；不要在输入中包含不希望发送给模型的秘密。管理配置若覆盖了本适配器的限制，不能将该环境视为首批受支持环境，需先核对有效权限。
+
+协议版本为 1，输出校验复用 `backend/agent_bridge/protocol.py` 的纯 Python 模块，不加载 Django。类型、字段、列表数量、体积及依赖图在本地检查，服务器再检查素材引用与业务权限。失败只回传固定错误码，供应商原始异常和日志不会上传。
+
+### Runner 历史验证记录
+
+2026-10-26，本机 Python + OpenCode **2.1.3**，使用本地已登录的 `deepseek/deepseek-flash`。四类虚构测试输入均经真实 CLI 调用返回，并通过共享协议校验；凭据未输出或写入项目。另已通过隔离测试数据库/临时 HTTP 服务中的四项领取、回传与显式业务保存/验收闭环；测试服务器进程禁止外网，本地 OpenCode 子进程独立通信。页面人工采纳逻辑由前端组件测试覆盖，未声称人工浏览器逐页验收。临时文件对抗测试未返回私有哨兵、未创建要求的文件。验收依据必须是输入字段 JSON Pointer 与逐字摘录，两端均校验。
+
+自动化测试无需模型或付费凭据：
+
+```bash
+backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
+```
+
+官方依据：[OpenCode CLI](https://opencode.ai/docs/cli/)、[V2 配置](https://opencode.ai/v2/docs/config)、[V2 权限](https://opencode.ai/v2/docs/permissions)、[V2 策略](https://opencode.ai/v2/docs/policies)。V1 与 V2 权限字段不同，不能混用。
+
+
+
+2026-10-26 真实需求文档验收：`MYCOLLAB_LIVE_MODEL=deepseek/deepseek-flash` 运行 `agent_bridge.tests.test_requirements_live`，浏览器 API 创建请求、真实本地 OpenCode 整理、Bearer 回传、浏览器 API 读取均通过；输出包含 Markdown 章节及 Mission 来源 ID，任务状态与版本未改变。服务端进程限制为本机网络，供应商调用仅在本地 OpenCode 子进程；这不等同于浏览器人工验收。
