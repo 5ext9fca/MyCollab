@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+import { desktop } from '../platform/desktop'
 import * as authApi from '../api/auth'
 import type { CurrentUser } from '../api/types'
 
@@ -28,6 +29,7 @@ export const useAuthStore = defineStore('auth', () => {
       await authApi.logout()
     } finally {
       user.value = null
+      if (desktop) window.location.replace('/login')
     }
   }
 

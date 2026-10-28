@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { desktop } from '../platform/desktop'
 import ThemeSelect from './ThemeSelect.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -68,6 +69,7 @@ async function onLogout() {
         <el-menu-item v-if="auth.user?.is_staff" index="/manage">管理后台</el-menu-item>
       </el-menu>
       <div class="app-header__user">
+        <router-link v-if="desktop" class="app-link app-link--action" to="/desktop-settings">桌面设置</router-link>
         <ThemeSelect />
         <span class="meta">{{ auth.user?.display_name }}</span>
         <el-button class="app-link app-link--action" link type="primary" @click="onLogout">退出</el-button>

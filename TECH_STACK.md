@@ -560,6 +560,22 @@ Intel 构建将上述后缀改为 `x86_64-apple-darwin`。测试会监听临时 
 - 原生窗口已检查配置脱敏、自检、启动、假模型结果回传、停止、单实例、关闭后恢复，以及未配置签名更新源的提示。最终发布包可加载内置页面，Runner 保持停止。未实际开启用户登录启动设置、未进行操作系统重启验收。
 - 当前产物为 Apple Silicon macOS 本机版，未做 Developer ID 公证或实际远程更新发布；Intel/其他系统尚未验收。构建存在 Element Plus 主包体积提示，不影响打包；现有前端也有类似提示。
 
-### Electron 迁移的非 GUI 检查
+### Electron 迁移与非 GUI 检查
 
-迁移中的主进程传输模块位于 `desktop/electron/transport.mjs`，当前通过依赖注入测试会话边界；实际 Electron 会话集成仍待实现。在仓库根运行 `node --test desktop/electron/tests/*.test.mjs` 检查业务地址限制、请求头/CSRF、身份清理、私有资源流取消及重定向失败。这些测试不启动窗口，不替代真实 Electron 或跨系统验证。依用户本次要求，暂不执行 GUI 测试与验收。
+新桌面宿主固定使用 Electron 45.1.0、electron-builder 26.18.0，依赖及锁文件在 `desktop/`，业务前端继续复用 `frontend/`。依据 [Electron 破坏性变更说明](https://www.electronjs.org/docs/latest/breaking-changes)，Electron 44 起最低 macOS 13，打包元数据已明确 `minimumSystemVersion: 13.0`；首批目标 macOS arm64/x64、Windows x64。Windows 具体最低受测系统版本仍待原生 CI/环境验证，不以声明的架构替代实测支持。Electron 自带 Node 与开发用 Node 各自独立。安全升级须同时更新固定版本、锁文件并重新运行边界检查。
+
+`desktop/electron-builder.json` 包含 macOS DMG/ZIP、Windows NSIS 配置，打包时复制 Vue 静态资源到 `resources/frontend`。`scripts/package_electron.mjs` 限制原生平台/架构构建：开发目录包使用临时签名，不自动使用钥匙串的个人开发证书；正式分发命令强制代码签名，发行证书、公证与更新源仍待配置。当前包尚不包含 Runner，不能作为完整客户端发布。
+
+在 `desktop/`：
+
+- `npm run electron:check`：主进程、策略、传输与打包脚本的严格 JS 类型检查，以及 preload 语法检查。
+- `npm run electron:test`：Node 单元测试，检查实际 preload 固定接口、IPC 来源、路径、外链、局域网权限、CSRF、身份清理、资源流取消和重定向失败，不启动 Electron 窗口。
+- `npm run electron:build`：共享 Vue 类型检查与生产构建。
+- `npm run electron:pack`：构建本机架构的临时签名目录包，不启动应用；macOS 产物位于 `desktop/build/electron/mac-arm64` 或 `mac` 等 builder 平台目录。
+- `npm run electron:dist`：原生架构安装产物，强制签名；需发布环境的证书。公证与发行验收未完成前不能发布。
+- `npm run electron:setup`：下载开发运行所需的 Electron 可执行文件，不启动应用。
+- `npm run electron:dev`：确保 Electron 已安装后构建并启动 GUI；依本次用户要求，当前不执行。
+
+本次不执行 GUI 测试与验收（包括组件交互、真实窗口、安装交互和双机界面验收）。已选择性运行前端 API 和文件传输纯逻辑测试：`npm run test -- src/tests/client.spec.ts src/tests/missions.spec.ts src/tests/library.spec.ts src/tests/fileTransferProtocol.spec.ts src/tests/fileTransferController.spec.ts`。这些测试不渲染组件，不替代真实 Electron 会话、系统权限、GUI 或跨系统验证。
+
+2026-10-29 已以临时签名生成 `desktop/build/electron/mac-arm64/MyCollab.app`（约 259 MiB），通过 `codesign --verify --deep --strict`；静态核对 ASAR 内 4 个宿主模块及资源目录的 68 个共享前端文件与当前构建一致。未启动应用，不代表 GUI、登录或 WebRTC 实测通过。

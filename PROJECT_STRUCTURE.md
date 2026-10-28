@@ -704,6 +704,12 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - 更新器仅接受发布构建注入的 HTTPS 地址与签名公钥；没有发布配置时明确提示手动更新。业务 Session/CSRF 与设备权限没有改变，无额外本机 HTTP 服务。
 - 测试入口：桌面 Vue 交互测试、Rust 地址/进程测试、Runner 真实 HTTP 与进程退出集成测试。构建与发布说明见 TECH_STACK“桌面伴侣构建”。
 
-### Electron 客户端迁移中的传输模块
+### Electron 完整客户端（开发中）
 
-`desktop/electron/transport.mjs` 提供待接入 Electron 主进程的 `BusinessTransport`。仅允许本地 `mycollab://app/api/` 下现有业务路由，转发到配置的 HTTPS 服务器（本机开发允许 HTTP），拒绝 Runner API、其他来源、任意请求头与重定向。主进程会话提供 Cookie 与 CSRF；响应过滤 Cookie、禁止缓存并隔离附件脚本。登录前清理旧会话，退出先通知服务端再清理，身份变更中断旧请求与资源流。该模块尚未接入运行中的 Tauri 伴侣，不代表完整 Electron 客户端已交付。
+`desktop/electron/main.mjs` 为新宿主，加载唯一的 `frontend/dist` 构建产物；旧 Tauri 伴侣暂留到 Runner 等替代能力完整。Electron 使用安全标准协议 `mycollab://app`，静态映射仅暴露构建资产和 SPA 入口，业务页刷新复用入口，不加载远程 HTML。主窗口禁用 Node/WebView，启用 sandbox、context isolation、Web 安全和 CSP。
+
+- `transport.mjs` 的 `BusinessTransport` 仅将本地 `/api/` 下现有业务路由映射到配置的 HTTPS 根地址（本机开发可 HTTP），拒绝 Runner API、其他来源、任意请求头及重定向。主进程的服务器独立内存会话持有 Cookie 与 CSRF，渲染会话不持有业务 Cookie，重启需重新登录，不保存密码。私有资源流有取消及超时，响应过滤 Cookie、禁止缓存、隔离附件脚本；身份切换拒绝并发旧请求并中断旧流，断网退出也清 Cookie。
+- `policy.mjs` 校验主窗口/主框架 IPC 来源、业务地址、素材下载和外链。`preload.cjs` 仅暴露读取设置、切换服务器、自启动、局域网权限、打开 HTTP(S) 外链与下载当前用户素材六个固定操作；不能提供任意 IPC、HTTP、文件系统或命令执行。
+- `frontend/src/platform/desktop.ts` 适配已清洗 Markdown 和普通链接；素材下载由主进程再次鉴权、用户选择目的地后流式写入临时文件并原子替换。外链交给系统浏览器，不获得桌面能力；普通 Web 端维持原行为。
+- `DesktopSettingsView.vue` 的 `/desktop-settings` 在登录前可用，桌面首次无服务器时进入此页；登录页和业务导航提供入口。更换服务器清会话、前端存储并重新载入页面；退出重新载入登录页。局域网权限默认关闭，启用后仅本地业务主框架可申请局域网权限；仍拒绝摄像头、麦克风及读取剪贴板等无关权限。
+- 宿主已有单实例、托盘、关闭隐藏、明确退出及用户自选的登录系统后启动。当前 Electron **尚未接入本地 Runner、设备凭据存储、旧配置迁移与更新**，不能将新宿主视作旧伴侣的完整替代；尚未执行 GUI 或真实跨系统验收。

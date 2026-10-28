@@ -70,3 +70,25 @@ test('服务器重定向失败不被包装为成功', async () => {
   await assert.rejects(transport.handle(request('/api/missions/')), /redirect rejected/)
   assert.equal(transport.controllers.size, 0)
 })
+
+test('网络失败时退出仍清除业务 Cookie', async () => {
+  const { transport, session } = fixture()
+  let cleared = false
+  session.clearStorageData = async () => { cleared = true }
+  session.fetch = async () => { throw new Error('offline') }
+  await assert.rejects(transport.handle(request('/api/auth/logout/', { method: 'POST' })), /offline/)
+  assert.equal(cleared, true)
+  assert.equal(transport.changingIdentity, false)
+})
+
+test('身份切换期间拒绝并发登录与旧页面请求', async () => {
+  const { transport } = fixture()
+  let release
+  transport.beforeIdentityChange = () => new Promise(resolve => { release = resolve })
+  const login = transport.handle(request('/api/auth/login/', { method: 'POST', body: '{}' }))
+  await assert.rejects(transport.handle(request('/api/missions/')), /正在切换/)
+  await assert.rejects(transport.handle(request('/api/auth/login/', { method: 'POST' })), /正在切换/)
+  release()
+  await (await login).text()
+  assert.equal(transport.changingIdentity, false)
+})

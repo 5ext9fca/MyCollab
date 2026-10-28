@@ -6,6 +6,7 @@ const API_ROOTS = new Set(['auth', 'missions', 'library', 'agent-devices', 'assi
   'file-transfers', 'notifications', 'workspace', 'design-elements', 'production-templates',
   'milestones', 'admin', 'members', 'saved-views', 'comments', 'my-work', 'tags'])
 
+/** @param {string} value */
 export function serverOrigin(value) {
   const url = new URL(value)
   const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
@@ -16,6 +17,7 @@ export function serverOrigin(value) {
   return url.origin
 }
 
+/** @param {Request & {initiatorOrigin?: string}} request @param {string} server */
 export function apiTarget(request, server) {
   const url = new URL(request.url)
   if (url.protocol !== 'mycollab:' || url.host !== 'app' || url.username || url.password ||
@@ -30,25 +32,49 @@ export function apiTarget(request, server) {
 }
 
 export class BusinessTransport {
+  /** @param {string} server @param {Pick<import('electron').Session, 'fetch' | 'cookies' | 'clearStorageData'>} session
+   * @param {{beforeIdentityChange?: () => Promise<void>}} options */
   constructor(server, session, { beforeIdentityChange = async () => {} } = {}) {
     this.server = serverOrigin(server)
     this.session = session
     this.beforeIdentityChange = beforeIdentityChange
     this.generation = 0
+    /** @type {Set<AbortController>} */
     this.controllers = new Set()
+    this.changingIdentity = false
   }
 
   async clear() {
-    await this.beforeIdentityChange()
-    this.generation++
-    for (const controller of this.controllers) controller.abort()
-    await this.session.clearStorageData()
+    if (this.changingIdentity) throw new Error('登录身份正在切换。')
+    this.changingIdentity = true
+    try {
+      await this.beforeIdentityChange()
+      this.generation++
+      for (const controller of this.controllers) controller.abort()
+      await this.session.clearStorageData()
+    } finally { this.changingIdentity = false }
   }
 
+  /** @param {Request & {initiatorOrigin?: string}} request */
   async handle(request) {
     const target = apiTarget(request, this.server)
+    if (this.changingIdentity) throw new Error('登录身份正在切换。')
+    const pathname = new URL(target).pathname
     const identityChange = request.method === 'POST' &&
-      ['/api/auth/login/', '/api/auth/logout/'].includes(new URL(target).pathname)
+      ['/api/auth/login/', '/api/auth/logout/'].includes(pathname)
+    if (identityChange) this.changingIdentity = true
+    try {
+      return await this.forward(request, target, identityChange)
+    } finally {
+      try {
+        // 即使网络断开，退出也必须抹去本地业务会话。
+        if (identityChange && pathname === '/api/auth/logout/') await this.session.clearStorageData()
+      } finally { if (identityChange) this.changingIdentity = false }
+    }
+  }
+
+  /** @param {Request} request @param {string} target @param {boolean} identityChange */
+  async forward(request, target, identityChange) {
     if (identityChange) {
       await this.beforeIdentityChange()
       this.generation++
@@ -61,21 +87,25 @@ export class BusinessTransport {
     request.signal?.addEventListener('abort', abort, { once: true })
     if (request.signal?.aborted) controller.abort()
     this.controllers.add(controller)
+    const timer = setTimeout(abort, 180_000)
+    timer.unref?.()
     let streaming = false
     const cleanup = () => {
+      clearTimeout(timer)
       this.controllers.delete(controller)
       request.signal?.removeEventListener('abort', abort)
     }
     try {
       const headers = new Headers({ Accept: request.headers.get('accept') || '*/*' })
       for (const name of ['content-type', 'range', 'if-none-match', 'if-modified-since']) {
-        if (request.headers.has(name)) headers.set(name, request.headers.get(name))
+        const value = request.headers.get(name)
+        if (value !== null) headers.set(name, value)
       }
       if (!SAFE_METHODS.has(request.method)) {
         let cookies = await this.session.cookies.get({ url: this.server, name: 'csrftoken' })
         if (!cookies.length) {
           const csrf = await this.session.fetch(this.server + '/api/auth/csrf/', {
-            redirect: 'error', signal: controller.signal,
+            redirect: 'error', credentials: 'include', signal: controller.signal,
           })
           await csrf.body?.cancel()
           if (!csrf.ok) throw new Error('无法初始化登录保护。')
@@ -89,18 +119,16 @@ export class BusinessTransport {
       const response = await this.session.fetch(target, {
         method: request.method, headers, body: SAFE_METHODS.has(request.method) ? undefined : request.body,
         ...(request.body && !SAFE_METHODS.has(request.method) ? { duplex: 'half' } : {}),
-        redirect: 'error', signal: controller.signal,
+        redirect: 'error', credentials: 'include', signal: controller.signal,
       })
       if (generation !== this.generation) {
         await response.body?.cancel()
         throw new Error('登录身份已改变，请重新加载。')
       }
-      if (identityChange && new URL(target).pathname === '/api/auth/logout/') {
-        await this.session.clearStorageData()
-      }
       const outgoing = new Headers()
-      for (const name of ['content-type', 'content-disposition', 'content-length', 'content-range', 'accept-ranges']) {
-        if (response.headers.has(name)) outgoing.set(name, response.headers.get(name))
+      for (const name of ['content-type', 'content-disposition', 'content-range', 'accept-ranges']) {
+        const value = response.headers.get(name)
+        if (value !== null) outgoing.set(name, value)
       }
       outgoing.set('Cache-Control', 'no-store')
       outgoing.set('X-Content-Type-Options', 'nosniff')
