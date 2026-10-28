@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { desktop, type RunnerBindingSummary } from '../platform/desktop'
-import { onMounted, ref } from 'vue'
+import { desktop, type RunnerBindingSummary, type RunnerState, type RunnerDiagnosis } from '../platform/desktop'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { createAgentDevice, listAgentDevices, revokeAgentDevice, listAssistance, cancelAssistance } from '../api/agentBridge'
 import type { AgentDevice, AssistanceKind, AssistanceSummary } from '../api/agentBridge'
 const devices = ref<AgentDevice[]>([])
@@ -15,6 +15,27 @@ const selectedDevice = ref('')
 const model = ref('')
 const opencode = ref('opencode')
 const localBinding = ref<RunnerBindingSummary | null>(null)
+const runnerState = ref<RunnerState>({ state: 'stopped', pending_results: 0, rejected_results: 0, error: '' })
+const diagnosis = ref<RunnerDiagnosis | null>(null)
+const runnerLabels: Record<string, string> = { stopped: '已停止', starting: '启动中', running: '运行中', idle: '等待任务', offline: '等待网络恢复', delivering: '回传结果中', unauthorized: '设备失效', expired: '租约过期' }
+const checkLabels: Record<string, string> = { ok: '通过', unavailable: '不可用', incompatible: '版本不兼容', unauthorized: '设备失效' }
+let statusTimer: ReturnType<typeof setInterval> | undefined
+async function refreshRunner() {
+  if (!desktop || document.hidden) return
+  try { runnerState.value = await desktop.runnerStatus() } catch { /* 身份切换时丢弃旧状态。 */ }
+}
+async function runnerAction(action: 'start' | 'stop' | 'diagnose') {
+  if (!desktop) return
+  busy.value = true; error.value = ''
+  try {
+    if (action === 'start') await desktop.startRunner()
+    else if (action === 'stop') await desktop.stopRunner()
+    else diagnosis.value = await desktop.diagnoseRunner()
+    await refreshRunner()
+  } catch { error.value = 'Runner 操作失败，请检查设备有效期、OpenCode 配置和网络。尚未停止时不能切换身份。' }
+  finally { busy.value = false }
+}
+onUnmounted(() => clearInterval(statusTimer))
 const error = ref('')
 const busy = ref(false)
 const capabilities = ref<AssistanceKind[]>(['design_polish', 'template_generate', 'mission_write', 'review_assist', 'agent_requirements'])
@@ -52,6 +73,8 @@ async function bindLocal() {
 onMounted(async () => {
   await load()
   if (!desktop) return
+  await refreshRunner()
+  statusTimer = setInterval(refreshRunner, 5000)
   try {
     localBinding.value = await desktop.runnerBinding()
     if (localBinding.value) {
@@ -85,8 +108,25 @@ onMounted(async () => {
         <el-form-item label="设备令牌"><el-input v-model="localToken" type="password" autocomplete="off" /></el-form-item>
         <el-form-item label="OpenCode 模型"><el-input v-model="model" placeholder="provider/model" /></el-form-item>
         <el-form-item label="OpenCode 可执行文件"><el-input v-model="opencode" /></el-form-item>
-        <el-button type="primary" native-type="submit" :loading="busy">验证并加密保存到本机</el-button>
+        <el-button type="primary" native-type="submit" :loading="busy" :disabled="runnerState.state !== 'stopped'">验证并加密保存到本机</el-button>
       </el-form>
+    </el-card>
+    <el-card v-if="desktop" shadow="never" class="section-card">
+      <template #header><b>本机 Runner</b></template>
+      <el-alert v-if="runnerState.error" :title="runnerState.error" type="error" :closable="false" />
+      <el-descriptions :column="3">
+        <el-descriptions-item label="状态">{{ runnerLabels[runnerState.state] || runnerState.state }}</el-descriptions-item>
+        <el-descriptions-item label="待回传结果">{{ runnerState.pending_results }}</el-descriptions-item>
+        <el-descriptions-item label="回传被拒绝">{{ runnerState.rejected_results }}</el-descriptions-item>
+      </el-descriptions>
+      <p>启动后会领取本人的辅助请求，并可能产生模型费用。关闭窗口可继续运行；退出客户端或登录时会先停止。</p>
+      <el-button :disabled="busy || !localBinding || runnerState.state !== 'stopped'" type="primary" @click="runnerAction('start')">启动 Runner</el-button>
+      <el-button :disabled="busy || runnerState.state === 'stopped'" @click="runnerAction('stop')">停止 Runner</el-button>
+      <el-button :disabled="busy || !localBinding || runnerState.state !== 'stopped'" @click="runnerAction('diagnose')">自检（不调用模型）</el-button>
+      <el-descriptions v-if="diagnosis" :column="2">
+        <el-descriptions-item label="OpenCode">{{ checkLabels[diagnosis.opencode] }}</el-descriptions-item>
+        <el-descriptions-item label="服务器">{{ checkLabels[diagnosis.server] }}</el-descriptions-item>
+      </el-descriptions>
     </el-card>
     <el-card shadow="never" class="section-card"><h3>已绑定设备</h3><el-button @click="load">刷新</el-button>
       <el-table :data="devices"><el-table-column prop="name" label="名称" /><el-table-column label="最近联系"><template #default="{ row }">{{ row.last_seen_at ? new Date(row.last_seen_at).toLocaleString() : '尚未联系' }}</template></el-table-column><el-table-column label="有效期"><template #default="{ row }">{{ row.revoked_at ? '已撤销' : new Date(row.expires_at).toLocaleString() }}</template></el-table-column><el-table-column label="操作"><template #default="{ row }"><el-button v-if="!row.revoked_at" @click="revoke(row.id)">撤销</el-button></template></el-table-column></el-table>

@@ -117,13 +117,16 @@ def run_cli(argv=None):
     parser.add_argument("--config-stdin", action="store_true",
                         help="从标准输入读取一行私有配置；--config 仅决定状态目录，不写入凭据")
     parser.add_argument("--control-stdin", action="store_true", help="配置行后的管道输入或关闭触发停止，仅供桌面宿主")
+    parser.add_argument("--desktop-events", action="store_true", help="取得独占锁后输出桌面就绪事件")
     parser.add_argument("--once", action="store_true", help="只领取一次，用于接入验证")
     parser.add_argument("--diagnose", action="store_true", help="检查配置、版本及服务器，不领取任务或调用模型")
     parser.add_argument("--status", action="store_true", help="读取脱敏本地运行状态")
     parser.add_argument("--parent-pid", type=int, help="桌面进程退出时停止 Runner")
     args = parser.parse_args(argv)
-    if args.control_stdin and (not args.config_stdin or args.status or args.diagnose):
-        parser.error("停止管道要求 --config-stdin，且不能用于状态或自检。")
+    if args.desktop_events and not args.control_stdin:
+        parser.error("桌面事件要求停止管道。")
+    if args.control_stdin and (not args.config_stdin or args.status):
+        parser.error("停止管道要求 --config-stdin，且不能用于状态读取。")
     if args.parent_pid is not None and args.parent_pid <= 1:
         parser.error("父进程编号无效。")
     if args.parent_pid:
@@ -143,7 +146,7 @@ def run_cli(argv=None):
                 if os.name == 'posix':
                     os.kill(os.getpid(), signal.SIGTERM)
                 else:
-                    _thread.interrupt_main(signal.SIGTERM)
+                    os._exit(130)
         threading.Thread(target=watch_parent, daemon=True).start()
     path = args.config.expanduser()
     try:
@@ -184,6 +187,21 @@ def run_cli(argv=None):
     if args.status:
         print(json.dumps(store.snapshot(), ensure_ascii=False))
         return
+    stop_event = threading.Event() if args.control_stdin else None
+    if stop_event is not None:
+        def watch_control():
+            try:
+                # 无缓冲 fd 读取不会在解释器退出时占用 stdin 的缓冲锁。
+                os.read(sys.stdin.fileno(), 1)
+            except OSError:
+                pass
+            finally:
+                stop_event.set()
+                if os.name == 'posix':
+                    os.kill(os.getpid(), signal.SIGTERM)
+                else:
+                    _thread.interrupt_main(signal.SIGTERM)
+        threading.Thread(target=watch_control, daemon=True).start()
     if args.diagnose:
         checks = {"config": "ok", "opencode": "unavailable", "server": "unavailable", "protocol": 1}
         try:
@@ -201,25 +219,12 @@ def run_cli(argv=None):
             pass
         print(json.dumps(checks, ensure_ascii=False))
         return
-    stop_event = threading.Event() if args.control_stdin else None
-    if stop_event is not None:
-        def watch_control():
-            try:
-                # 无缓冲 fd 读取不会在解释器退出时占用 stdin 的缓冲锁。
-                os.read(sys.stdin.fileno(), 1)
-            except OSError:
-                pass
-            finally:
-                stop_event.set()
-                if os.name == 'posix':
-                    os.kill(os.getpid(), signal.SIGTERM)
-                else:
-                    _thread.interrupt_main(signal.SIGTERM)
-        threading.Thread(target=watch_control, daemon=True).start()
     try:
         with store.lock():
             delay = 3
             store.status('starting')
+            if args.desktop_events:
+                print(json.dumps({'event': 'ready'}), flush=True)
             try:
                 while True:
                     try:

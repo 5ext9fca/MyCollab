@@ -602,3 +602,5 @@ Windows 使用其 Python 3.13 解释器运行同一构建脚本，将检查路�
 Windows 模型树使用 [Microsoft Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) 的 KILL_ON_JOB_CLOSE；通过挂起创建、Job 分配、主线程恢复保证模型执行前已受控制。非 Windows 的模拟失败测试仅证明不会在分配失败时回退，不替代 `test_child_process.WindowsJobTests` 的 Windows 原生父进程崩溃与孙进程清理测试。
 
 Runner 最新回归共 39 项：37 项通过，Windows 原生 DACL 与 Job 测试 2 项在 macOS 跳过。`check_runner.py` 增加打包后持续运行、停止管道 EOF、退出码和停止状态检查，仍不启动 GUI 或调用模型。
+
+Electron Runner 控制器的非 GUI 子进程测试覆盖就绪、重复启动、启动取消、EOF 停止、自检脱敏与缺失程序；业务传输测试覆盖停止失败时保留会话。打包前必须先运行 `backend/.venv/bin/python desktop/scripts/build_sidecar.py --electron`（仓库根目录），打包脚本拒绝缺少本平台 Runner 的产物；electron-builder 将其复制到 `resources/runner`。`--desktop-events` 仅供私有控制管道，在获得设备锁后输出就绪事件。

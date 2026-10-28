@@ -62,7 +62,11 @@ export class BusinessTransport {
     const pathname = new URL(target).pathname
     const identityChange = request.method === 'POST' &&
       ['/api/auth/login/', '/api/auth/logout/'].includes(pathname)
-    if (identityChange) this.changingIdentity = true
+    if (identityChange) {
+      this.changingIdentity = true
+      try { await this.beforeIdentityChange() }
+      catch (error) { this.changingIdentity = false; throw error }
+    }
     try {
       return await this.forward(request, target, identityChange)
     } finally {
@@ -76,7 +80,6 @@ export class BusinessTransport {
   /** @param {Request} request @param {string} target @param {boolean} identityChange */
   async forward(request, target, identityChange) {
     if (identityChange) {
-      await this.beforeIdentityChange()
       this.generation++
       for (const controller of this.controllers) controller.abort()
       if (new URL(target).pathname === '/api/auth/login/') await this.session.clearStorageData()

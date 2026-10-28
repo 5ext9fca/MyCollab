@@ -47,7 +47,7 @@ try:
             if mode == '--status':
                 snapshot = json.loads(result.stdout)
                 assert snapshot['state'] == 'stopped' and snapshot['pending_results'] == 0
-        process = subprocess.Popen(command + ['--control-stdin'], stdin=subprocess.PIPE,
+        process = subprocess.Popen(command + ['--control-stdin', '--desktop-events'], stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             process.stdin.write(payload)
@@ -66,6 +66,7 @@ try:
             process.stdin = None
             stdout, stderr = process.communicate(timeout=20)
             assert process.returncode == 130
+            assert json.loads(stdout.splitlines()[0]) == {'event': 'ready'}
             assert b'smoke-device-secret' not in stdout + stderr
             assert json.loads(status[0].read_text())['state'] == 'stopped'
         finally:

@@ -9,7 +9,13 @@ export interface DesktopSettings {
   arch: string
 }
 export interface RunnerBindingSummary { deviceId: string; model: string; opencode: string }
+export interface RunnerState { state: string; pending_results: number; rejected_results: number; error: string }
+export interface RunnerDiagnosis { opencode: string; server: string; protocol: number }
 export interface DesktopBridge {
+  startRunner(): Promise<RunnerState>
+  stopRunner(): Promise<void>
+  runnerStatus(): Promise<RunnerState>
+  diagnoseRunner(): Promise<RunnerDiagnosis>
   runnerBinding(): Promise<RunnerBindingSummary | null>
   bindRunner(input: { deviceId: string; token: string; model: string; opencode: string }): Promise<RunnerBindingSummary>
   settings(): Promise<DesktopSettings>

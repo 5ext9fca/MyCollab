@@ -92,3 +92,16 @@ test('身份切换期间拒绝并发登录与旧页面请求', async () => {
   await (await login).text()
   assert.equal(transport.changingIdentity, false)
 })
+
+test('停止 Runner 失败时保留业务会话并拒绝登录退出', async () => {
+  for (const action of ['login', 'logout']) {
+    const { transport, session, calls } = fixture()
+    let cleared = false
+    session.clearStorageData = async () => { cleared = true }
+    transport.beforeIdentityChange = async () => { throw new Error('Runner 尚未停止') }
+    await assert.rejects(transport.handle(request(`/api/auth/${action}/`, { method: 'POST' })), /尚未停止/)
+    assert.equal(cleared, false)
+    assert.equal(calls.length, 0)
+    assert.equal(transport.changingIdentity, false)
+  }
+})

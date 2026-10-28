@@ -6,6 +6,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import { RunnerController } from './runner.mjs'
 import { BindingVault } from './vault.mjs'
 import { DeviceBindings } from './binding.mjs'
 import { APP_ORIGIN, BusinessTransport, serverOrigin } from './transport.mjs'
@@ -26,6 +27,9 @@ let transport
 let rendererSession
 /** @type {DeviceBindings} */
 let bindings
+/** @type {RunnerController | undefined} */
+let runner
+let finishingQuit = false
 let quitting = false
 let changingServer = false
 let settings = { server: '', localNetwork: false }
@@ -51,7 +55,7 @@ function configureServer(server) {
   const key = createHash('sha256').update(server).digest('hex')
   // 业务会话与渲染页面彻底分离；退出应用后不保留登录 Cookie。
   const businessSession = session.fromPartition('business-' + key, { cache: false })
-  transport = new BusinessTransport(server, businessSession)
+  transport = new BusinessTransport(server, businessSession, { beforeIdentityChange: async () => { await runner?.stop() } })
 }
 
 /** @param {Request & {initiatorOrigin?: string}} request */
@@ -119,7 +123,11 @@ function handle(channel, operation) {
 
 function registerIPC() {
   handle('desktop:runner-binding', () => bindings.read())
-  handle('desktop:bind-runner', input => bindings.bind(input))
+  handle('desktop:bind-runner', async input => { await runner?.stop(); return bindings.bind(input) })
+  handle('desktop:runner-start', () => runner?.start())
+  handle('desktop:runner-stop', () => runner?.stop())
+  handle('desktop:runner-status', () => runner?.status())
+  handle('desktop:runner-diagnose', () => runner?.diagnose())
   handle('desktop:settings', () => ({ server: settings.server, localNetwork: settings.localNetwork,
     autostart: app.getLoginItemSettings().openAtLogin, version: app.getVersion(),
     electron: process.versions.electron, chromium: process.versions.chrome,
@@ -183,7 +191,17 @@ if (!app.requestSingleInstanceLock()) app.quit()
 else {
   app.on('second-instance', reveal)
   app.on('activate', reveal)
-  app.on('before-quit', () => { quitting = true })
+  app.on('before-quit', event => {
+    if (quitting) return
+    event.preventDefault()
+    if (finishingQuit) return
+    finishingQuit = true
+    void (runner?.stop() || Promise.resolve()).then(() => { quitting = true; app.quit() }).catch(() => {
+      finishingQuit = false
+      reveal()
+      dialog.showErrorBox('Runner 尚未停止', '客户端保持打开，请稍后再次停止 Runner，再退出。')
+    })
+  })
   await app.whenReady()
   try {
     const stored = JSON.parse(await readFile(configPath(), 'utf8'))
@@ -203,6 +221,10 @@ else {
   const deviceSession = session.fromPartition('device-probe', { cache: false })
   bindings = new DeviceBindings(() => changingServer ? undefined : transport, vault,
     (input, options) => deviceSession.fetch(input instanceof URL ? input.href : input, options))
+  const platform = process.platform === 'darwin' ? 'mac' : 'win'
+  const runnerDirectory = app.isPackaged ? path.join(process.resourcesPath, 'runner') : path.join(directory, '../build/runner', `${platform}-${process.arch}`)
+  runner = new RunnerController([path.join(runnerDirectory, process.platform === 'win32' ? 'mycollab-runner.exe' : 'mycollab-runner')],
+    path.join(app.getPath('userData'), 'runner', 'config.json'), () => bindings.verified())
   registerIPC()
   createWindow()
   const icon = nativeImage.createFromPath(path.join(directory, '../src-tauri/icons/icon.png')).resize({ width: 18, height: 18 })

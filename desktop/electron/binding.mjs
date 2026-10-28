@@ -54,6 +54,28 @@ export class DeviceBindings {
     return publicBinding(binding)
   }
 
+  /** @param {import('./vault.mjs').RunnerBinding} binding */
+  async verify(binding) {
+    // 只访问固定设备探测接口；绝不携带业务 Cookie，也不跟随重定向。
+    const status = await boundedJSON(await this.probe(binding.server + '/api/agent-runner/status/', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + binding.device_token, 'Content-Type': 'application/json' },
+      body: '{}', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(15_000),
+    }))
+    if (status.device_id !== binding.deviceId || String(status.owner_id) !== binding.owner ||
+        !Array.isArray(status.schema_versions) || !status.schema_versions.includes(1)) {
+      throw new Error('设备令牌不属于当前用户或所选设备，请重新创建。')
+    }
+  }
+
+  async verified() {
+    const identity = await this.identity()
+    const binding = await this.vault.load(identity.transport.server, identity.owner)
+    if (!binding) throw new Error('请先绑定本机设备。')
+    await this.verify(binding)
+    identity.assertCurrent()
+    return { binding, assertCurrent: identity.assertCurrent }
+  }
+
   /** @param {unknown} input */
   async bind(input) {
     if (this.busy) throw new Error('设备绑定正在处理。')
@@ -65,15 +87,7 @@ export class DeviceBindings {
       const binding = validateBinding({ server: identity.transport.server, owner: identity.owner,
         deviceId: fields.deviceId, device_token: fields.token, model: fields.model, opencode: fields.opencode })
       if (!/^[\x21-\x7e]{1,128}$/.test(binding.device_token)) throw new Error('设备令牌格式无效。')
-      // 只访问固定设备探测接口；绝不携带业务 Cookie，也不跟随重定向。
-      const status = await boundedJSON(await this.probe(binding.server + '/api/agent-runner/status/', {
-        method: 'POST', headers: { Authorization: 'Bearer ' + binding.device_token, 'Content-Type': 'application/json' },
-        body: '{}', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(15_000),
-      }))
-      if (status.device_id !== binding.deviceId || String(status.owner_id) !== binding.owner ||
-          !Array.isArray(status.schema_versions) || !status.schema_versions.includes(1)) {
-        throw new Error('设备令牌不属于当前用户或所选设备，请重新创建。')
-      }
+      await this.verify(binding)
       identity.assertCurrent()
       await this.vault.save(binding)
       identity.assertCurrent()

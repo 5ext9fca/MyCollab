@@ -16,6 +16,10 @@
     {
       "from": "../frontend/dist",
       "to": "frontend"
+    },
+    {
+      "from": "build/runner/${os}-${arch}",
+      "to": "runner"
     }
   ],
   "mac": {
