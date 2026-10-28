@@ -8,7 +8,10 @@ export interface DesktopSettings {
   platform: string
   arch: string
 }
+export interface RunnerBindingSummary { deviceId: string; model: string; opencode: string }
 export interface DesktopBridge {
+  runnerBinding(): Promise<RunnerBindingSummary | null>
+  bindRunner(input: { deviceId: string; token: string; model: string; opencode: string }): Promise<RunnerBindingSummary>
   settings(): Promise<DesktopSettings>
   setServer(server: string): Promise<boolean>
   setLocalNetwork(enabled: boolean): Promise<boolean>

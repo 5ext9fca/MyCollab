@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, protocol, session, shell, Tray } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, protocol, safeStorage, session, shell, Tray } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
@@ -6,6 +6,8 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import { BindingVault } from './vault.mjs'
+import { DeviceBindings } from './binding.mjs'
 import { APP_ORIGIN, BusinessTransport, serverOrigin } from './transport.mjs'
 import { allowPermission, assertSender, assetPath, CONTENT_SECURITY_POLICY, externalURL, isAppPage, libraryURL } from './policy.mjs'
 
@@ -22,6 +24,8 @@ let tray
 let transport
 /** @type {import('electron').Session} */
 let rendererSession
+/** @type {DeviceBindings} */
+let bindings
 let quitting = false
 let changingServer = false
 let settings = { server: '', localNetwork: false }
@@ -114,6 +118,8 @@ function handle(channel, operation) {
 }
 
 function registerIPC() {
+  handle('desktop:runner-binding', () => bindings.read())
+  handle('desktop:bind-runner', input => bindings.bind(input))
   handle('desktop:settings', () => ({ server: settings.server, localNetwork: settings.localNetwork,
     autostart: app.getLoginItemSettings().openAtLogin, version: app.getVersion(),
     electron: process.versions.electron, chromium: process.versions.chrome,
@@ -193,6 +199,10 @@ else {
     contents !== null && contents === window?.webContents && origin === APP_ORIGIN && details.isMainFrame === true &&
     allowPermission(permission, contents.getURL(), settings.localNetwork))
   rendererSession.protocol.handle('mycollab', serve)
+  const vault = new BindingVault(path.join(app.getPath('userData'), 'devices'), safeStorage)
+  const deviceSession = session.fromPartition('device-probe', { cache: false })
+  bindings = new DeviceBindings(() => changingServer ? undefined : transport, vault,
+    (input, options) => deviceSession.fetch(input instanceof URL ? input.href : input, options))
   registerIPC()
   createWindow()
   const icon = nativeImage.createFromPath(path.join(directory, '../src-tauri/icons/icon.png')).resize({ width: 18, height: 18 })

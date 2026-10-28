@@ -709,13 +709,22 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 `desktop/electron/main.mjs` 为新宿主，加载唯一的 `frontend/dist` 构建产物；旧 Tauri 伴侣暂留到 Runner 等替代能力完整。Electron 使用安全标准协议 `mycollab://app`，静态映射仅暴露构建资产和 SPA 入口，业务页刷新复用入口，不加载远程 HTML。主窗口禁用 Node/WebView，启用 sandbox、context isolation、Web 安全和 CSP。
 
 - `transport.mjs` 的 `BusinessTransport` 仅将本地 `/api/` 下现有业务路由映射到配置的 HTTPS 根地址（本机开发可 HTTP），拒绝 Runner API、其他来源、任意请求头及重定向。主进程的服务器独立内存会话持有 Cookie 与 CSRF，渲染会话不持有业务 Cookie，重启需重新登录，不保存密码。私有资源流有取消及超时，响应过滤 Cookie、禁止缓存、隔离附件脚本；身份切换拒绝并发旧请求并中断旧流，断网退出也清 Cookie。
-- `policy.mjs` 校验主窗口/主框架 IPC 来源、业务地址、素材下载和外链。`preload.cjs` 仅暴露读取设置、切换服务器、自启动、局域网权限、打开 HTTP(S) 外链与下载当前用户素材六个固定操作；不能提供任意 IPC、HTTP、文件系统或命令执行。
+- `policy.mjs` 校验主窗口/主框架 IPC 来源、业务地址、素材下载和外链。`preload.cjs` 仅暴露读取设置、切换服务器、自启动、局域网权限、打开 HTTP(S) 外链、下载当前用户素材、读取脱敏本机绑定及验证保存设备八个固定操作；不能提供任意 IPC、HTTP、文件系统或命令执行。
 - `frontend/src/platform/desktop.ts` 适配已清洗 Markdown 和普通链接；素材下载由主进程再次鉴权、用户选择目的地后流式写入临时文件并原子替换。外链交给系统浏览器，不获得桌面能力；普通 Web 端维持原行为。
 - `DesktopSettingsView.vue` 的 `/desktop-settings` 在登录前可用，桌面首次无服务器时进入此页；登录页和业务导航提供入口。更换服务器清会话、前端存储并重新载入页面；退出重新载入登录页。局域网权限默认关闭，启用后仅本地业务主框架可申请局域网权限；仍拒绝摄像头、麦克风及读取剪贴板等无关权限。
-- 宿主已有单实例、托盘、关闭隐藏、明确退出及用户自选的登录系统后启动。当前 Electron **尚未接入本地 Runner、设备凭据存储、旧配置迁移与更新**，不能将新宿主视作旧伴侣的完整替代；尚未执行 GUI 或真实跨系统验收。
+- 宿主已有单实例、托盘、关闭隐藏、明确退出及用户自选的登录系统后启动。当前 Electron 已接入设备绑定与系统加密配置，但**尚未接入 Runner 启停、旧配置迁移与更新**，不能将新宿主视作旧伴侣的完整替代；尚未执行 GUI 或真实跨系统验收。
 
 ### 桌面 Runner 凭据交接基础
 
-`desktop/electron/vault.mjs` 提供 `BindingVault`：按服务器规范根地址和用户 ID 派生文件名，使用注入的 Electron 异步系统加密接口保存完整设备绑定（服务器、用户、设备 ID、设备令牌、模型、OpenCode 路径）。读取时再次核对密文身份，密钥轮换时重新加密；加密服务不可用时拒绝保存，不回退明文。只允许固定字段，不接受供应商凭据等附加配置。当前模块尚未接入宿主绑定/启动操作，不能据此宣称系统凭据存储已完成实机验证。
+`desktop/electron/vault.mjs` 提供 `BindingVault`：按服务器规范根地址和用户 ID 派生文件名，使用注入的 Electron 异步系统加密接口保存完整设备绑定（服务器、用户、设备 ID、设备令牌、模型、OpenCode 路径）。读取时再次核对密文身份，密钥轮换时重新加密；加密服务不可用时拒绝保存，不回退明文。只允许固定字段，不接受供应商凭据等附加配置。该模块已接入主进程的设备绑定操作，尚未接入 Runner 启动；系统凭据存储尚未完成实机验证。
 
 `local_runner/__main__.py` 新增 `--config-stdin`，从标准输入读取最多 32 KiB、以换行结束的一行 UTF-8 JSON；开启后 `--config` 仅决定隔离状态目录，不读取或创建明文配置。桌面宿主后续通过匿名管道交接，不把令牌放入 argv、环境变量或临时配置。现有文件配置与 CLI 用法保持兼容，结果待发箱身份派生方式不变。
+
+
+### 桌面设备身份核验
+
+`POST /api/agent-runner/status/` 增加 `device_id`、`owner_id` 字符串，均来自设备 Bearer 认证，保留协议版本、能力、有效期和租约信息。该接口不领取任务、不返回令牌，浏览器 Session 不能替代设备认证。
+
+`desktop/electron/binding.mjs` 的 `DeviceBindings` 通过当前业务 Session 的 `/api/auth/me/` 取得用户身份，再用无 Cookie 的独立请求调用固定 Runner 状态接口，要求设备、用户与协议匹配才加密保存；不信任 renderer 传入的服务器或用户标识。探测禁止重定向、限制 15 秒与 128 KiB 响应，身份切换时拒绝保存/返回旧配置。读取绑定仅返回设备 ID、模型和 OpenCode 路径，永不回显已保存令牌。
+
+桌面 `/agent-devices` 增加本机绑定卡片；新创建设备可自动填入本次令牌，保存成功清除页面令牌。Web 用户仍使用原设备页面。保存配置不启动 Runner 或模型，旧服务器缺少身份字段时拒绝绑定并提示升级。
