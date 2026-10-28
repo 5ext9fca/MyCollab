@@ -630,3 +630,20 @@ Windows 测试假 CLI 源码为 `local_runner/tests/fixtures/opencode.py`，由 
 ### macOS 正式打包的公证前置检查
 
 `electron:dist` 在调用打包器前必须通过公证配置检查，不能仅依赖 `notarize: true`：当前锁定打包器在未找到凭据时会警告后跳过公证。支持完整的 `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID` 组合，或 `APPLE_API_KEY`、`APPLE_API_KEY_ID`、`APPLE_API_ISSUER` 组合，或 `APPLE_KEYCHAIN_PROFILE`（可选 `APPLE_KEYCHAIN`）。检查按打包器的账户 → API → 钥匙串优先级执行；残缺的高优先级配置直接失败，不回退。不输出凭据值。此检查只证明配置存在，实际凭据有效性及公证成功仍由发行构建验证；开发包不要求这些凭据。
+
+### 手动构建正式发行产物
+
+`.github/workflows/desktop-release.yml` 仅支持手动触发，只允许默认分支；先复用 `desktop.yml` 完成同一提交的三个原生目标非 GUI 验证，再在对应原生运行器重新构建正式安装包。工作流只拥有 `contents: read`，不创建 Release、不上传更新源、不启动安装器或应用窗口。尚未推送、执行或取得正式签名产物，不能把工作流存在视为跨平台发行通过。
+
+发布负责人需预先建立 `desktop-release-mac-arm64`、`desktop-release-mac-x64`、`desktop-release-win-x64` 三个 GitHub Environments，并限制为默认分支；按团队需求配置审批。环境隔离机制见 [GitHub 环境说明](https://docs.github.com/en/actions/concepts/workflows-and-actions/deployment-environments)。每个环境设置：
+
+- 变量 `MYCOLLAB_UPDATE_URL`：该平台/架构独立的 HTTPS 更新目录，以 `/` 结尾。
+- Windows 变量 `MYCOLLAB_UPDATE_PUBLISHER`：与证书匹配的发布者名称。
+- Secret `CSC_LINK`：electron-builder 支持的签名证书（此工作流建议使用导出证书的 base64 内容）；Secret `CSC_KEY_PASSWORD`：对应密码。Windows 需适用于该证书供应商的可导出签名方案；若供应商要求硬件或云签名，必须先接入其方案，不能退回未签名发行。
+- 两个 macOS 环境另需 Secrets `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`，使用 Developer ID Application 签名证书。此工作流使用账户公证方式；本地发行脚本仍支持技术文档上节列出的其他方式。
+
+变量名依据 [electron-builder v26 签名文档](https://www.electron.build/v26/docs/features/code-signing/)。签名与 Apple 凭据仅注入正式打包步骤，不传给依赖安装、普通回归或产物归档。工作流引用环境不会自动配置环境的分支限制或审批，维护者必须在 GitHub 中完成设置。不要把任何真实凭据写入仓库。
+
+正式构建后检查实际包内 Runner；macOS 执行 `codesign --verify --deep --strict`、`xcrun stapler validate` 和 `spctl --assess --type execute`；Windows 使用 `Get-AuthenticodeSignature` 检查应用、Runner 和唯一安装器，必须返回 `Valid`。这些非 GUI 检查不替代首次安装、更新恢复或用户交互验收。
+
+`desktop/scripts/collect_release.py` 只收集顶层安装包（macOS DMG/ZIP、Windows EXE）、对应 `latest*.yml` 与 blockmap，生成 `SHA256SUMS.txt` 和包含提交及目标的 `build-info.json`，不归档整个构建目录或调试配置。缺少安装包/清单、同类型多个安装包或输出目录已有文件时失败，防止混入旧产物。工作流归档保存 14 天；下载同次构建的归档后，仍由发布负责人按前述顺序上传更新服务。测试命令：`backend/.venv/bin/python -m unittest discover -s desktop/scripts -p test_collect_release.py -v`。

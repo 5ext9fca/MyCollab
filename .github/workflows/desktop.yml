@@ -1,9 +1,11 @@
 name: 桌面非 GUI 构建
 on:
+  workflow_call:
   workflow_dispatch:
   pull_request:
     paths:
       - '.github/workflows/desktop.yml'
+      - '.github/workflows/desktop-release.yml'
       - 'desktop/**'
       - 'frontend/**'
       - 'local_runner/**'
@@ -60,6 +62,7 @@ jobs:
         run: |
           npm --prefix desktop run electron:check
           npm --prefix desktop run electron:test
+          python -m unittest discover -s desktop/scripts -p test_collect_release.py -v
       - name: 前端纯逻辑回归
         run: npm --prefix frontend run test -- src/tests/desktopAuth.spec.ts src/tests/client.spec.ts src/tests/missions.spec.ts src/tests/library.spec.ts src/tests/fileTransferProtocol.spec.ts src/tests/fileTransferController.spec.ts
       - name: 构建 Windows 测试模型 CLI（不接入供应商）
