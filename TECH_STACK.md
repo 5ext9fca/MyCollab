@@ -657,3 +657,5 @@ PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`�
 开发打包模式只接受 `--dir` 或 `--development` 单一参数，无参数才是正式发行；未知/冲突参数拒绝执行。原生 CI 已切换到 `electron:dist:dev`，只生成安装产物，不运行安装器或应用窗口。开发安装包的系统签名/信任限制不应通过关闭系统安全设置绕过。
 
 安装目标自身的 `arch` 数组会优先于 electron-builder 命令行架构；脚本因此在生成配置时把所有目标限定为当前 `process.arch`，与已检查存在的 Runner 保持一致，禁止在本机顺带生成缺少对应 Runner 的其他架构安装包。macOS arm64 本机开发 DMG/ZIP 已通过构建、DMG 校验和、ZIP 完整性与所需文件检查，未启动应用。
+
+开发安装包原生验证：提交 `04239f0` 的[三平台 CI](https://github.com/5ext9fca/MyCollab/actions/runs/40746830510)全部通过，实际生成 `MyCollab-0.1.0-win-x64-development.exe`、`MyCollab-0.1.0-mac-arm64-development.dmg/.zip` 和 `MyCollab-0.1.0-mac-x64-development.dmg/.zip`，包含于对应平台归档中。两种 macOS 各 54 项桌面测试通过，Windows 52 通过/2 项 macOS 专属跳过；其他既有回归及包内检查通过。未执行安装或 GUI；仓库发行环境列表目前为空，正式签名与更新服务仍需配置。

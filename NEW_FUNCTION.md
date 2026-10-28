@@ -186,7 +186,7 @@ Electron 内核一致性是迁移收益之一，不作为默认网络一定可�
 
 ### 开发安装包补充
 
-已增加 `electron:dist:dev`，使用与开发目录包相同的凭据隔离和更新禁用策略，生成名称带 `development` 的 macOS DMG/ZIP 与 Windows NSIS。CI 已切换到这一入口；安装包构建的原生结果待新一轮确认，不把此前目录包成功当作安装器构建证据。新增模式解析测试，本机桌面非 GUI 测试共 54 项通过。构建目标已显式限定为本机架构，避免目标配置覆盖 CLI 后生成缺少 Runner 的异构包；本机 arm64 DMG/ZIP 构建、容器完整性及内置文件检查通过，未安装或启动。
+已增加 `electron:dist:dev`，使用与开发目录包相同的凭据隔离和更新禁用策略，生成名称带 `development` 的 macOS DMG/ZIP 与 Windows NSIS。提交 `04239f0` 的[三平台 CI](https://github.com/5ext9fca/MyCollab/actions/runs/40746830510)已通过这一入口，实际生成并归档 Windows x64 NSIS 和 macOS arm64/x64 DMG/ZIP；未安装或运行 GUI。新增模式解析测试，两种 macOS 桌面非 GUI 测试各 54 项通过；Windows 52 项通过、2 项 macOS 专属跳过。构建目标已显式限定为本机架构，避免目标配置覆盖 CLI 后生成缺少 Runner 的异构包；本机 arm64 DMG/ZIP 构建、容器完整性及内置文件检查通过，未安装或启动。
 
 ### 仍未完成的工作
 
