@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { requireNotarization, developmentEnvironment } from '../release.mjs'
+import { requireNotarization, developmentEnvironment, packagingMode } from '../release.mjs'
 
 test('正式 macOS 公证配置缺失或仅有团队信息时拒绝打包', () => {
   for (const env of [{}, { APPLE_TEAM_ID: 'team' }, { APPLE_KEYCHAIN_PROFILE: ' ' }]) {
@@ -32,4 +32,14 @@ test('开发包剥离账户、证书和钥匙串身份，保留运行环境且�
   const original = { ...source }
   assert.deepEqual(developmentEnvironment(source), { PATH: '/bin', TEMP: '/tmp', CSC_IDENTITY_AUTO_DISCOVERY: 'false', CSC_FOR_PULL_REQUEST: 'true' })
   assert.deepEqual(source, original)
+})
+
+
+test('开发安装包明确保留开发隔离，未知或冲突参数不能误入正式发行', () => {
+  assert.deepEqual(packagingMode([]), { development: false, directory: false })
+  assert.deepEqual(packagingMode(['--dir']), { development: true, directory: true })
+  assert.deepEqual(packagingMode(['--development']), { development: true, directory: false })
+  for (const args of [['--dev'], ['--dir', '--development'], ['--publish', 'always']]) {
+    assert.throws(() => packagingMode(args), /打包参数/)
+  }
 })

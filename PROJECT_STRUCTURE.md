@@ -772,3 +772,5 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 开发打包从子进程环境剥离签名与公证身份，macOS 仅临时签名且不公证，Windows 不执行签名；正式打包继续强制签名与 macOS 公证，不受开发隔离逻辑影响。
 
 页面生成的 Markdown 与已校验接收文件仍通过 Blob 下载，不通过 IPC 搬运文件内容。`desktop/electron/downloads.mjs` 只接收当前主窗口主框架的本地 Blob 保存，使用 Chromium 原生保存对话框；身份切换、退出或安装更新在 Runner 停止成功后取消未完成保存，切换期间拒绝新保存。保存中断显示通用错误，用户主动取消不报错；已保存完成的文件不受清理影响。
+
+桌面打包入口区分开发目录、开发安装包和正式发行：`electron:pack`、`electron:dist:dev`、`electron:dist`。开发安装包仍禁用在线更新，macOS 临时签名且不公证，Windows 不签名；产物名标记 `development`。CI 构建安装产物但不安装或启动 GUI。

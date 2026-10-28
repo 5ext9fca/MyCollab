@@ -15,6 +15,7 @@
     "electron:check": "tsc -p tsconfig.electron.json && node --check electron/preload.cjs",
     "electron:test": "node --test electron/tests/*.test.mjs",
     "electron:pack": "npm run electron:build && node scripts/package_electron.mjs --dir",
+    "electron:dist:dev": "npm run electron:build && node scripts/package_electron.mjs --development",
     "electron:dist": "npm run electron:build && node scripts/package_electron.mjs",
     "electron:setup": "node node_modules/electron/install.js"
   },

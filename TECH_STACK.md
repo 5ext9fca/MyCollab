@@ -607,7 +607,7 @@ Electron Runner 控制器的非 GUI 子进程测试覆盖就绪、重复启动�
 
 ### 桌面原生 CI（不启动 GUI）
 
-`.github/workflows/desktop.yml` 配置 PR 路径触发与手动触发，分别使用 `macos-15`（arm64）、`macos-15-intel`（x64）和 `windows-2025`（x64）。标签依据 [GitHub 官方运行器列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。每个平台安装锁文件依赖、执行 Electron 类型和边界测试、前端纯逻辑测试、构建原生 Python 3.13 Runner 与 Electron 开发目录包，再对实际包内 Runner 执行管道及状态检查。macOS 另外检查临时签名完整性。
+`.github/workflows/desktop.yml` 配置 PR 路径触发与手动触发，分别使用 `macos-15`（arm64）、`macos-15-intel`（x64）和 `windows-2025`（x64）。标签依据 [GitHub 官方运行器列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。每个平台安装锁文件依赖、执行 Electron 类型和边界测试、前端纯逻辑测试、构建原生 Python 3.13 Runner 与 Electron 开发安装包（保留解包目录），再对实际包内 Runner 执行管道及状态检查。macOS 另外检查临时签名完整性。
 
 三个原生目标均执行完整 Runner 非 GUI 测试发现入口；Windows 使用 PyInstaller 构建测试专用假模型 CLI，覆盖结果恢复、取消、文件锁、ACL、Job、凭据交接与停止。只有 POSIX 权限位、进程组、符号链接及 `testrun.sh` 的专属测试按平台跳过，Windows 对应机制由原生测试覆盖。构建后通过 `MYCOLLAB_TEST_RUNNER_BINARY` 对实际 Runner 二进制额外执行结果确认丢失恢复和宿主退出清理。产物以 tar.gz 归档保留可执行权限，保存七天，只作为开发产物，不发布、不安装、不启动窗口、不使用发行密钥。Windows Server CI 不等于 Windows 客户端最低版本验收。用户已授权推送独立分支并创建草稿 PR。提交 `2b32024` 的[三平台原生 CI](https://github.com/5ext9fca/MyCollab/actions/runs/40744537700)已全部通过，三份开发包已归档；不代表正式签名发行或 GUI 验收通过。
 
@@ -617,7 +617,7 @@ Electron Runner 控制器的非 GUI 子进程测试覆盖就绪、重复启动�
 
 更新运行时固定为 `electron-updater 6.8.12`（生产依赖），与现有 electron-builder 26 配套。采用该版本的 `autoDownload = false`、`autoInstallOnAppQuit = false`；不混用 updater 7 的破坏性 API。来源：[electron-builder v26 更新说明](https://www.electron.build/v26/docs/features/auto-update/)。下载完成只表示可进入安装流程，不替代 macOS 原生安装阶段的签名验证。
 
-`electron:pack` 生成更新禁用的开发目录包；打包子进程剥离继承的 `CSC_*`、`WIN_CSC_*` 与 `APPLE_*` 发行身份，macOS 明确使用临时签名并禁用公证，Windows 明确关闭签名但保留可执行文件资源编辑，避免本机发行凭据影响开发构建；`electron:dist` 要求发布环境提供 `MYCOLLAB_UPDATE_URL`（以 `/` 结尾的 HTTPS 目录，每个系统/架构使用独立目录）。Windows 另外要求 `MYCOLLAB_UPDATE_PUBLISHER` 匹配签名证书发布者；构建强制代码签名并保持更新签名验证。macOS 正式构建强制签名及公证，证书与公证认证使用 electron-builder 的标准发布环境配置。脚本生成 `build/electron-config.json`，把更新策略写入包元数据，生成匹配的 `app-update.yml`；始终 `--publish never`，不自动上传或发布。
+`electron:pack` 生成更新禁用的开发目录包；`electron:dist:dev` 使用相同的凭据隔离和更新禁用策略生成 macOS DMG/ZIP 或 Windows NSIS 开发安装包，文件名含 `development`，不等于正式签名、公证发行；打包子进程剥离继承的 `CSC_*`、`WIN_CSC_*` 与 `APPLE_*` 发行身份，macOS 明确使用临时签名并禁用公证，Windows 明确关闭签名但保留可执行文件资源编辑，避免本机发行凭据影响开发构建；`electron:dist` 要求发布环境提供 `MYCOLLAB_UPDATE_URL`（以 `/` 结尾的 HTTPS 目录，每个系统/架构使用独立目录）。Windows 另外要求 `MYCOLLAB_UPDATE_PUBLISHER` 匹配签名证书发布者；构建强制代码签名并保持更新签名验证。macOS 正式构建强制签名及公证，证书与公证认证使用 electron-builder 的标准发布环境配置。脚本生成 `build/electron-config.json`，把更新策略写入包元数据，生成匹配的 `app-update.yml`；始终 `--publish never`，不自动上传或发布。
 
 发布负责人需把同次构建的安装包、ZIP、blockmap 与更新清单放到对应固定目录，先传包再传清单；禁止配置跨域 CDN 跳转，更新网络策略会拒绝。当前没有配置真实发布证书、公证身份及更新服务，不能宣称正式签名发行或线上升级已通过。控制器以注入更新适配器运行非 GUI 测试，覆盖停止失败、并发操作、错误脱敏与手动安装边界，不调用原生安装器。
 
@@ -653,3 +653,7 @@ Windows 测试假 CLI 源码为 `local_runner/tests/fixtures/opencode.py`，由 
 PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`，仅让 electron-builder 执行命令行固定的 macOS `identity=-` 临时签名；否则工具在 PR 中默认跳过签名，导致打包后的资源封装无法通过完整性检查。此开关不放入正式发行环境，也不向 PR 提供证书或 Apple 凭据。首轮原生 CI 已确认 Windows 全部通过、两个 macOS 在此签名步骤失败；修复后的结果以对应运行记录为准。
 
 2026-10-29 原生 CI 汇总（提交 `2b32024`）：Windows Electron 51 通过/2 项 macOS 专属跳过，Runner 35 通过/4 项 POSIX 专属跳过；两种 macOS 各 Electron 53 通过、Runner 37 通过/2 项 Windows 专属跳过。三平台各前端纯逻辑 29 项、归档脚本 3 项和实际二进制恢复/退出 2 项通过，包内 Runner 检查通过，两种 macOS 开发签名完整性通过。详见[运行记录](https://github.com/5ext9fca/MyCollab/actions/runs/40744537700)；没有执行 GUI、签名发行或实际升级。
+
+开发打包模式只接受 `--dir` 或 `--development` 单一参数，无参数才是正式发行；未知/冲突参数拒绝执行。原生 CI 已切换到 `electron:dist:dev`，只生成安装产物，不运行安装器或应用窗口。开发安装包的系统签名/信任限制不应通过关闭系统安全设置绕过。
+
+安装目标自身的 `arch` 数组会优先于 electron-builder 命令行架构；脚本因此在生成配置时把所有目标限定为当前 `process.arch`，与已检查存在的 Runner 保持一致，禁止在本机顺带生成缺少对应 Runner 的其他架构安装包。macOS arm64 本机开发 DMG/ZIP 已通过构建、DMG 校验和、ZIP 完整性与所需文件检查，未启动应用。

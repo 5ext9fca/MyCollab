@@ -30,3 +30,13 @@ export function developmentEnvironment(source) {
   env.CSC_FOR_PULL_REQUEST = 'true'
   return env
 }
+
+/** 显式区分开发目录、开发安装包与正式发行，拒绝拼错参数导致意外发行。
+ * @param {string[]} args
+ */
+export function packagingMode(args) {
+  if (args.length === 0) return { development: false, directory: false }
+  if (args.length === 1 && args[0] === '--dir') return { development: true, directory: true }
+  if (args.length === 1 && args[0] === '--development') return { development: true, directory: false }
+  throw new Error('打包参数仅允许 --dir（开发目录）或 --development（开发安装包）；无参数为正式发行。')
+}

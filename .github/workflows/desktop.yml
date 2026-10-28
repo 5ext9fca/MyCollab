@@ -80,8 +80,8 @@ jobs:
         run: |
           export MYCOLLAB_TEST_RUNNER_BINARY="$(python -c "from pathlib import Path; print(Path('desktop/build/runner/${{ matrix.target }}/${{ matrix.executable }}').resolve())")"
           python -m unittest local_runner.tests.test_delivery_integration -v
-      - name: 构建开发包（不启动窗口）
-        run: npm --prefix desktop run electron:pack
+      - name: 构建开发安装包（不安装或启动窗口）
+        run: npm --prefix desktop run electron:dist:dev
       - name: 验证实际包内 Runner
         run: python desktop/scripts/check_runner.py desktop/build/electron/${{ matrix.packaged }}
       - name: 验证 macOS 开发签名完整性
