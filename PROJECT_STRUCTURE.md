@@ -734,6 +734,13 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 
 `local_runner/private_files.py` 统一私有目录和独占锁：POSIX 使用 700/600 与 `flock`，Windows 使用 `msvcrt.locking` 非阻塞锁定第 0 字节，并通过 `windows_security.py` 的原生 DACL 仅授予当前用户访问及子项继承；拒绝状态目录的符号链接/目录联接。权限建立失败时抛错，不回退到 Windows chmod。原子结果文件在私有目录中创建，继续 fsync 后 replace，不改变服务器/设备隔离、结果重传及保留限额。
 
-`parent_process.py` 在 Windows 持有可同步等待的宿主进程句柄，以零超时 `WaitForSingleObject` 探测退出，避免调用 Windows 的 `os.kill(pid, 0)`；POSIX 保留存活探测。监测退出后触发主线程的既有清理路径。Windows 模型子进程树的 Job Object 管理仍待实现，不能据此宣称宿主异常退出清理已完成跨平台验收。
+`parent_process.py` 在 Windows 持有可同步等待的宿主进程句柄，以零超时 `WaitForSingleObject` 探测退出，避免调用 Windows 的 `os.kill(pid, 0)`；POSIX 保留存活探测。监测退出后触发主线程的既有清理路径。Windows 模型子进程树已接入下述 Job Object 管理，但原生 Windows 测试未执行，不能据此宣称宿主异常退出清理已完成跨平台验收。
 
 `desktop/scripts/build_sidecar.py --electron` 在本机 Python 3.13 上构建独立 Runner，输出 `desktop/build/runner/mac-arm64`、`mac-x64` 或 `win-x64`；禁止从其他系统伪造目标架构。未加参数时仍保留旧 macOS Tauri 伴侣的 dist 与 sidecar 复制路径。
+
+
+### Runner 模型进程树与停止管道
+
+`child_process.py` 是模型进程与版本探测的统一创建入口。Windows 使用 `windows_job.py` 的原生 Job Object：Runner 先加入外层 KILL_ON_JOB_CLOSE Job；模型以 CREATE_SUSPENDED 创建，加入独立 Job 后才恢复主线程，不允许 breakaway。外层覆盖创建/分配间隙的 Runner 崩溃，内层在取消、超时、正常结果收尾时清理后代；即使直接子进程已退出，也关闭模型 Job。创建或分配失败时终止挂起进程，不降级为无保护运行。POSIX 保持现有进程组清理。
+
+`--control-stdin` 与 `--config-stdin` 配合用于桌面长期 Runner：配置行之后收到字节或 EOF 即触发既有退出清理；不能与 `--status`、`--diagnose` 组合。配置和控制均使用无缓冲 fd 读取，避免提前吞掉停止指令或解释器退出时占用 stdin 缓冲锁；空闲等待可被控制事件唤醒。该协议仍待 Electron 启停控制器接入，不自动启动或重试模型。

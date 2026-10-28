@@ -596,4 +596,9 @@ backend/.venv/bin/python desktop/scripts/check_runner.py desktop/build/runner/ma
 
 Windows 使用其 Python 3.13 解释器运行同一构建脚本，将检查路径替换为 `desktop/build/runner/win-x64/mycollab-runner.exe`；Intel macOS 使用 `mac-x64`。验证器创建临时本机 HTTP 服务，仅空领取一次、不执行模型，检查管道配置、中文/空格路径、状态与不落盘令牌，不启动 GUI。
 
-2026-10-29：Runner 回归 34 项完成，33 项通过，1 项 Windows 原生 ACL 测试在 macOS 上明确跳过；macOS arm64 独立 Runner 构建及上述二进制检查通过。Windows 和 Intel macOS 未实际构建/运行，Windows Job Object 进程树和原生 CI 仍待完成。DACL 实现依据 [Microsoft SetNamedSecurityInfoW](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-setnamedsecurityinfow)，文件锁依据 [Python msvcrt](https://docs.python.org/3.13/library/msvcrt.html)；不能以 POSIX 测试替代 Windows 验证。
+2026-10-29：Runner 回归 34 项完成，33 项通过，1 项 Windows 原生 ACL 测试在 macOS 上明确跳过；macOS arm64 独立 Runner 构建及上述二进制检查通过。Windows 和 Intel macOS 未实际构建/运行，Windows Job Object 的原生验证和原生 CI 仍待完成。DACL 实现依据 [Microsoft SetNamedSecurityInfoW](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-setnamedsecurityinfow)，文件锁依据 [Python msvcrt](https://docs.python.org/3.13/library/msvcrt.html)；不能以 POSIX 测试替代 Windows 验证。
+
+
+Windows 模型树使用 [Microsoft Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) 的 KILL_ON_JOB_CLOSE；通过挂起创建、Job 分配、主线程恢复保证模型执行前已受控制。非 Windows 的模拟失败测试仅证明不会在分配失败时回退，不替代 `test_child_process.WindowsJobTests` 的 Windows 原生父进程崩溃与孙进程清理测试。
+
+Runner 最新回归共 39 项：37 项通过，Windows 原生 DACL 与 Job 测试 2 项在 macOS 跳过。`check_runner.py` 增加打包后持续运行、停止管道 EOF、退出码和停止状态检查，仍不启动 GUI 或调用模型。

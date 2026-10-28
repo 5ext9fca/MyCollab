@@ -18,6 +18,7 @@ from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_ope
 from .opencode import run, LocalFailure, Cancelled
 from .state import StateStore
 from .parent_process import ParentProcess
+from .child_process import version_check
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -115,11 +116,14 @@ def run_cli(argv=None):
                         help="配置文件（默认：~/.config/MyCollab/mycollab-runner.json）")
     parser.add_argument("--config-stdin", action="store_true",
                         help="从标准输入读取一行私有配置；--config 仅决定状态目录，不写入凭据")
+    parser.add_argument("--control-stdin", action="store_true", help="配置行后的管道输入或关闭触发停止，仅供桌面宿主")
     parser.add_argument("--once", action="store_true", help="只领取一次，用于接入验证")
     parser.add_argument("--diagnose", action="store_true", help="检查配置、版本及服务器，不领取任务或调用模型")
     parser.add_argument("--status", action="store_true", help="读取脱敏本地运行状态")
     parser.add_argument("--parent-pid", type=int, help="桌面进程退出时停止 Runner")
     args = parser.parse_args(argv)
+    if args.control_stdin and (not args.config_stdin or args.status or args.diagnose):
+        parser.error("停止管道要求 --config-stdin，且不能用于状态或自检。")
     if args.parent_pid is not None and args.parent_pid <= 1:
         parser.error("父进程编号无效。")
     if args.parent_pid:
@@ -145,7 +149,15 @@ def run_cli(argv=None):
     try:
         if args.config_stdin:
             # 宿主通过匿名管道交接凭据，不放入 argv、环境或明文临时文件。
-            raw = sys.stdin.buffer.readline(32 * 1024 + 1)
+            raw = bytearray()
+            # 不使用缓冲读取，避免预读并吞掉紧随配置行到达的停止指令。
+            while len(raw) <= 32 * 1024:
+                chunk = os.read(sys.stdin.fileno(), 1)
+                if not chunk:
+                    break
+                raw.extend(chunk)
+                if chunk == b"\n":
+                    break
             if not raw or len(raw) > 32 * 1024 or not raw.endswith(b"\n"):
                 parser.error("标准输入配置必须是最多 32 KiB、以换行结束的一行 JSON。")
             config = json.loads(raw.decode("utf-8"))
@@ -175,7 +187,7 @@ def run_cli(argv=None):
     if args.diagnose:
         checks = {"config": "ok", "opencode": "unavailable", "server": "unavailable", "protocol": 1}
         try:
-            version = subprocess.run([config.get("opencode", "opencode"), "--version"], capture_output=True, text=True, timeout=15)
+            version = version_check(config.get("opencode", "opencode"))
             checks["opencode"] = "ok" if version.returncode == 0 and version.stdout.strip() == "opencode v2.1.3" else "incompatible"
         except (OSError, subprocess.TimeoutExpired):
             pass
@@ -189,6 +201,21 @@ def run_cli(argv=None):
             pass
         print(json.dumps(checks, ensure_ascii=False))
         return
+    stop_event = threading.Event() if args.control_stdin else None
+    if stop_event is not None:
+        def watch_control():
+            try:
+                # 无缓冲 fd 读取不会在解释器退出时占用 stdin 的缓冲锁。
+                os.read(sys.stdin.fileno(), 1)
+            except OSError:
+                pass
+            finally:
+                stop_event.set()
+                if os.name == 'posix':
+                    os.kill(os.getpid(), signal.SIGTERM)
+                else:
+                    _thread.interrupt_main(signal.SIGTERM)
+        threading.Thread(target=watch_control, daemon=True).start()
     try:
         with store.lock():
             delay = 3
@@ -217,7 +244,12 @@ def run_cli(argv=None):
                         delay = min(30, delay * 2)
                     if args.once:
                         break
-                    time.sleep(delay + random.uniform(0, 1))
+                    pause = delay + random.uniform(0, 1)
+                    if stop_event is not None:
+                        if stop_event.wait(pause):
+                            raise KeyboardInterrupt
+                    else:
+                        time.sleep(pause)
             finally:
                 store.status('stopped')
     except ValueError as exc:

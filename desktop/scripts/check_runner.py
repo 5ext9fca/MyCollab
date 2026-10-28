@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import threading
+import time
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('executable', type=Path)
@@ -46,12 +47,37 @@ try:
             if mode == '--status':
                 snapshot = json.loads(result.stdout)
                 assert snapshot['state'] == 'stopped' and snapshot['pending_results'] == 0
-        assert claims == [True]
+        process = subprocess.Popen(command + ['--control-stdin'], stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            process.stdin.write(payload)
+            process.stdin.flush()
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                status = list(config.parent.glob('runner-state/*/status.json'))
+                if status and json.loads(status[0].read_text())['state'] == 'idle':
+                    break
+                if process.poll() is not None:
+                    raise SystemExit('Runner 在管道停止检查前退出。')
+                time.sleep(0.05)
+            else:
+                raise SystemExit('Runner 未进入空闲状态。')
+            process.stdin.close()
+            process.stdin = None
+            stdout, stderr = process.communicate(timeout=20)
+            assert process.returncode == 130
+            assert b'smoke-device-secret' not in stdout + stderr
+            assert json.loads(status[0].read_text())['state'] == 'stopped'
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)
+        assert len(claims) >= 2
         assert not config.exists()
         for path in Path(directory).rglob('*'):
             if path.is_file():
                 assert b'smoke-device-secret' not in path.read_bytes()
-    print('独立 Runner 非 GUI 验证通过：匿名管道、中文路径、空领取、状态、无明文令牌。')
+    print('独立 Runner 非 GUI 验证通过：匿名管道、中文路径、空领取、状态、管道关闭停止、无明文令牌。')
 finally:
     server.shutdown()
     server.server_close()
