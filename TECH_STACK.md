@@ -617,7 +617,7 @@ Electron Runner 控制器的非 GUI 子进程测试覆盖就绪、重复启动�
 
 更新运行时固定为 `electron-updater 6.8.12`（生产依赖），与现有 electron-builder 26 配套。采用该版本的 `autoDownload = false`、`autoInstallOnAppQuit = false`；不混用 updater 7 的破坏性 API。来源：[electron-builder v26 更新说明](https://www.electron.build/v26/docs/features/auto-update/)。下载完成只表示可进入安装流程，不替代 macOS 原生安装阶段的签名验证。
 
-`electron:pack` 生成更新禁用的开发目录包；`electron:dist` 要求发布环境提供 `MYCOLLAB_UPDATE_URL`（以 `/` 结尾的 HTTPS 目录，每个系统/架构使用独立目录）。Windows 另外要求 `MYCOLLAB_UPDATE_PUBLISHER` 匹配签名证书发布者；构建强制代码签名并保持更新签名验证。macOS 正式构建强制签名及公证，证书与公证认证使用 electron-builder 的标准发布环境配置。脚本生成 `build/electron-config.json`，把更新策略写入包元数据，生成匹配的 `app-update.yml`；始终 `--publish never`，不自动上传或发布。
+`electron:pack` 生成更新禁用的开发目录包；打包子进程剥离继承的 `CSC_*`、`WIN_CSC_*` 与 `APPLE_*` 发行身份，macOS 明确使用临时签名并禁用公证，Windows 明确关闭签名但保留可执行文件资源编辑，避免本机发行凭据影响开发构建；`electron:dist` 要求发布环境提供 `MYCOLLAB_UPDATE_URL`（以 `/` 结尾的 HTTPS 目录，每个系统/架构使用独立目录）。Windows 另外要求 `MYCOLLAB_UPDATE_PUBLISHER` 匹配签名证书发布者；构建强制代码签名并保持更新签名验证。macOS 正式构建强制签名及公证，证书与公证认证使用 electron-builder 的标准发布环境配置。脚本生成 `build/electron-config.json`，把更新策略写入包元数据，生成匹配的 `app-update.yml`；始终 `--publish never`，不自动上传或发布。
 
 发布负责人需把同次构建的安装包、ZIP、blockmap 与更新清单放到对应固定目录，先传包再传清单；禁止配置跨域 CDN 跳转，更新网络策略会拒绝。当前没有配置真实发布证书、公证身份及更新服务，不能宣称正式签名发行或线上升级已通过。控制器以注入更新适配器运行非 GUI 测试，覆盖停止失败、并发操作、错误脱敏与手动安装边界，不调用原生安装器。
 

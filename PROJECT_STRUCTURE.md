@@ -768,3 +768,5 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 正式 macOS 打包由 `desktop/electron/release.mjs` 检查公证凭据配置，再交给打包器实际公证；缺失或不完整时失败，避免打包器默认跳过。此规则不新增业务接口或权限，开发包仍禁用在线更新。
 
 `.github/workflows/desktop-release.yml` 是默认分支手动触发的正式包入口，复用原生非 GUI CI 后在分平台发行环境签名、公证、验证包内 Runner 与系统签名；`desktop/scripts/collect_release.py` 归档安装包、更新清单、校验摘要和提交信息。不发布到更新服务，不新增业务数据或接口。配置方式与未执行状态见 TECH_STACK“手动构建正式发行产物”。
+
+开发打包从子进程环境剥离签名与公证身份，macOS 仅临时签名且不公证，Windows 不执行签名；正式打包继续强制签名与 macOS 公证，不受开发隔离逻辑影响。

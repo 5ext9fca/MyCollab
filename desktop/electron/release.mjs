@@ -16,3 +16,15 @@ export function requireNotarization(env) {
   if (present('APPLE_KEYCHAIN_PROFILE')) return
   throw new Error('macOS 正式打包必须配置公证凭据或钥匙串公证配置，不能跳过公证。')
 }
+
+/** 开发打包子进程不继承签名或公证身份；不修改调用方环境。
+ * @param {NodeJS.ProcessEnv} source
+ */
+export function developmentEnvironment(source) {
+  const env = { ...source }
+  for (const key of Object.keys(env)) {
+    if (/^(?:WIN_)?CSC_/i.test(key) || /^APPLE_/i.test(key)) delete env[key]
+  }
+  env.CSC_IDENTITY_AUTO_DISCOVERY = 'false'
+  return env
+}

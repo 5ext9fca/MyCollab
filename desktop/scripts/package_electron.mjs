@@ -1,7 +1,7 @@
 /** 开发包使用临时签名；正式产物不得静默回退为未签名分发。 */
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { requireNotarization } from '../electron/release.mjs'
+import { requireNotarization, developmentEnvironment } from '../electron/release.mjs'
 import { updatePolicy } from '../electron/updates.mjs'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -35,11 +35,11 @@ const generated = path.join(desktop, 'build/electron-config.json')
 await writeFile(generated, JSON.stringify(config, null, 2))
 const args = [path.join(desktop, 'node_modules/electron-builder/cli.js'), '--config', generated, '--publish', 'never',
   process.platform === 'darwin' ? '--mac' : '--win', '--' + process.arch]
-const env = { ...process.env }
+const env = development ? developmentEnvironment(process.env) : { ...process.env }
 if (development) {
   args.push('--dir')
-  env.CSC_IDENTITY_AUTO_DISCOVERY = 'false'
-  if (process.platform === 'darwin') args.push('-c.mac.identity=-')
+  if (process.platform === 'darwin') args.push('-c.mac.identity=-', '-c.mac.notarize=false')
+  else args.push('-c.win.signExecutable=false')
 } else {
   args.push('-c.forceCodeSigning=true')
 }
