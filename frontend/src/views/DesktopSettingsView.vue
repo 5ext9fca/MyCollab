@@ -5,8 +5,19 @@ import { desktop, type DesktopSettings, type UpdateState } from '../platform/des
 const update = ref<UpdateState>()
 const updateBusy = ref(false)
 const updateLabels: Record<string, string> = { disabled: '此开发包未启用在线更新', idle: '尚未检查', checking: '检查中', current: '已是最新版本', available: '有新版本', downloading: '下载中', ready: '下载完成，等待安装', installing: '正在停止 Runner 并安装', error: '更新失败' }
+let disposed = false
+let pollingUpdate = false
 let updateTimer: ReturnType<typeof setInterval> | undefined
-onUnmounted(() => clearInterval(updateTimer))
+onUnmounted(() => { disposed = true; clearInterval(updateTimer) })
+async function refreshUpdate() {
+  if (!desktop || disposed || pollingUpdate || updateBusy.value || document.hidden) return
+  pollingUpdate = true
+  try {
+    const status = await desktop.updateStatus()
+    if (!disposed && !updateBusy.value) update.value = status
+  } catch { /* 暂时无法读取时保留上次状态，下一轮再检查。 */ }
+  finally { pollingUpdate = false }
+}
 async function updateAction(action: 'check' | 'download' | 'install') {
   if (!desktop) return
   updateBusy.value = true
@@ -20,10 +31,13 @@ const busy = ref(false)
 const error = ref('')
 onMounted(async () => {
   try {
-    settings.value = await desktop?.settings()
+    const saved = await desktop?.settings()
+    if (disposed) return
+    settings.value = saved
     server.value = settings.value?.server || ''
-    update.value = await desktop?.updateStatus()
-    updateTimer = setInterval(() => { if (desktop && !document.hidden) void desktop.updateStatus().then(value => { update.value = value }).catch(() => {}) }, 2000)
+    await refreshUpdate()
+    if (disposed || !desktop) return
+    updateTimer = setInterval(refreshUpdate, 2000)
   } catch { error.value = '无法读取桌面设置。' }
 })
 async function saveServer() {

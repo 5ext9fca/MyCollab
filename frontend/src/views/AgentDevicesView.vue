@@ -20,10 +20,17 @@ const runnerState = ref<RunnerState>({ state: 'stopped', pending_results: 0, rej
 const diagnosis = ref<RunnerDiagnosis | null>(null)
 const runnerLabels: Record<string, string> = { stopped: '已停止', starting: '启动中', running: '运行中', idle: '等待任务', offline: '等待网络恢复', delivering: '回传结果中', unauthorized: '设备失效', expired: '租约过期' }
 const checkLabels: Record<string, string> = { ok: '通过', unavailable: '不可用', incompatible: '版本不兼容', unauthorized: '设备失效' }
+let disposed = false
+let refreshingRunner = false
 let statusTimer: ReturnType<typeof setInterval> | undefined
 async function refreshRunner() {
-  if (!desktop || document.hidden) return
-  try { runnerState.value = await desktop.runnerStatus() } catch { /* 身份切换时丢弃旧状态。 */ }
+  if (!desktop || disposed || refreshingRunner || document.hidden) return
+  refreshingRunner = true
+  try {
+    const status = await desktop.runnerStatus()
+    if (!disposed) runnerState.value = status
+  } catch { /* 身份切换时丢弃旧状态。 */ }
+  finally { refreshingRunner = false }
 }
 async function runnerAction(action: 'start' | 'stop' | 'diagnose') {
   if (!desktop) return
@@ -36,7 +43,7 @@ async function runnerAction(action: 'start' | 'stop' | 'diagnose') {
   } catch { error.value = 'Runner 操作失败，请检查设备有效期、OpenCode 配置和网络。尚未停止时不能切换身份。' }
   finally { busy.value = false }
 }
-onUnmounted(() => clearInterval(statusTimer))
+onUnmounted(() => { disposed = true; clearInterval(statusTimer) })
 const error = ref('')
 const busy = ref(false)
 const capabilities = ref<AssistanceKind[]>(['design_polish', 'template_generate', 'mission_write', 'review_assist', 'agent_requirements'])
@@ -84,12 +91,17 @@ async function importLegacy() {
 }
 onMounted(async () => {
   await load()
-  if (!desktop) return
+  if (!desktop || disposed) return
   await refreshRunner()
+  if (disposed) return
   statusTimer = setInterval(refreshRunner, 5000)
   try {
-    canImportLegacy.value = (await desktop.settings()).platform === 'darwin'
-    localBinding.value = await desktop.runnerBinding()
+    const settings = await desktop.settings()
+    if (disposed) return
+    canImportLegacy.value = settings.platform === 'darwin'
+    const binding = await desktop.runnerBinding()
+    if (disposed) return
+    localBinding.value = binding
     if (localBinding.value) {
       selectedDevice.value = localBinding.value.deviceId
       model.value = localBinding.value.model
