@@ -692,3 +692,14 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - 心跳在上一次已确认租约的保守安全窗口内允许短暂网络失败；明确取消或鉴权失败立即停止，超过安全窗口终止模型。并不延长服务器租约，也不自动重新生成。
 - 新增设备认证的 `POST /api/agent-runner/status/`，只返回协议版本、声明能力、凭据有效期与租约时长，不领取任务。`--diagnose` 检查本机 CLI 版本和服务器协议；`--status` 输出脱敏本地状态。
 - 验证入口：`local_runner/tests/test_recovery.py`、`test_delivery_integration.py`，包含真实本机 HTTP 丢失回传确认与 Runner 重启；供应商调用使用假 CLI。
+
+## macOS 本地 Agent 桌面伴侣
+
+- `desktop/` 为独立 Tauri 2 + Vue/Element Plus 应用；复用 `local_runner` 的打包 sidecar，业务界面仍在系统浏览器中打开，不把远程网页放入有原生权限的窗口。
+- `desktop/src/App.vue` 管理连接、模型、可选内部 CA、脱敏状态、自检和用户明确开启的登录启动；运行中禁止修改配置。读取配置不回传已存设备令牌，保存留空仅在服务器未变时保留原令牌。
+- `desktop/src-tauri/src/main.rs` 只提供固定配置、进程管理、诊断、网站打开与签名更新命令，不提供任意 shell 或文件读写接口。配置与 CLI 共用 `~/.config/MyCollab/mycollab-runner.json`；原子保存、0600 权限。模型供应商认证仍由 OpenCode 管理。
+- 状态轮询直接读取 Runner 原子更新的脱敏小型状态文件，不反复启动或解包 Python；状态目录标识在 Rust/Python 两端使用相同的服务器与设备摘要。
+- 单实例插件使重复启动聚焦已有窗口，Runner 文件锁防止 CLI/桌面重复执行。关闭窗口隐藏到菜单栏，退出停止 Runner；父进程消失会触发 Runner 清理。异常退出后由用户决定重新启动，不自动重新执行模型。
+- `desktop/scripts/build_sidecar.py` 将 Python 3.13 Runner 打包进 macOS 应用，用户无需安装 Python。当前仅 macOS，其他平台未宣称支持；Intel 需在对应架构另行构建验收。
+- 更新器仅接受发布构建注入的 HTTPS 地址与签名公钥；没有发布配置时明确提示手动更新。业务 Session/CSRF 与设备权限没有改变，无额外本机 HTTP 服务。
+- 测试入口：桌面 Vue 交互测试、Rust 地址/进程测试、Runner 真实 HTTP 与进程退出集成测试。构建与发布说明见 TECH_STACK“桌面伴侣构建”。

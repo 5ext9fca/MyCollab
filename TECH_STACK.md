@@ -498,6 +498,10 @@ backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
 
 前端在开发/构建时设置 `VITE_PERFORMANCE_METRICS=1`。完成工作台操作后，在浏览器控制台调用 `window.mycollabPerformance.snapshot()` 读取最近 200 条记录，`clear()` 清空。记录只有固定事件名、耗时、图规模与完成状态，不含业务文本；切换页面或刷新会影响样本范围，比较时固定设备、任务规模、日期窗口和筛选。
 
+### 本机性能基线（2026-10-28）
+
+在发布编译结束后，以本机已有演示账号 `alice` 对当前数据库执行 `performance_probe --iterations 20`，每端点预热一次：任务列表 p95 87.995 ms、SQL 最多 69 次；工作台概览 p95 114.484 ms、SQL 最多 74 次；工作台图 p95 117.321 ms、SQL 最多 76 次；任务详情 p95 41.883 ms、SQL 最多 14 次。此为当时数据与设备上的串行服务端基线，不含网络/渲染，不证明 50 人并发容量；后续优先分析列表与工作台查询数，不据此直接重写技术栈。
+
 ## 19. Runner 恢复与诊断
 
 本批本机进程锁支持 macOS/Linux（POSIX），Windows 尚未验收。配置旁 `runner-state/<identity>/` 保存私有待发结果；旧设备/服务器的结果不能跨配置回传。原有“心跳失败立即停止”“回传最多三次后丢弃”的行为由本节替代：仅在已确认租约内短暂容忍断网，持久化结果按原轮次重传。服务器过期后仍拒收，保留期不是租约延长。
@@ -511,3 +515,47 @@ backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
 诊断不领取任务、不调用收费模型；CLI 版本通过不代表供应商额度或登录一定有效。空闲领取间隔约 3–10 秒（加 0–1 秒抖动），网络失败退避最多 30 秒。恢复的是结果投递；模型本身不自动重试。待发箱错误或存储耗尽时应修复本机存储，不能通过删除执行记录来假定任务可安全重跑。
 
 Runner 可配置可选 `ca_file` 指向管理员提供的 PEM 根证书；用于内部 CA 的 HTTPS，仍进行证书与主机名校验，不提供跳过验证开关。桌面进程通过 `--parent-pid` 启动 Runner；父进程消失时 Runner 收到 SIGTERM 并清理模型子进程。命令行独立运行不受桌面父进程约束。
+
+## 20. 桌面伴侣构建
+
+macOS 首批使用 Tauri 2，原生层只管理固定 Runner 进程，前端沿用 Vue + Element Plus。独立 Node 依赖在 `desktop/package-lock.json`，Rust 依赖在 `desktop/src-tauri/Cargo.lock`。需要 Xcode Command Line Tools、Rust（依赖要求至少 1.90）、Node 24+、Python 3.13。
+
+从仓库根执行：
+
+```bash
+backend/.venv/bin/python -m pip install -r desktop/requirements-build.txt
+npm ci --prefix desktop
+npm --prefix desktop run sidecar
+npm --prefix desktop run build
+npm --prefix desktop run test
+cargo test --manifest-path desktop/src-tauri/Cargo.toml --features custom-protocol
+npm --prefix desktop run tauri -- build --features custom-protocol --bundles app
+```
+
+产物位于 `desktop/src-tauri/target/release/bundle/macos/MyCollab Companion.app`。运行时不依赖源码目录或用户 Python，OpenCode 仍由用户安装并认证。当前构建架构取宿主机；本机 Apple Silicon 验收不代表 Intel 或旧版 macOS 已验收。
+
+`npm --prefix desktop run tauri -- dev` 用于界面联调，需先构建 sidecar；`build --debug --features custom-protocol --bundles app` 可生成带本地前端的调试包。只有调试构建支持 `MYCOLLAB_COMPANION_TEST_CONFIG` 指向隔离测试配置，不修改用户 HOME 或默认凭据；发布构建忽略该变量。
+
+验证独立二进制的真实断线恢复与桌面父进程退出（假 CLI，不调用供应商）：
+
+```bash
+MYCOLLAB_TEST_RUNNER_BINARY="$PWD/desktop/src-tauri/binaries/mycollab-runner-aarch64-apple-darwin" backend/.venv/bin/python -m unittest local_runner.tests.test_delivery_integration -v
+```
+
+Intel 构建将上述后缀改为 `x86_64-apple-darwin`。测试会监听临时 localhost 端口，需要运行环境允许本机网络。
+
+### 对外发行与签名更新
+
+本地验证不要求使用开发者证书；对外分发需维护者配置 Apple Developer ID 签名和公证。更新公钥和固定 HTTPS 端点分别由构建环境的 `MYCOLLAB_UPDATE_PUBLIC_KEY`、`MYCOLLAB_UPDATE_URL` 注入，不能由网页、配置文件或模型结果覆盖。
+
+发布时配置 Tauri `bundle.createUpdaterArtifacts=true`，提供 `TAURI_SIGNING_PRIVATE_KEY`（仅发布环境保管）及相应密码，生成带签名的更新包和版本清单；更新清单需使用实际平台/架构、版本、HTTPS 下载地址与签名。不得将签名私钥提交仓库。本地构建没有发布源时不发起更新请求，界面提示手动安装。
+
+参考：[Tauri sidecar](https://v2.tauri.app/develop/sidecar/)、[原生权限](https://v2.tauri.app/security/capabilities/)、[签名更新](https://v2.tauri.app/plugin/updater/)。
+
+### 本批验证记录（2026-10-28）
+
+- 后端迁移检查与系统检查通过；完整测试 272 项，其中 3 项需显式开启的浏览器/真实模型验收跳过。
+- 原 SPA 类型检查、149 项测试和生产构建通过；桌面类型检查、3 项界面测试、5 项 Rust 测试及发布模式打包通过。
+- Runner 28 项测试通过；最终 `.app` 内独立 Runner 在临时目录完成两项真实本机 HTTP/进程验收：服务器接受结果后丢失确认再重启仍只调用一次假模型；桌面父进程消失会终止正在运行的假模型。未调用收费供应商。
+- 原生窗口已检查配置脱敏、自检、启动、假模型结果回传、停止、单实例、关闭后恢复，以及未配置签名更新源的提示。最终发布包可加载内置页面，Runner 保持停止。未实际开启用户登录启动设置、未进行操作系统重启验收。
+- 当前产物为 Apple Silicon macOS 本机版，未做 Developer ID 公证或实际远程更新发布；Intel/其他系统尚未验收。构建存在 Element Plus 主包体积提示，不影响打包；现有前端也有类似提示。

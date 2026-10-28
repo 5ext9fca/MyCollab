@@ -109,3 +109,11 @@ class RecoveryTests(unittest.TestCase):
         self.request['lease_expires_at'] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
         execute(Mock(), self.request, 'provider/model', 'opencode', self.store)
         run.assert_not_called()
+
+    def test_status_file_exposes_only_small_delivery_summary(self):
+        self.store.save_result(self.request, self.payload)
+        self.store.status('delivering')
+        summary = self.store.read(self.store.root / 'status.json')
+        self.assertEqual(summary['pending_results'], 1)
+        self.assertNotIn('候选', json.dumps(summary, ensure_ascii=False))
+        self.assertLess((self.store.root / 'status.json').stat().st_size, 1024)

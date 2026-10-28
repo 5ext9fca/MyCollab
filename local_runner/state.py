@@ -54,7 +54,10 @@ class StateStore:
                 fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
     def status(self, state, **fields):
-        atomic_json(self.root / 'status.json', {'state': state, 'updated_at': time.time(), **fields})
+        records = list(self.records())
+        atomic_json(self.root / 'status.json', {'state': state, 'updated_at': time.time(),
+            'pending_results': sum(record['state'] == 'pending' for _, record in records),
+            'rejected_results': sum(record['state'] == 'rejected' for _, record in records), **fields})
 
     def snapshot(self):
         path = self.root / 'status.json'
