@@ -504,7 +504,7 @@ backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
 
 ## 19. Runner 恢复与诊断
 
-本批本机进程锁支持 macOS/Linux（POSIX），Windows 尚未验收。配置旁 `runner-state/<identity>/` 保存私有待发结果；旧设备/服务器的结果不能跨配置回传。原有“心跳失败立即停止”“回传最多三次后丢弃”的行为由本节替代：仅在已确认租约内短暂容忍断网，持久化结果按原轮次重传。服务器过期后仍拒收，保留期不是租约延长。
+本批最初使用 POSIX 本机进程锁；当前 Windows 原生文件锁实现与 CI 结果见后文桌面章节。配置旁 `runner-state/<identity>/` 保存私有待发结果；旧设备/服务器的结果不能跨配置回传。原有“心跳失败立即停止”“回传最多三次后丢弃”的行为由本节替代：仅在已确认租约内短暂容忍断网，持久化结果按原轮次重传。服务器过期后仍拒收，保留期不是租约延长。
 
 ```bash
 backend/.venv/bin/python -m local_runner --diagnose
@@ -564,7 +564,7 @@ Intel 构建将上述后缀改为 `x86_64-apple-darwin`。测试会监听临时 
 
 新桌面宿主固定使用 Electron 45.1.0、electron-builder 26.18.0，依赖及锁文件在 `desktop/`，业务前端继续复用 `frontend/`。依据 [Electron 破坏性变更说明](https://www.electronjs.org/docs/latest/breaking-changes)，Electron 44 起最低 macOS 13，打包元数据已明确 `minimumSystemVersion: 13.0`；首批目标 macOS arm64/x64、Windows x64。Windows 具体最低受测系统版本仍待原生 CI/环境验证，不以声明的架构替代实测支持。Electron 自带 Node 与开发用 Node 各自独立。安全升级须同时更新固定版本、锁文件并重新运行边界检查。
 
-`desktop/electron-builder.json` 包含 macOS DMG/ZIP、Windows NSIS 配置，打包时复制 Vue 静态资源到 `resources/frontend`。`scripts/package_electron.mjs` 限制原生平台/架构构建：开发目录包使用临时签名，不自动使用钥匙串的个人开发证书；正式分发命令强制代码签名，发行证书、公证与更新源仍待配置。当前包尚不包含 Runner，不能作为完整客户端发布。
+`desktop/electron-builder.json` 包含 macOS DMG/ZIP、Windows NSIS 配置，打包时复制 Vue 静态资源到 `resources/frontend`。`scripts/package_electron.mjs` 限制原生平台/架构构建：开发目录包使用临时签名，不自动使用钥匙串的个人开发证书；正式分发命令强制代码签名，发行证书、公证与更新源仍待配置。当前开发包已包含对应架构 Runner，但尚未完成正式发行与 GUI 验收。
 
 在 `desktop/`：
 
@@ -596,7 +596,7 @@ backend/.venv/bin/python desktop/scripts/check_runner.py desktop/build/runner/ma
 
 Windows 使用其 Python 3.13 解释器运行同一构建脚本，将检查路径替换为 `desktop/build/runner/win-x64/mycollab-runner.exe`；Intel macOS 使用 `mac-x64`。验证器创建临时本机 HTTP 服务，仅空领取一次、不执行模型，检查管道配置、中文/空格路径、状态与不落盘令牌，不启动 GUI。
 
-2026-10-29：Runner 回归 34 项完成，33 项通过，1 项 Windows 原生 ACL 测试在 macOS 上明确跳过；macOS arm64 独立 Runner 构建及上述二进制检查通过。Windows 和 Intel macOS 未实际构建/运行，Windows Job Object 的原生验证和原生 CI 仍待完成。DACL 实现依据 [Microsoft SetNamedSecurityInfoW](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-setnamedsecurityinfow)，文件锁依据 [Python msvcrt](https://docs.python.org/3.13/library/msvcrt.html)；不能以 POSIX 测试替代 Windows 验证。
+早期本机验证记录（当前结果见下方原生 CI）：Runner 回归 34 项完成，33 项通过，1 项 Windows 原生 ACL 测试在 macOS 上明确跳过；macOS arm64 独立 Runner 构建及上述二进制检查通过。Windows 和 Intel macOS 未实际构建/运行，Windows Job Object 的原生验证和原生 CI 仍待完成。DACL 实现依据 [Microsoft SetNamedSecurityInfoW](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-setnamedsecurityinfow)，文件锁依据 [Python msvcrt](https://docs.python.org/3.13/library/msvcrt.html)；不能以 POSIX 测试替代 Windows 验证。
 
 
 Windows 模型树使用 [Microsoft Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) 的 KILL_ON_JOB_CLOSE；通过挂起创建、Job 分配、主线程恢复保证模型执行前已受控制。非 Windows 的模拟失败测试仅证明不会在分配失败时回退，不替代 `test_child_process.WindowsJobTests` 的 Windows 原生父进程崩溃与孙进程清理测试。
@@ -609,7 +609,7 @@ Electron Runner 控制器的非 GUI 子进程测试覆盖就绪、重复启动�
 
 `.github/workflows/desktop.yml` 配置 PR 路径触发与手动触发，分别使用 `macos-15`（arm64）、`macos-15-intel`（x64）和 `windows-2025`（x64）。标签依据 [GitHub 官方运行器列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。每个平台安装锁文件依赖、执行 Electron 类型和边界测试、前端纯逻辑测试、构建原生 Python 3.13 Runner 与 Electron 开发目录包，再对实际包内 Runner 执行管道及状态检查。macOS 另外检查临时签名完整性。
 
-三个原生目标均执行完整 Runner 非 GUI 测试发现入口；Windows 使用 PyInstaller 构建测试专用假模型 CLI，覆盖结果恢复、取消、文件锁、ACL、Job、凭据交接与停止。只有 POSIX 权限位、进程组、符号链接及 `testrun.sh` 的专属测试按平台跳过，Windows 对应机制由原生测试覆盖。构建后通过 `MYCOLLAB_TEST_RUNNER_BINARY` 对实际 Runner 二进制额外执行结果确认丢失恢复和宿主退出清理。产物以 tar.gz 归档保留可执行权限，保存七天，只作为开发产物，不发布、不安装、不启动窗口、不使用发行密钥。Windows Server CI 不等于 Windows 客户端最低版本验收。工作流已写入但尚未在远端执行；未获推送授权，因此不能宣称三个平台构建已通过。
+三个原生目标均执行完整 Runner 非 GUI 测试发现入口；Windows 使用 PyInstaller 构建测试专用假模型 CLI，覆盖结果恢复、取消、文件锁、ACL、Job、凭据交接与停止。只有 POSIX 权限位、进程组、符号链接及 `testrun.sh` 的专属测试按平台跳过，Windows 对应机制由原生测试覆盖。构建后通过 `MYCOLLAB_TEST_RUNNER_BINARY` 对实际 Runner 二进制额外执行结果确认丢失恢复和宿主退出清理。产物以 tar.gz 归档保留可执行权限，保存七天，只作为开发产物，不发布、不安装、不启动窗口、不使用发行密钥。Windows Server CI 不等于 Windows 客户端最低版本验收。用户已授权推送独立分支并创建草稿 PR。提交 `2b32024` 的[三平台原生 CI](https://github.com/5ext9fca/MyCollab/actions/runs/40744537700)已全部通过，三份开发包已归档；不代表正式签名发行或 GUI 验收通过。
 
 旧 macOS 配置导入采用原地复用状态目录与锁的方案，不复制待发箱。新增非 GUI 测试覆盖文件权限、符号链接、有界读取、服务器/用户核验、拒绝覆盖、加密状态标记及固定路径选择；`check_runner.py` 额外尝试竞争启动，验证实际二进制拒绝同状态目录的第二个 Runner。自定义 CA 的旧配置明确拒绝导入，相关信任适配仍待实现。
 
@@ -633,7 +633,7 @@ Windows 测试假 CLI 源码为 `local_runner/tests/fixtures/opencode.py`，由 
 
 ### 手动构建正式发行产物
 
-`.github/workflows/desktop-release.yml` 仅支持手动触发，只允许默认分支；先复用 `desktop.yml` 完成同一提交的三个原生目标非 GUI 验证，再在对应原生运行器重新构建正式安装包。工作流只拥有 `contents: read`，不创建 Release、不上传更新源、不启动安装器或应用窗口。尚未推送、执行或取得正式签名产物，不能把工作流存在视为跨平台发行通过。
+`.github/workflows/desktop-release.yml` 仅支持手动触发，只允许默认分支；先复用 `desktop.yml` 完成同一提交的三个原生目标非 GUI 验证，再在对应原生运行器重新构建正式安装包。工作流只拥有 `contents: read`，不创建 Release、不上传更新源、不启动安装器或应用窗口。此工作流已随草稿 PR 推送，但尚未配置发行环境、执行或取得正式签名产物，不能把工作流存在视为跨平台发行通过。
 
 发布负责人需预先建立 `desktop-release-mac-arm64`、`desktop-release-mac-x64`、`desktop-release-win-x64` 三个 GitHub Environments，并限制为默认分支；按团队需求配置审批。环境隔离机制见 [GitHub 环境说明](https://docs.github.com/en/actions/concepts/workflows-and-actions/deployment-environments)。每个环境设置：
 
@@ -651,3 +651,5 @@ Windows 测试假 CLI 源码为 `local_runner/tests/fixtures/opencode.py`，由 
 页面 Blob 导出与接收文件保存通过 Session 的 `will-download` 和 DownloadItem 交给 Chromium 管理，不开放文件系统 IPC。使用 Electron 45 的下载来源主框架参数校验调用方；保存失败只返回通用提示，不记录路径或正文。依据 [Electron DownloadItem](https://www.electronjs.org/docs/latest/api/download-item) 与 [Session 下载事件](https://www.electronjs.org/docs/latest/api/session#event-will-download)。非 GUI 注入对象测试覆盖来源、身份切换取消、完成清理和中断提示；系统保存对话框、真实 Blob 下载和跨平台磁盘失败尚未进行 GUI 验收。
 
 PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`，仅让 electron-builder 执行命令行固定的 macOS `identity=-` 临时签名；否则工具在 PR 中默认跳过签名，导致打包后的资源封装无法通过完整性检查。此开关不放入正式发行环境，也不向 PR 提供证书或 Apple 凭据。首轮原生 CI 已确认 Windows 全部通过、两个 macOS 在此签名步骤失败；修复后的结果以对应运行记录为准。
+
+2026-10-29 原生 CI 汇总（提交 `2b32024`）：Windows Electron 51 通过/2 项 macOS 专属跳过，Runner 35 通过/4 项 POSIX 专属跳过；两种 macOS 各 Electron 53 通过、Runner 37 通过/2 项 Windows 专属跳过。三平台各前端纯逻辑 29 项、归档脚本 3 项和实际二进制恢复/退出 2 项通过，包内 Runner 检查通过，两种 macOS 开发签名完整性通过。详见[运行记录](https://github.com/5ext9fca/MyCollab/actions/runs/40744537700)；没有执行 GUI、签名发行或实际升级。
