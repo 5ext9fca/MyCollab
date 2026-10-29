@@ -18,16 +18,13 @@ def security(*args):
 
 
 @contextmanager
-def isolated_keychain(directory, executables):
+def isolated_keychain(directory):
     if sys.platform != 'darwin':
         yield
         return
     if not (os.environ.get('CI') == 'true' and os.environ.get('GITHUB_ACTIONS') == 'true'
             and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted'):
         raise RuntimeError('临时钥匙串仅允许在 GitHub 托管 macOS 运行器中使用。')
-    trusted = [Path(p).resolve(strict=True) for p in executables]
-    if not trusted or not all(p.is_file() for p in trusted):
-        raise RuntimeError('缺少受信任的验收宿主。')
     original_default = shlex.split(security('default-keychain', '-d', 'user'))
     original_search = shlex.split(security('list-keychains', '-d', 'user'))
     if len(original_default) != 1:
@@ -40,11 +37,6 @@ def isolated_keychain(directory, executables):
         security('unlock-keychain', '-p', password, keychain)
         security('list-keychains', '-d', 'user', '-s', keychain)
         security('default-keychain', '-d', 'user', '-s', keychain)
-        access = [value for executable in trusted for value in ('-T', executable)]
-        # Electron 45 的同步/异步加密共用该服务名；只预置随机测试材料。
-        # 显式空 -T 去掉 security 工具的默认访问，再只允许指定两个宿主。
-        security('add-generic-password', '-a', 'MyCollab', '-s', 'MyCollab Safe Storage',
-                 '-w', secrets.token_urlsafe(32), '-T', '', *access, keychain)
         yield
     finally:
         # 即使其中一步恢复失败，也继续尝试其余清理。

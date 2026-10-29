@@ -795,4 +795,4 @@ Electron 打包 ESM 主入口不在顶层等待 `app.whenReady()`；通过异步
 
 设计树展开状态由 `frontend/src/stores/designTree.ts` 在当前登录会话内共享，递归分支和页面重新挂载使用同一组条目 ID。路由切换保留，账户变化或退出清空；不写入本地持久存储。
 
-`desktop/tests/ci/keychain.py` 在 GitHub 托管 macOS 环境为源码宿主和打包宿主建立受限的临时系统钥匙串，避免同名凭据跨签名测试的无人确认弹窗；本地入口拒绝执行此设置，产品凭据策略不变。
+`desktop/tests/ci/keychain.py` 在 GitHub 托管 macOS 环境为源码迁移和打包业务两套测试分别建立全新的临时系统钥匙串，避免不同签名的宿主共享同名凭据条目；本地入口拒绝执行此设置，产品凭据策略不变。

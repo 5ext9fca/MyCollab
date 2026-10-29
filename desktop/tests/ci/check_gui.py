@@ -47,10 +47,15 @@ def main():
                    'POSTGRES_PORT': str(port)}
             if args.app:
                 env['MYCOLLAB_TEST_APP_BINARY'] = str(args.app.resolve())
-            source_host = root / 'desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'
-            with isolated_keychain(temporary, [source_host, args.app] if args.app else [source_host]):
-                subprocess.run([sys.executable, 'manage.py', 'test', 'accounts.test_desktop',
-                                '--noinput'], cwd=root / 'backend', env=env, check=True, timeout=240)
+            # macOS 的两个宿主签名不同，分别在全新的系统钥匙串中运行。
+            # 不预置加密材料，不让两个程序共享同名条目的访问控制。
+            suites = ['migration', 'packaged'] if sys.platform == 'darwin' else ['packaged']
+            for suite in suites:
+                with isolated_keychain(temporary):
+                    subprocess.run([sys.executable, 'manage.py', 'test', 'accounts.test_desktop',
+                                    '--noinput'], cwd=root / 'backend',
+                                   env={**env, 'MYCOLLAB_DESKTOP_TEST_SUITE': suite},
+                                   check=True, timeout=240)
         finally:
             subprocess.run([*control, '-m', 'immediate', '-w', 'stop'], check=True)
 
