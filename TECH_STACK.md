@@ -395,6 +395,8 @@ MYCOLLAB_BROWSER_TEST=1 POSTGRES_DB=mycollab_browser .venv/bin/python manage.py 
 
 已有 Google Chrome 时可增加 `MYCOLLAB_BROWSER_CHANNEL=chrome`，无需下载 Chromium。测试自动启动临时 Django 服务及 localhost:5179 的 Vite，执行 `npm run test:transfer`；该 npm 命令依赖测试服务和测试用户，不作为单独启动应用的命令。覆盖空文件、普通文件、100 MiB 文件下载摘要一致、篡改字节拒收和取消；同机两个独立浏览器会话不能替代实际两台设备的网络环境验收。失败截图/trace 保存在 `frontend/test-results/`，不提交版本库。
 
+三项文件大小用例无论成功或失败均输出 `connection-diagnostics.json`：浏览器版本、测试对照标记、文件大小、首次连接耗时、最终 ICE/连接状态、双方描述中的候选与 mDNS 数量，以及原生统计中的候选对/通道计数。仅记录白名单计数，不保存地址、完整 SDP、令牌或正文。统计是最终快照，连接关闭后浏览器可能清空计数，零值不能解释为整个传输期间没有候选或数据；首次连接耗时独立保留。诊断仅注入临时测试上下文，不进入产品构建。
+
 若自动验收机器的 mDNS 解析受限，可在上述验收命令中额外设置 `MYCOLLAB_TEST_RAW_IP=1` 进行对照测试：仅让临时 Chrome/Chromium 测试进程使用原始 IP 候选，不修改系统或日常浏览器设置，也不改变应用代码。该模式下通过的结果证明文件传输及校验协议可用，不证明默认 mDNS 或真实跨设备网络可达；实际部署仍需正常浏览器双机验证。
 
 文档重组前已有的本机验收记录（本次未重跑）：Chrome 默认 mDNS 候选未能建立连接，独立 WebRTC 探针也复现该现象；临时测试浏览器启用原始 IP 候选后，6 项真实浏览器测试全部通过（空文件、约 2 MiB、100 MiB、字节篡改拒收、配对后取消、传输中取消）。桌面与 390px 窄屏截图已检查。未修改系统或日常浏览器权限；真实两台设备的默认浏览器环境仍需部署后验证。
