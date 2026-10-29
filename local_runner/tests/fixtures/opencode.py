@@ -15,7 +15,7 @@ sys.stdin.buffer.read()
 if settings['mode'] == 'complete':
     counter = Path(settings['counter'])
     counter.write_text(counter.read_text() + '1' if counter.exists() else '1')
-    result = {'title': '候选', 'content': '', 'summary': '', 'questions': []}
+    result = {'title': '候选', 'content': '用于验证显式采纳的候选说明。', 'summary': '', 'questions': []}
     print(json.dumps({'type': 'text', 'part': {'text': json.dumps(result)}}))
 else:
     Path(settings['started']).write_text(str(os.getpid()))

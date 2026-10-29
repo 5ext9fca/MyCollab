@@ -265,7 +265,7 @@ Redis、后台任务队列、WebSocket、独立搜索服务与 Kubernetes 不属
 
 设计/资产的依赖图 MUST 与父子组成树、Mission 执行依赖分别维护和验环。添加或替换依赖必须在团队锁内检查完整可达路径，防止并发反向依赖成环；数据库兜底禁止自依赖与重复边。
 
-第一批本地适配器锁定 OpenCode CLI 2.1.3，使用 Python 标准库启动独立非交互会话，显式传入专用禁用工具配置。MUST 在本地和服务端重复校验输出，正常服务端测试不得调用付费模型；真实接入测试须显式设置 MYCOLLAB_LIVE_MODEL。服务器仅存 MyCollab 设备凭据摘要，不配置模型、供应商 URL 或供应商认证信息。
+本地适配器只接受 OpenCode CLI 2.1.3 与 2.2.0 两个精确版本，使用 Python 标准库启动独立非交互会话，显式传入专用禁用工具配置。MUST 在本地和服务端重复校验输出，正常服务端测试不得调用付费模型；真实接入测试须显式设置 MYCOLLAB_LIVE_MODEL。服务器仅存 MyCollab 设备凭据摘要，不配置模型、供应商 URL 或供应商认证信息。
 
 
 主分支使用本地 LLM 整理 Agent 需求 Markdown，MUST 复用有界文本交接，不增加服务器模型 SDK 或执行环境，不将模板拼接当作 LLM 整理。图像/代码执行及审批实现仅保留于 `feature/agent-delegation`；恢复该分支须使用独立数据库，不能假定主分支迁移后的执行历史仍存在。
@@ -804,3 +804,13 @@ U05：设计树展开状态改为 Pinia 会话状态；同一用户信息刷新�
 macOS CI 凭据隔离：`desktop/tests/ci/keychain.py` 只允许 GitHub 托管运行器创建一次性空钥匙串，保存并在 finally 恢复默认钥匙串及搜索列表，删除本次钥匙串。源码迁移与打包业务分别启动隔离 Django 套件，各自使用新的钥匙串，由真实 safeStorage 创建加密材料；不预置材料或放宽条目 ACL。本机默认仍运行全部四项测试，不执行这项 CI 设置。依据 [Electron 45 的钥匙串命名](https://github.com/electron/electron/blob/v45.1.0/shell/browser/electron_browser_main_parts.cc)：源码宿主与开发签名应用使用相同服务名，但签名不同。旧 CI 与预置双宿主 ACL 方案均在加密保存等待；该方案已移除。本机同版本由用户确认系统弹窗后四项 GUI 全部通过。
 
 CI 临时 PostgreSQL 使用系统分配的可绑定本地端口，并将同一端口传给 Django；启动失败会输出仅含启动阶段的日志后清理本次集群。`b6edd60` 的 Windows CI 在数据库启动阶段失败，尚未启动 GUI，旧脚本丢弃了临时日志，具体原因无法追溯；动态端口用于避免固定端口与 Windows 保留范围冲突，不将此推测写成已确认根因。
+
+#### OpenCode 2.2.0 与安装客户端真实模型验收（2026-10-29）
+
+Runner 的自检与执行统一使用精确版本白名单（2.1.3、2.2.0），拒绝未知补丁版本及预览版本。2.2.0 的 `run --standalone --format json --agent --model` 契约由本机帮助和[固定版本 CLI 源码](https://github.com/anomalyco/opencode/blob/v2.2.0/packages/cli/src/commands/handlers/run.ts)核对；使用 Runner 同一临时配置执行 `--standalone debug agents`，确认专用系统提示与通配拒绝规则实际生效，额外 browser/skill 规则仍为 deny。[官方权限说明](https://opencode.ai/v2/docs/permissions)及[该版本配置插件](https://github.com/anomalyco/opencode/blob/v2.2.0/packages/core/src/config/plugin/agent.ts)为升级依据，不按任意 2.x 放行。
+
+显式 GUI 入口使用 `MYCOLLAB_DESKTOP_TEST_SUITE=real-model`、`MYCOLLAB_DESKTOP_TEST=1`、`MYCOLLAB_LIVE_MODEL`、`MYCOLLAB_LIVE_OPENCODE` 和 `MYCOLLAB_TEST_APP_BINARY`，在 backend 运行 `.venv/bin/python manage.py test accounts.test_desktop --noinput`，同时设置独立 `POSTGRES_DB`。缺少模型、CLI、实际打包应用或隔离 API 时立即失败。普通测试和 CI 不选择此套件，不会调用付费模型。`model-contract` 模式运行同一断言但使用隔离假 CLI，可先无供应商调用验证脚本。只创建一个辅助请求，不自动重试；再次运行真实模式必须有相应调用授权。
+
+实际 macOS arm64 DMG 副本、包内 Runner、OpenCode 2.2.0 与本机已登录的 deepseek/deepseek-flash 完成一次完整 GUI 验收（47.8 秒）：系统加密绑定与自检、生成设计润色候选、未采纳时不改表单/数据库、显式采纳后仍不写库、保存后刷新核对内容和版本、确认仅一个成功请求、停止 Runner。前置三个非付费 GUI 用例通过，修正后的假 CLI 单项通过（33.3 秒）；Runner 42 项（2 项平台跳过）、前端 153 项、类型检查和构建通过。
+
+首次获授权请求也返回并保存了真实候选，但脚本在异步采纳完成前读取旧输入值，导致错误比较而失败；保留失败记录。修正为从只读请求结果取得候选并等待输入匹配，假 CLI 通过后获得第二次单独授权，真实整项通过。总计两次明确授权、两次辅助请求；不把首次失败改记为测试通过。摘要仅记录模型、平台、请求数、采纳/保存及停止结果；失败上下文可能包含虚构验收材料，不含供应商密钥或设备令牌。该结果不代表 Windows 原生供应商或 WSL 接入已验证。

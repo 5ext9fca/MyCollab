@@ -3,6 +3,11 @@ import os
 import subprocess
 
 
+def supported_version(output):
+    """只接受逐版核验过的 CLI，不按版本范围放行未知协议。"""
+    return output.strip() in {'opencode v2.1.3', 'opencode v2.2.0'}
+
+
 def spawn(command, **options):
     if os.name != 'nt':
         return subprocess.Popen(command, **options)
@@ -60,6 +65,6 @@ def diagnose_executable(executable):
         return {'opencode': 'unavailable', 'opencode_error': 'spawn_failed'}
     if version.returncode:
         return {'opencode': 'unavailable', 'opencode_error': 'nonzero_exit'}
-    if version.stdout.strip() != 'opencode v2.1.3':
+    if not supported_version(version.stdout):
         return {'opencode': 'incompatible', 'opencode_error': 'version_mismatch'}
     return {'opencode': 'ok'}

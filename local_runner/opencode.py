@@ -8,7 +8,7 @@ import tempfile
 import threading
 import time
 
-from .child_process import spawn, version_check
+from .child_process import spawn, version_check, supported_version
 from .private_files import private_directory
 from .protocol import INPUT_LIMIT, RESULT_LIMIT, ProtocolError, bounded_json, validate_result, validate_evidence
 
@@ -105,7 +105,7 @@ def run(request, *, model, executable="opencode", heartbeat=lambda: True, timeou
     """使用新私有会话，标准输入传递上下文；不将模型日志回传服务器。"""
     prompt = prompt_for(request)
     version = version_check(executable)
-    if version.returncode or version.stdout.strip() != "opencode v2.1.3":
+    if version.returncode or not supported_version(version.stdout):
         raise LocalFailure("local_configuration")
     with tempfile.TemporaryDirectory(prefix="mycollab-text-") as directory:
         private_directory(directory)

@@ -27,7 +27,10 @@ class ProcessCreationTests(unittest.TestCase):
                                  {'opencode': 'unavailable', 'opencode_error': reason})
         for code, output, expected in [(1, 'secret', {'opencode': 'unavailable', 'opencode_error': 'nonzero_exit'}),
                                        (0, 'secret', {'opencode': 'incompatible', 'opencode_error': 'version_mismatch'}),
-                                       (0, 'opencode v2.1.3\n', {'opencode': 'ok'})]:
+                                       (0, 'opencode v2.1.3\n', {'opencode': 'ok'}),
+                                       (0, 'opencode v2.2.0\n', {'opencode': 'ok'}),
+                                       (0, 'opencode v2.2.1\n', {'opencode': 'incompatible', 'opencode_error': 'version_mismatch'}),
+                                       (0, 'opencode v2.2.0-preview\n', {'opencode': 'incompatible', 'opencode_error': 'version_mismatch'})]:
             with patch('local_runner.child_process.version_check', return_value=subprocess.CompletedProcess([], code, output)):
                 self.assertEqual(diagnose_executable('private-path'), expected)
 

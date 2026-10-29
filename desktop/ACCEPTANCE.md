@@ -17,7 +17,13 @@ Windows 详细证据见 [Windows 验收报告](WINDOWS_ACCEPTANCE_REPORT.md)。�
 - `e6d4728` 的 Windows x64 CI 已通过打包 GUI、中文路径安装副本 GUI 和卸载。开发包 [CI 归档](https://github.com/5ext9fca/MyCollab/actions/runs/40866721866/artifacts/12895090281) 的来源清单与下载文件已核验：EXE `131347936` 字节，SHA-256 `56705c91f755a0844d02d3f04212a6eee53e42ca788715179dbaf0d86fce5a00`；实际 PR 合并构建提交 `949c563`，PR 源码头 `e6d4728`。不是新 Windows 包的人工实机验收。
 - `e6d4728` 的 [三平台 CI](https://github.com/5ext9fca/MyCollab/actions/runs/40866721866) 已通过全部验证步骤：Windows x64 的打包/安装副本 GUI 及卸载，macOS arm64/x64 的源码迁移与打包业务 GUI。macOS 将两个宿主分别放入全新临时钥匙串后通过；此前加密保存等待的失败仍保留历史记录。新增 CI 隔离不改变产品，也不替代真实系统弹窗或双机网络验收。
 
-以下 Windows 汇总对应用户实测的 `bcb3752`，保留原始结果。D01/U05 已在新产品代码和 macOS 安装包回归中通过，尚未据此改写旧 Windows 包的失败事实。最终整体仍为部分通过：真实原生 OpenCode/供应商及双机异常恢复矩阵未齐，校园网失败未复验，同子网历史超时原因未明。WSL 内 OpenCode 接入属于尚未实现的扩展能力；正式发行仍不在范围内。
+以下 Windows 汇总对应用户实测的 `bcb3752`，保留原始结果。D01/U05 已在新产品代码和 macOS 安装包回归中通过，尚未据此改写旧 Windows 包的失败事实。最终整体仍为部分通过：Windows 原生 OpenCode/供应商及双机异常恢复矩阵未齐，校园网失败未复验，同子网历史超时原因未明。WSL 内 OpenCode 接入属于尚未实现的扩展能力；正式发行仍不在范围内。
+
+## 真实模型补验（2026-10-29）
+
+macOS arm64 新 DMG 副本 `desktop/build/真实模型验收 2.2.0/MyCollab.app` 已使用包内 Runner、本机 OpenCode 2.2.0、deepseek/deepseek-flash 完成真实供应商 GUI 闭环，1/1 通过（47.8 秒）。验证候选不自动覆盖，显式采纳不自动保存，保存后刷新内容及版本一致，仅一个成功辅助请求，Runner 正常停止。此前三项非付费业务 GUI 与同流程假 CLI 验收均通过。
+
+首次真实请求已返回并保存，但脚本提前读取了异步采纳前的值而误判失败；修复等待条件并用假 CLI 验证后，用户另行授权第二次真实请求，整项通过。共两次明确授权、两次请求，无自动重试；首次失败记录保留。证据摘要在该安装验收目录 `real-attempt-2/` 下的 `acceptance.json`。没有改动既有业务数据，隔离测试库已清理。Windows 原生供应商、WSL 集成、双机异常恢复及默认网络失败仍保留原结论，整体尚未完成。
 
 ## Windows 验收汇总
 

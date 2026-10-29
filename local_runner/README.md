@@ -5,7 +5,7 @@ Runner 在你的电脑上连接 MyCollab，提供文本辅助和 Agent 需求文
 ## 环境与绑定
 
 1. 使用 Python 3.13 与本仓库检出；Runner 只依赖 Python 标准库。
-2. 安装 **OpenCode CLI 2.1.3**。适配器按此版本验证，其他版本会拒绝执行，需重新验证权限与约定后再升级支持范围。
+2. 安装 **OpenCode CLI 2.1.3 或 2.2.0**。适配器只接受这两个精确版本，其他版本会拒绝执行，需重新验证权限与约定后再升级支持范围。
 3. 在用户电脑运行 `opencode auth login` 完成供应商登录；用 `opencode auth list`、`opencode models --standalone` 检查可用模型。不要把供应商凭据填写到 MyCollab。
 4. 登录 MyCollab 的「本地 Agent」页面，创建设备，选择四类文本能力。设备凭据只展示一次，可设置 1–90 天有效期；服务器仅存摘要。
 5. 创建目录 `mkdir -p ~/.config/MyCollab`，将如下本机 JSON 配置保存为 `~/.config/MyCollab/mycollab-runner.json`，并执行 `chmod 600 ~/.config/MyCollab/mycollab-runner.json`。文件不能提交 Git。
