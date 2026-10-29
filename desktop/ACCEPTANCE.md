@@ -4,7 +4,20 @@
 
 **整体为部分通过，尚未满足完整客户端验收条件。** 本次将 Windows 实机与自动化结果并入整体验收记录；已通过项、已知问题和未覆盖项分别保留，不以构建成功、CI 成功或单次双机成功替代完整平台矩阵。
 
-Windows 详细证据见 [Windows 验收报告](WINDOWS_ACCEPTANCE_REPORT.md)。本轮没有重新运行 macOS 本地套件或远端 CI；其既有验证与历史失败记录见 [TECH_STACK.md 的 Electron GUI 隔离验收](../TECH_STACK.md#electron-gui-隔离验收)。以下 Windows 结论不扩大为所有 Windows 版本或 macOS 架构均已通过。
+Windows 详细证据见 [Windows 验收报告](WINDOWS_ACCEPTANCE_REPORT.md)。本轮已合并远端 `2323b8b`，修复 D01/U05 并运行 macOS 安装版回归；最新结果见下节。既有验证与历史失败记录见 [TECH_STACK.md 的 Electron GUI 隔离验收](../TECH_STACK.md#electron-gui-隔离验收)。以下 Windows 结论不扩大为所有 Windows 版本或 macOS 架构均已通过。
+
+## 合并后的最终复核（2026-10-29）
+
+- 产品修复基线 `b6edd60`：D01 支持普通 `filename` 和 UTF-8 `filename*` 默认名称，保留扩展名并清理不安全名称；U05 在当前登录会话保留设计树展开状态，身份变化清空。
+- macOS arm64：从本轮 DMG 提取到 `desktop/build/安装验收 b6edd60/MyCollab.app`，开发签名完整性通过。共享安装版完整套件 13/13 通过（24.6 秒），包含原先两个失败用例；使用本机 HTTP 夹具，保存目的地由测试固定。
+- 同一副本的隔离 Django GUI 套件 4/4 通过（测试进程总计 66.187 秒）：三个打包业务用例及一个源码宿主旧伴侣迁移用例。用户在系统窗口确认钥匙串访问；没有替换系统加密。覆盖任务闭环、素材及身份隔离、注册审批、Runner、自检、假 CLI 候选显式采纳和窗口退出保护；不等于真实供应商调用。
+- 非 GUI：后端 273 项（跳过 4）、前端 153 项、Electron 57 项、Runner 42 项（跳过 2）通过；前端类型检查和生产构建通过。CI 钥匙串环境限制及清理测试 3 项通过。
+- DMG SHA-256：`f81c51d4bffdf52d6ab71f5df8e0445c3957c7c2c2f1aa27f3a8c662a7b3d1e6`。ZIP SHA-256：`784c730fd8a31a007bdab9e1f01f1ffdc590e82c4468849df5b8a37cf911cd0d`。清单位于 `desktop/build/electron/local-validation.json`；共享报告位于 `desktop/test-results/local-macos/2026-10-29T11-19-16.360Z-LJ0ib8/`。
+- 浏览器直传补验：默认 Chrome 配置首项空文件在确认接收后等待 45 秒仍无可保存文件，1 项失败、后续 5 项未执行；仅测试进程开启原始 IP 候选后 6/6 通过（50.3 秒），覆盖 0 字节、2 MiB + 7 字节、100 MiB、篡改拒收、拒绝和传输中取消。未修改产品配置，不将对照通过算作默认网络通过；报告分别保存在安装验收目录的 `browser-default/` 与 `browser-raw-ip/`。
+- `e6d4728` 的 Windows x64 CI 已通过打包 GUI、中文路径安装副本 GUI 和卸载。开发包 [CI 归档](https://github.com/5ext9fca/MyCollab/actions/runs/40866721866/artifacts/12895090281) 的来源清单与下载文件已核验：EXE `131347936` 字节，SHA-256 `56705c91f755a0844d02d3f04212a6eee53e42ca788715179dbaf0d86fce5a00`；实际 PR 合并构建提交 `949c563`，PR 源码头 `e6d4728`。不是新 Windows 包的人工实机验收。
+- `e6d4728` 的 [三平台 CI](https://github.com/5ext9fca/MyCollab/actions/runs/40866721866) 已通过全部验证步骤：Windows x64 的打包/安装副本 GUI 及卸载，macOS arm64/x64 的源码迁移与打包业务 GUI。macOS 将两个宿主分别放入全新临时钥匙串后通过；此前加密保存等待的失败仍保留历史记录。新增 CI 隔离不改变产品，也不替代真实系统弹窗或双机网络验收。
+
+以下 Windows 汇总对应用户实测的 `bcb3752`，保留原始结果。D01/U05 已在新产品代码和 macOS 安装包回归中通过，尚未据此改写旧 Windows 包的失败事实。最终整体仍为部分通过：真实原生 OpenCode/供应商及双机异常恢复矩阵未齐，校园网失败未复验，同子网历史超时原因未明。WSL 内 OpenCode 接入属于尚未实现的扩展能力；正式发行仍不在范围内。
 
 ## Windows 验收汇总
 
