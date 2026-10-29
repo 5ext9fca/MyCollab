@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import { defineComponent, ref } from 'vue'
 import MissionCard from '../components/MissionCard.vue'
@@ -57,7 +58,7 @@ describe('卡片交互隔离', () => {
   it('设计展开按钮只展开子树，卡片标题保留路由链接', async () => {
     vi.mocked(listDesignElements).mockResolvedValueOnce({ results: [{ id: 'd', title: '设计条目', kind: 'Design', has_children: true }] as never, count: 1, next: null, previous: null }).mockResolvedValue({ results: [{ id: 'a', title: '子设计', kind: 'Design', has_children: false }] as never, count: 1, next: null, previous: null })
     const navigation = await router()
-    const wrapper = mount(DesignTreeBranch, { props: { archived: 'false', kind: 'Design' }, global: { plugins: [ElementPlus, navigation] } }); wrappers.push(wrapper)
+    const wrapper = mount(DesignTreeBranch, { props: { archived: 'false', kind: 'Design' }, global: { plugins: [createPinia(), ElementPlus, navigation] } }); wrappers.push(wrapper)
     await flushPromises()
     expect(listDesignElements).toHaveBeenCalledWith(expect.objectContaining({ parent: 'root', kind: 'Design' }))
     expect(wrapper.get('.design-item-card a.app-link').attributes('href')).toBe('/design/d')

@@ -116,7 +116,7 @@ for (const name of names) {
   })
 }
 
-test('离开设计页面再返回应保留树展开状态 @known-issue', async ({ desktop }) => {
+test('离开设计页面再返回应保留树展开状态', async ({ desktop }) => {
   const { page } = desktop
   await page.getByRole('menuitem', { name: '设计与资产', exact: true }).click()
   const toggle = page.getByRole('button', { name: '展开或折叠验收父设计', exact: true })
