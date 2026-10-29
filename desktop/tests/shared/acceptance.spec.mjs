@@ -100,7 +100,7 @@ for (const scenario of ['服务器拒绝下载', '保存目标为目录']) {
 }
 
 for (const name of names) {
-  test(`默认下载名称应保留：${name}${name === names[0] ? ' @known-issue' : ''}`, async ({ desktop }) => {
+  test(`默认下载名称应保留：${name}`, async ({ desktop }) => {
     const { page, app } = desktop
     await page.getByRole('menuitem', { name: '素材库', exact: true }).click()
     await app.evaluate(({ dialog }) => {

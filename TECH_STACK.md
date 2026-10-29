@@ -794,3 +794,7 @@ GUI 套件新增 `startup-baseline.json`：记录新进程到设置页可见的�
 
 
 开发包归档新增 `development-validation.json`，记录实际构建提交、PR 头提交、CI 运行编号、架构、打包 GUI 与安装/卸载步骤的原始 outcome，以及安装文件 SHA-256。仅构建成功且清单/归档成功时上传；GUI 失败也可保留该开发包用于诊断，清单如实保留 failure/skipped/not_run，不能把归档存在当成验收通过。仍为七天保留的开发产物，不正式发行。
+
+#### Windows 实机缺陷修复回归（2026-10-29）
+
+D01：下载默认名同时支持普通 `filename` 与 UTF-8 `filename*`，扩展参数解码失败时回退普通参数；清除路径、控制字符、Windows 保留名及结尾点空格。`desktop/electron/tests/filename.test.mjs` 覆盖协议优先级及安全回退，共享安装版用例继续验证实际保存对话框的默认名。

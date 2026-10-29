@@ -1,3 +1,4 @@
+import { downloadFilename } from './filename.mjs'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, protocol, safeStorage, session, shell, Tray } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import { createWriteStream, mkdirSync } from 'node:fs'
@@ -110,9 +111,7 @@ async function downloadLibrary(value) {
   const generation = current.generation
   const response = await current.handle(new Request(url))
   if (!response.ok || !response.body) { await response.body?.cancel(); throw new Error('素材下载失败或无权访问。') }
-  const filename = /filename\*=UTF-8''([^;]+)/i.exec(response.headers.get('content-disposition') || '')?.[1]
-  let defaultPath = '素材文件'
-  try { if (filename) defaultPath = path.basename(decodeURIComponent(filename)).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') } catch { /* 使用安全默认名称。 */ }
+  const defaultPath = downloadFilename(response.headers.get('content-disposition'))
   const choice = await dialog.showSaveDialog(window, { defaultPath })
   if (choice.canceled || !choice.filePath) { await response.body.cancel(); return false }
   if (current !== transport || current.generation !== generation) { await response.body.cancel(); throw new Error('登录身份已改变。') }
