@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
+from keychain import isolated_keychain
 
 
 def main():
@@ -34,8 +35,10 @@ def main():
                    'POSTGRES_PORT': '55439'}
             if args.app:
                 env['MYCOLLAB_TEST_APP_BINARY'] = str(args.app.resolve())
-            subprocess.run([sys.executable, 'manage.py', 'test', 'accounts.test_desktop',
-                            '--noinput'], cwd=root / 'backend', env=env, check=True, timeout=240)
+            source_host = root / 'desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'
+            with isolated_keychain(temporary, [source_host, args.app] if args.app else [source_host]):
+                subprocess.run([sys.executable, 'manage.py', 'test', 'accounts.test_desktop',
+                                '--noinput'], cwd=root / 'backend', env=env, check=True, timeout=240)
         finally:
             subprocess.run([*control, '-m', 'immediate', '-w', 'stop'], check=True)
 

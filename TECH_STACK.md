@@ -800,3 +800,5 @@ GUI 套件新增 `startup-baseline.json`：记录新进程到设置页可见的�
 D01：下载默认名同时支持普通 `filename` 与 UTF-8 `filename*`，扩展参数解码失败时回退普通参数；清除路径、控制字符、Windows 保留名及结尾点空格。`desktop/electron/tests/filename.test.mjs` 覆盖协议优先级及安全回退，共享安装版用例继续验证实际保存对话框的默认名。
 
 U05：设计树展开状态改为 Pinia 会话状态；同一用户信息刷新保留，用户 ID 变化或退出同步清空。单元测试覆盖保留和身份隔离，共享安装版用例覆盖离开设计页面再返回。D01、U05 从已知失败标签移除，两种入口模式均执行这两项回归；旧报告的失败结论保留为对应版本的历史记录。
+
+macOS CI 凭据隔离：`desktop/tests/ci/keychain.py` 只允许 GitHub 托管运行器创建一次性钥匙串，预置随机 `MyCollab Safe Storage` 测试条目，仅以 `-T` 授权本次源码 Electron 和已打包 MyCollab 可执行文件；不使用允许所有应用的 `-A`。保存并在 finally 恢复默认钥匙串及搜索列表，删除临时钥匙串。产品仍使用真实 safeStorage，不改加密实现，也不代替本机系统授权验收。依据 [Electron 45 的钥匙串命名](https://github.com/electron/electron/blob/v45.1.0/shell/browser/electron_browser_main_parts.cc) 与系统 `security help add-generic-password`。原因：源码宿主与开发签名应用共用名称但签名不同，旧 CI 在加密保存等待；本机同版本由用户确认系统弹窗后四项 GUI 全部通过。
