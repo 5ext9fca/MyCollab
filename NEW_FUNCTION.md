@@ -244,3 +244,6 @@ Windows `7bd8052` 的 CLI 自检仍报告不可用，说明假 CLI 输入编码�
 macOS arm64 开发安装包已更新至 `dbea94a`，从 DMG 复制的 `desktop/build/安装验收 dbea94a/MyCollab.app` 通过三项 GUI 回归（49.4 秒），包括缺失 CLI 的具体提示与正常 CLI 自检、候选回传和模板实例化。首次等待系统密码访问确认后，用户完成授权，重跑通过。DMG/ZIP 哈希和验收状态已更新至 `desktop/build/electron/local-validation.json`。
 
 GUI 套件新增 `startup-baseline.json`：记录新进程到设置页可见的耗时、系统/架构、Electron/Chromium 版本与 `getAppMetrics()` 各进程内存快照（KB，按 Electron MemoryInfo 定义）。使用临时配置但未清系统磁盘缓存，启用 Playwright 与 trace，不包含 Runner；只用于后续同条件比较，不能视为纯冷启动、稳定空闲或传输峰值验收。JSON 直接落在 GUI 输出目录，随现有 CI 产物归档；本机副本保存在安装验收目录。
+
+
+版本检查子进程的标准输入改为关闭输入（DEVNULL），不继承桌面宿主持续开启的停止控制管道；模型请求仍使用独立 stdin 管道传递上下文，Windows Job 保护保持不变。新增真实 HTTP/子进程回归：保持宿主控制管道开启，自检应返回 CLI/服务器通过且不产生模型调用；三平台 CI 的独立二进制测试也运行此项。本机 Runner 42 项测试通过（2 项 Windows 专属跳过）。Windows GUI 的最新失败分类是版本检查超时，本项是否解决该阻塞仍待 Windows 原生复验。

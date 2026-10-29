@@ -83,7 +83,7 @@ jobs:
       - name: 独立 Runner 断线恢复与宿主退出
         run: |
           export MYCOLLAB_TEST_RUNNER_BINARY="$(python -c "from pathlib import Path; print(Path('desktop/build/runner/${{ matrix.target }}/${{ matrix.executable }}').resolve())")"
-          python -m unittest local_runner.tests.test_delivery_integration -v
+          python -m unittest local_runner.tests.test_delivery_integration local_runner.tests.test_control_pipe.ControlPipeTests.test_diagnosis_does_not_wait_for_control_pipe_eof -v
       - name: 构建开发安装包（不安装或启动窗口）
         run: npm --prefix desktop run electron:dist:dev
       - name: 验证实际包内 Runner

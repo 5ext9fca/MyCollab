@@ -32,8 +32,8 @@ def spawn(command, **options):
 
 def version_check(executable):
     if os.name != 'nt':
-        return subprocess.run([executable, '--version'], capture_output=True, text=True, timeout=15)
-    process = spawn([executable, '--version'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        return subprocess.run([executable, '--version'], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15)
+    process = spawn([executable, '--version'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     try:
         stdout, _ = process.communicate(timeout=15)
         return subprocess.CompletedProcess(process.args, process.returncode, stdout, '')

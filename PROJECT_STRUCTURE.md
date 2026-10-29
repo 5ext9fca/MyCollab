@@ -783,3 +783,6 @@ Electron 打包 ESM 主入口不在顶层等待 `app.whenReady()`；通过异步
 
 
 本地 Runner 自检增加可选 `opencode_error` 固定分类：`not_found`、`permission_denied`、`timeout`、`invalid_output`、`spawn_failed`、`nonzero_exit`、`version_mismatch`。主进程仅在 CLI 未通过时转发允许值；页面将分类显示为路径、权限、超时、安装或版本排错提示。仍只运行 `--version`，不调用模型，不传递异常文本、CLI 输出、设备令牌或供应商信息；账号与服务器隔离规则不变。
+
+
+版本检查子进程的标准输入改为关闭输入（DEVNULL），不继承桌面宿主持续开启的停止控制管道；模型请求仍使用独立 stdin 管道传递上下文，Windows Job 保护保持不变。新增真实 HTTP/子进程回归：保持宿主控制管道开启，自检应返回 CLI/服务器通过且不产生模型调用；三平台 CI 的独立二进制测试也运行此项。本机 Runner 42 项测试通过（2 项 Windows 专属跳过）。Windows GUI 的最新失败分类是版本检查超时，本项是否解决该阻塞仍待 Windows 原生复验。
