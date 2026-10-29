@@ -698,3 +698,6 @@ macOS arm64 开发安装产物已重新构建：从新版 DMG 只读挂载并复
 
 
 桌面直传诊断入口已独立为 `MYCOLLAB_DESKTOP_TRANSFER_TEST=1`（配合 `MYCOLLAB_DESKTOP_TEST=1` 运行 `accounts.test_desktop`），默认业务 GUI 套件不包含这项尚未通过默认网络验收的测试。可用 `MYCOLLAB_TEST_APP_BINARY` 指定实际安装副本；测试断言打包状态及临时配置目录。macOS arm64 安装副本已在 `MYCOLLAB_TEST_RAW_IP=1` 对照模式完成双会话 2 MiB + 7 字节传输、SHA-256 校验与下载字节验证；仅固定保存路径，未验证原生对话框。默认 mDNS 与真实双机网络仍未验收通过，不将诊断成功作为产品网络验收结论。
+
+
+本机 GUI 曾因 macOS 密码访问等待手动授权而超时（用户确认）。运行真实 safeStorage 验收前应留意系统弹窗并由用户完成授权；不以关闭系统保护、明文回退或替换加密实现通过验收。超时本身不能证明应用启动死锁。
