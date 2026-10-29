@@ -574,9 +574,9 @@ Intel 构建将上述后缀改为 `x86_64-apple-darwin`。测试会监听临时 
 - `npm run electron:pack`：构建本机架构的临时签名目录包，不启动应用；macOS 产物位于 `desktop/build/electron/mac-arm64` 或 `mac` 等 builder 平台目录。
 - `npm run electron:dist`：原生架构安装产物，强制签名；需发布环境的证书。公证与发行验收未完成前不能发布。
 - `npm run electron:setup`：下载开发运行所需的 Electron 可执行文件，不启动应用。
-- `npm run electron:dev`：确保 Electron 已安装后构建并启动 GUI；依本次用户要求，当前不执行。
+- `npm run electron:dev`：确保 Electron 已安装后构建并启动 GUI；已获用户授权，可用于当前 GUI 验收。
 
-本次不执行 GUI 测试与验收（包括组件交互、真实窗口、安装交互和双机界面验收）。已选择性运行前端 API 和文件传输纯逻辑测试：`npm run test -- src/tests/desktopAuth.spec.ts src/tests/client.spec.ts src/tests/missions.spec.ts src/tests/library.spec.ts src/tests/fileTransferProtocol.spec.ts src/tests/fileTransferController.spec.ts`。这些测试不渲染组件，不替代真实 Electron 会话、系统权限、GUI 或跨系统验证。
+前期曾暂缓 GUI 测试与验收；当前已恢复授权，实测进展见下方“Electron GUI 隔离验收”。已选择性运行前端 API 和文件传输纯逻辑测试：`npm run test -- src/tests/desktopAuth.spec.ts src/tests/client.spec.ts src/tests/missions.spec.ts src/tests/library.spec.ts src/tests/fileTransferProtocol.spec.ts src/tests/fileTransferController.spec.ts`。这些测试不渲染组件，不替代真实 Electron 会话、系统权限、GUI 或跨系统验证。
 
 2026-10-29 已以临时签名生成 `desktop/build/electron/mac-arm64/MyCollab.app`（约 259 MiB），通过 `codesign --verify --deep --strict`；静态核对 ASAR 内 4 个宿主模块及资源目录的 68 个共享前端文件与当前构建一致。未启动应用，不代表 GUI、登录或 WebRTC 实测通过。
 
@@ -584,7 +584,7 @@ Intel 构建将上述后缀改为 `x86_64-apple-darwin`。测试会监听临时 
 
 Runner 的匿名管道入口由 `local_runner/tests/test_private_handoff.py` 使用真实 Python CLI 子进程检查，覆盖中文/空格路径、有界读取、错误脱敏及不创建明文配置。Python 3.13 的 Runner 测试共 30 项；本轮普通沙箱运行 28 项通过，另 2 项因本机监听权限受限，授权后单独重跑 `local_runner.tests.test_delivery_integration` 通过。所有检查均不涉及 GUI 或真实模型调用。
 
-桌面绑定使用独立内存 `device-probe` Session，只对已配置服务器的固定状态端点发送设备 Bearer，`credentials: omit`、`redirect: error`；不借用业务 Cookie。后端状态接口的身份字段为加法兼容变更，无新增迁移。GUI 绑定交互测试按用户要求暂缓，核验逻辑通过 Node 测试及后端 API 回归验证。
+桌面绑定使用独立内存 `device-probe` Session，只对已配置服务器的固定状态端点发送设备 Bearer，`credentials: omit`、`redirect: error`；不借用业务 Cookie。后端状态接口的身份字段为加法兼容变更，无新增迁移。GUI 绑定交互测试尚待执行，核验逻辑通过 Node 测试及后端 API 回归验证。
 
 
 Runner 原生构建与非 GUI 二进制检查（仓库根，使用 Python 3.13）：
@@ -665,3 +665,5 @@ PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`�
 当前已恢复 GUI 验收授权，但不执行正式发行。先构建共享前端并安装锁定 Electron：`npm --prefix frontend run build`、`npm --prefix desktop run electron:setup`。在 backend 运行 `MYCOLLAB_DESKTOP_TEST=1 POSTGRES_DB=mycollab_desktop_gui .venv/bin/python manage.py test accounts.test_desktop --noinput`。此入口创建并销毁独立 PostgreSQL 测试库，启动真实 Django LiveServer 和 Electron 窗口；测试引导文件在加载产品宿主前指定临时 userData，不修改产品安全策略、用户配置或模型账号。
 
 `frontend/playwright.desktop.config.ts` 与浏览器文件传输配置分开；截图和 trace 位于 `frontend/test-results/desktop`。普通后端测试跳过此显式 GUI 入口。本机 macOS arm64 已通过服务器设置、登录、导航、刷新和退出流程；其他平台及真实安装产物的 GUI 行为仍需单独验证。此测试不启动 Runner 或调用模型。
+
+素材 GUI 验收已覆盖真实 multipart 上传、缩略图解码、授权读取与下载字节一致、退出拒绝读取、跨账号列表隔离及删除拒绝后保持登录。测试使用临时 MEDIA_ROOT；下载只替换系统保存路径选择，点击、IPC、主进程认证和流式落盘使用实际实现，不代表原生文件对话框验收通过。

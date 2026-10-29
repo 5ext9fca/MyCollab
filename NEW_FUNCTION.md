@@ -197,4 +197,4 @@ Electron 内核一致性是迁移收益之一，不作为默认网络一定可�
 
 ### 恢复 GUI 验收后的进展
 
-已添加 `accounts.test_desktop` 与 `frontend/e2e/desktop.spec.ts`：独立 PostgreSQL 测试库、临时客户端配置，启动真实 Electron 宿主及真实 Django API，覆盖设置服务器、Session/CSRF 登录、任务广场导航、刷新保持登录、退出后不恢复登录，并确认 renderer 不获得 Node require 或 Session Cookie。本机 macOS arm64 已通过，留存截图与 trace；尚不是实际安装后验收，也未覆盖私有素材、完整业务、Runner 界面或双机 WebRTC。
+已添加 `accounts.test_desktop` 与 `frontend/e2e/desktop.spec.ts`：独立 PostgreSQL 测试库、临时客户端配置，启动真实 Electron 宿主及真实 Django API，覆盖设置服务器、Session/CSRF 登录、任务广场导航、刷新保持登录、退出后不恢复登录，并确认 renderer 不获得 Node require 或 Session Cookie。本机 macOS arm64 已通过，留存截图与 trace；另已通过真实 multipart 素材上传、图片解码、私有文件字节读取及点击下载的流式落盘；退出后读取被拒绝，另一账号的素材列表隔离、允许读取引用素材但拒绝删除，普通权限拒绝不清除登录。下载测试仅替换系统保存路径选择，未验收原生保存对话框。上传文件使用临时 MEDIA_ROOT，随隔离测试清理。尚不是实际安装后验收，也未覆盖完整业务、Runner 界面或双机 WebRTC。
