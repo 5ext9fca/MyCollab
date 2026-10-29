@@ -662,6 +662,8 @@ PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`�
 
 ### Electron GUI 隔离验收
 
+当前整体验收结论统一见 [开发客户端整体验收报告](desktop/ACCEPTANCE.md)，Windows 分项证据见 [Windows 验收报告](desktop/WINDOWS_ACCEPTANCE_REPORT.md)。下文保留各提交、平台及测试方式的历史验证记录，不能将旧的“待验收”直接当作最新状态，也不能将后续单项通过扩大为整个平台通过。
+
 #### 桌面测试的三个入口
 
 桌面环境测试统一位于 `desktop/tests/`，分为本地 macOS、本地 Windows、CI 三类。`shared/` 只存放两种本地入口复用的 Playwright 用例、HTTP 夹具与依赖锁文件；不直接作为第四种环境入口。原有 `desktop/electron/tests/` 边界单元测试和 `local_runner/tests/` 子进程测试保持原位置，供各平台共用。
