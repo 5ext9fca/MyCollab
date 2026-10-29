@@ -712,6 +712,8 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 
 本地安装版用例覆盖登录会话、窗口隐藏恢复、更新禁用、下载落盘/取消/默认名与设计树导航状态，使用合成账号和本机 HTTP 夹具，不变更业务数据模型、接口或权限；已知问题保留真实失败。它们不替代 Django、原生对话框或双机网络验收。命令和环境要求见 TECH_STACK 的“桌面测试的三个入口”。
 
+Windows 入口的显式 `-LiveServer` 模式单独运行 `tests/shared/live.config.mjs` 与 `live.spec.mjs`：用户在独立窗口登录，真实页面创建专用里程碑、两步模板及资产生产任务并完成状态流，验证个人甘特筛选与包内 Runner 绑定/启停；只读 API 复核写入。使用唯一数据前缀，`acceptance.json` 记录分项结果与新增数据 ID，不保存 trace、截图、Cookie 或设备令牌。站点测试数据保留；此模式需已有写入授权，不随默认 HTTP 夹具套件执行。常规共享用例另覆盖下载 HTTP 错误和落盘失败后的提示、临时文件清理与恢复。
+
 - `transport.mjs` 的 `BusinessTransport` 仅将本地 `/api/` 下现有业务路由映射到配置的 HTTPS 根地址（本机开发可 HTTP），拒绝 Runner API、其他来源、任意请求头及重定向。主进程的服务器独立内存会话持有 Cookie 与 CSRF，渲染会话不持有业务 Cookie，重启需重新登录，不保存密码。私有资源流有取消及超时，响应过滤 Cookie、禁止缓存、隔离附件脚本；身份切换拒绝并发旧请求并中断旧流，断网退出也清 Cookie。
 - `policy.mjs` 校验主窗口/主框架 IPC 来源、业务地址、素材下载和外链。`preload.cjs` 仅暴露读取设置、切换服务器、自启动、局域网权限、打开 HTTP(S) 外链、下载当前用户素材、读取脱敏本机绑定及验证保存设备及 Runner 启动、停止、状态、自检及旧伴侣导入及更新检查、下载、安装、状态十七个固定操作；不能提供任意 IPC、HTTP、文件系统或命令执行。
 - `frontend/src/platform/desktop.ts` 适配已清洗 Markdown 和普通链接；素材下载由主进程再次鉴权、用户选择目的地后流式写入临时文件并原子替换。外链交给系统浏览器，不获得桌面能力；普通 Web 端维持原行为。

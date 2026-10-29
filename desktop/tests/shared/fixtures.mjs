@@ -39,6 +39,7 @@ export const test = base.extend({
       await page.getByRole('button', { name: '登录', exact: true }).click()
       await expect(page).toHaveURL(/\/my-work$/)
       await use({ get app() { return app }, get page() { return page }, profile,
+        setDownloadFailure: server.setDownloadFailure,
         restart: async () => { await stop('before-restart'); await launch() } })
     } finally {
       try {

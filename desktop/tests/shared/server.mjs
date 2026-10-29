@@ -8,6 +8,7 @@ const user = { id: 1, username: 'acceptance', display_name: '自动验收', is_s
 const paginated = results => ({ count: results.length, next: null, previous: null, results })
 
 export async function startServer() {
+  let downloadFailure = false
   const sessions = new Set()
   const unexpected = []
   const files = names.map((name, index) => ({ id: `00000000-0000-4000-8000-00000000000${index}`,
@@ -42,6 +43,7 @@ export async function startServer() {
       if (url.pathname === '/api/library/files/') return send(200, paginated(files))
       const file = files.find(item => item.url === url.pathname)
       if (file) {
+        if (downloadFailure) return send(503, { code: 'fixture_unavailable', message: '测试下载暂不可用', field_errors: {} })
         const disposition = /^[\x20-\x7e]+$/.test(file.original_name)
           ? `attachment; filename="${file.original_name}"`
           : `attachment; filename*=UTF-8''${encodeURIComponent(file.original_name)}`
@@ -61,5 +63,6 @@ export async function startServer() {
   })
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
   return { url: `http://127.0.0.1:${server.address().port}`, unexpected,
+    setDownloadFailure: value => { downloadFailure = value },
     close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections() }) }
 }

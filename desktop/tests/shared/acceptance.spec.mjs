@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises'
+import { mkdir, readFile, readdir } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { test, expect } from './fixtures.mjs'
@@ -72,6 +72,32 @@ test('取消保存不产生文件，随后仍能保存', async ({ desktop }) => 
   await page.getByRole('link', { name: names[1], exact: true }).click()
   await expect.poll(async () => (await readFile(destination).catch(() => Buffer.alloc(0))).toString()).toBe(payload.toString())
 })
+
+for (const scenario of ['服务器拒绝下载', '保存目标为目录']) {
+  test(`下载失败提示与恢复：${scenario}`, async ({ desktop }) => {
+    const { app, page, profile } = desktop
+    await page.getByRole('menuitem', { name: '素材库', exact: true }).click()
+    const blocked = path.join(profile, 'blocked')
+    await mkdir(blocked)
+    await app.evaluate(({ dialog }, destination) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: destination })
+    }, blocked)
+    desktop.setDownloadFailure(scenario === '服务器拒绝下载')
+    const link = page.getByRole('link', { name: names[1], exact: true })
+    await link.click()
+    await expect(page.getByText('无法打开链接或保存文件，请检查网络、权限和登录状态。', { exact: true })).toBeVisible()
+    expect((await readdir(profile)).filter(name => name.endsWith('.partial'))).toEqual([])
+    expect(await readdir(blocked)).toEqual([])
+    desktop.setDownloadFailure(false)
+    const destination = path.join(profile, 'recovered.txt')
+    await app.evaluate(({ dialog }, destination) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: destination })
+    }, destination)
+    await link.click()
+    await expect.poll(async () => (await readFile(destination).catch(() => Buffer.alloc(0))).toString()).toBe(payload.toString())
+    expect(await page.evaluate(async () => (await fetch('/api/auth/me/')).status)).toBe(200)
+  })
+}
 
 for (const name of names) {
   test(`默认下载名称应保留：${name}${name === names[0] ? ' @known-issue' : ''}`, async ({ desktop }) => {

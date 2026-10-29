@@ -705,6 +705,18 @@ Copy-Item -LiteralPath $source -Destination $localTests -Recurse
 
 不设置 `ExecutionPolicy Bypass`；本地脚本仍被策略拒绝时由本机管理员处理授权或签名。
 
+本地 Windows 另提供显式真实站点模式：
+
+```powershell
+& .\desktop\tests\local-windows\run.ps1 -LiveServer 'https://测试站点根地址' -ReportRoot '.\desktop\test-results\local-windows-live'
+```
+
+此模式会在指定站点写入测试数据，须先获得站点测试授权；用户在独立窗口手动登录专用账号，脚本最多等待 5 分钟，不接收聊天密码，不保存 trace、截图或登录状态。`shared/live.config.mjs` 与 `live.spec.mjs` 独立于默认夹具套件，默认运行绝不触发真实站点测试；`LiveServer` 与 `SmokeOnly` 互斥，只接受 HTTPS 根地址，保持证书校验。
+
+登录后由真实页面创建唯一“Windows自动验收”前缀的里程碑、两步依赖模板和资产，实例化两个任务并依次认领/提交/验收，检查里程碑必须手动完成；保存并刷新个人甘特筛选；创建设备，使用不存在的 CLI 路径验证 DPAPI 绑定、自检、包内 Runner 空闲启停、窗口隐藏恢复及退出登录停止。测试不创建辅助请求，不调用模型，不修改已有任务。只读 API 用于复核页面写入结果。`acceptance.json` 分项记录通过/失败和新建数据 ID；这些站点测试数据保留，不自动删除或归档，临时本机配置在退出后删除。真实供应商、网络中断待发箱恢复及进程异常终止仍需独立验收。
+
+2026-10-29 Windows 真实站点模式实际完成上述 6 项检查，全部通过；用户只手动登录一次。另一次只读进程检查确认没有 mycollab-runner 进程残留。夹具基础模式补充 HTTP 503 下载失败、目标为目录导致落盘失败的提示及恢复，11 项通过；完整模式另有 2 项既有问题回归，不将基础模式当作完整通过。
+
 两个本地入口都会将 `shared` 中的测试文件复制到系统临时工具目录，执行 `npm ci --ignore-scripts`、夹具服务测试和 Playwright。报告包含 HTML、JSON、截图、trace、应用可执行文件及 app.asar SHA-256；工具暂存目录保留便于复查。报告仅含测试数据，仍应检查后再分享。默认完整模式保留 `@known-issue` 用例的真实失败；基础模式显式排除这些用例，不等于完整验收通过。
 
 2026-10-29 Windows 11 x64 / Node 24.11.1 既有本机结果：完整套件 11 项中 9 项通过、英文默认文件名和树展开状态 2 项失败；基础模式 9 项通过；HTTP 夹具测试 1 项通过。历史报告保留原 `desktop/test-results/windows/` 路径。新 macOS 本地入口尚需 macOS 实机运行，不能沿用 Windows 或历史 CI 结果宣称通过。
