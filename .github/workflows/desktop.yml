@@ -85,6 +85,7 @@ jobs:
           export MYCOLLAB_TEST_RUNNER_BINARY="$(python -c "from pathlib import Path; print(Path('desktop/build/runner/${{ matrix.target }}/${{ matrix.executable }}').resolve())")"
           python -m unittest local_runner.tests.test_delivery_integration local_runner.tests.test_control_pipe.ControlPipeTests.test_diagnosis_does_not_wait_for_control_pipe_eof -v
       - name: 构建开发安装包（不安装或启动窗口）
+        id: development_package
         run: npm --prefix desktop run electron:dist:dev
       - name: 验证实际包内 Runner
         run: python desktop/scripts/check_runner.py desktop/build/electron/${{ matrix.packaged }}
@@ -109,8 +110,10 @@ jobs:
         shell: pwsh
         run: Add-Content $env:GITHUB_PATH $env:PGBIN
       - name: 真实 Electron GUI 隔离验收
+        id: packaged_gui
         run: python desktop/tests/ci/check_gui.py --app "desktop/build/electron/${{ matrix.app }}"
       - name: Windows 开发安装与卸载验收
+        id: installed_gui
         if: runner.os == 'Windows'
         run: python desktop/tests/ci/check_windows_install.py
       - name: 保存 GUI 截图与追踪
@@ -123,10 +126,22 @@ jobs:
             desktop/build/windows-install-validation.json
           retention-days: 7
           if-no-files-found: warn
+      - name: 记录开发安装包来源与验收结果
+        id: validation_manifest
+        if: always() && steps.development_package.outcome == 'success'
+        env:
+          VALIDATION_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          VALIDATION_TARGET: ${{ matrix.target }}
+          VALIDATION_PACKAGED_GUI: ${{ steps.packaged_gui.outcome }}
+          VALIDATION_INSTALLED_GUI: ${{ steps.installed_gui.outcome }}
+        run: python desktop/scripts/record_development_validation.py
       - name: 归档开发包并保留可执行权限
+        id: development_archive
+        if: always() && steps.validation_manifest.outcome == 'success'
         shell: bash
         run: tar -czf desktop-${{ matrix.target }}-development.tar.gz -C desktop/build/electron .
       - uses: actions/upload-artifact@v4
+        if: always() && steps.development_archive.outcome == 'success'
         with:
           name: desktop-${{ matrix.target }}-development
           path: desktop-${{ matrix.target }}-development.tar.gz
