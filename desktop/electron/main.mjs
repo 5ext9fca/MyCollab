@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, protocol, safeStorage, session, shell, Tray } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
-import { createWriteStream } from 'node:fs'
+import { createWriteStream, mkdirSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -20,6 +20,14 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'mycollab', privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,
 } }])
 app.setName('MyCollab')
+// 显式独立配置用于隔离验收或不同工作环境，不从渲染页面接受路径。
+if (app.commandLine.hasSwitch('user-data-dir')) {
+  const profile = app.commandLine.getSwitchValue('user-data-dir')
+  if (!path.isAbsolute(profile)) throw new Error('独立配置目录必须使用绝对路径。')
+  mkdirSync(profile, { recursive: true, mode: 0o700 })
+  app.setPath('userData', profile)
+}
+
 /** @type {BrowserWindow} */
 let window
 /** @type {Tray} */
@@ -240,7 +248,12 @@ function createWindow() {
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()
-else {
+else void startApplication().catch(() => {
+  dialog.showErrorBox('启动失败', '客户端无法初始化，请检查配置目录权限或重新安装开发包。')
+  app.exit(1)
+})
+
+async function startApplication() {
   app.on('second-instance', reveal)
   app.on('activate', reveal)
   app.on('before-quit', event => {

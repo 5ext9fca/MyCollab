@@ -778,3 +778,5 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 `backend/accounts/test_desktop.py` 提供显式 Electron GUI 验收入口，使用独立测试数据库建立用户并启动 LiveServer；`frontend/e2e/desktop-launch.cjs` 仅在测试中隔离配置后加载真实宿主，`desktop.spec.ts` 通过真实页面检查服务器设置、认证和导航，不向产品加入测试 IPC 或降低安全策略。
 
 桌面页面阻止离开时，宿主通过 `will-prevent-unload` 显示原生确认对话框，默认继续停留。明确中断才允许离开；取消退出会恢复退出控制状态并显示窗口。退出准备阶段已停止的 Runner 不自动重启，界面提示用户按需启动。普通关闭窗口仍只隐藏，不触发页面销毁。
+
+Electron 打包 ESM 主入口不在顶层等待 `app.whenReady()`；通过异步启动函数完成初始化，避免入口加载与 ready 相互等待。显式命令行 `--user-data-dir=<绝对路径>` 可使用独立配置目录，启动时创建目录；此路径不由 renderer/IPC 设置，不改变凭据加密或 API 权限。

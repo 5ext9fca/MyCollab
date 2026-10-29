@@ -10,14 +10,15 @@ test('真实宿主设置服务器、登录、导航、刷新与退出', async ({
   if (!server) throw new Error('请从隔离 Django 验收入口运行')
   const profile = await mkdtemp(path.join(tmpdir(), 'mycollab-desktop-gui-'))
   const app = await electron.launch({
-    executablePath: require('../../desktop/node_modules/electron'),
-    args: [path.resolve('e2e/desktop-launch.cjs')],
+    executablePath: process.env.MYCOLLAB_TEST_APP_BINARY || require('../../desktop/node_modules/electron'),
+    args: process.env.MYCOLLAB_TEST_APP_BINARY ? [`--user-data-dir=${profile}`] : [path.resolve('e2e/desktop-launch.cjs')],
     env: { ...process.env, MYCOLLAB_DESKTOP_TEST_PROFILE: profile },
   })
   const page = await app.firstWindow()
   await app.context().tracing.start({ screenshots: true, snapshots: true })
   try {
     expect(await app.evaluate(({ app }) => app.getPath('userData'))).toBe(profile)
+    expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(Boolean(process.env.MYCOLLAB_TEST_APP_BINARY))
     await expect(page.getByText('桌面设置', { exact: true })).toBeVisible()
     await page.getByPlaceholder('https://collab.example.com').fill(server)
     await page.getByRole('button', { name: '保存服务器并前往登录' }).click()
@@ -205,8 +206,8 @@ test('真实宿主设置服务器、登录、导航、刷新与退出', async ({
 test('退出遇到页面离开保护时可以取消并再次确认退出', async () => {
   const profile = await mkdtemp(path.join(tmpdir(), 'mycollab-desktop-quit-'))
   const app = await electron.launch({
-    executablePath: require('../../desktop/node_modules/electron'),
-    args: [path.resolve('e2e/desktop-launch.cjs')],
+    executablePath: process.env.MYCOLLAB_TEST_APP_BINARY || require('../../desktop/node_modules/electron'),
+    args: process.env.MYCOLLAB_TEST_APP_BINARY ? [`--user-data-dir=${profile}`] : [path.resolve('e2e/desktop-launch.cjs')],
     env: { ...process.env, MYCOLLAB_DESKTOP_TEST_PROFILE: profile },
   })
   let closed = false
@@ -244,8 +245,8 @@ test('桌面注册经管理员审批后可登录且普通用户无法进入管�
   if (!server) throw new Error('请从隔离 Django 验收入口运行')
   const profile = await mkdtemp(path.join(tmpdir(), 'mycollab-desktop-admin-'))
   const app = await electron.launch({
-    executablePath: require('../../desktop/node_modules/electron'),
-    args: [path.resolve('e2e/desktop-launch.cjs')],
+    executablePath: process.env.MYCOLLAB_TEST_APP_BINARY || require('../../desktop/node_modules/electron'),
+    args: process.env.MYCOLLAB_TEST_APP_BINARY ? [`--user-data-dir=${profile}`] : [path.resolve('e2e/desktop-launch.cjs')],
     env: { ...process.env, MYCOLLAB_DESKTOP_TEST_PROFILE: profile },
   })
   try {

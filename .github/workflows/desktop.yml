@@ -24,14 +24,17 @@ jobs:
         include:
           - os: macos-15
             target: mac-arm64
+            app: mac-arm64/MyCollab.app/Contents/MacOS/MyCollab
             executable: mycollab-runner
             packaged: mac-arm64/MyCollab.app/Contents/Resources/runner/mycollab-runner
           - os: macos-15-intel
             target: mac-x64
+            app: mac/MyCollab.app/Contents/MacOS/MyCollab
             executable: mycollab-runner
             packaged: mac/MyCollab.app/Contents/Resources/runner/mycollab-runner
           - os: windows-2025
             target: win-x64
+            app: win-unpacked/MyCollab.exe
             executable: mycollab-runner.exe
             packaged: win-unpacked/resources/runner/mycollab-runner.exe
     runs-on: ${{ matrix.os }}
@@ -106,7 +109,7 @@ jobs:
         shell: pwsh
         run: Add-Content $env:GITHUB_PATH $env:PGBIN
       - name: 真实 Electron GUI 隔离验收
-        run: python desktop/scripts/check_gui.py
+        run: python desktop/scripts/check_gui.py --app "desktop/build/electron/${{ matrix.app }}"
       - name: 保存 GUI 截图与追踪
         if: always()
         uses: actions/upload-artifact@v4
