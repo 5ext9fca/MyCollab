@@ -226,3 +226,6 @@ macOS arm64 开发安装产物已重新构建：从新版 DMG 只读挂载并复
 本地 Agent 结果闭环 GUI 补验已通过：实际 macOS 安装副本内的 Runner 使用隔离假 CLI（固定结果、无供应商调用），重新绑定时留空沿用设备令牌，领取设计润色请求并回传；候选未自动更改表单，用户采纳标题后仍须手动保存，刷新后确认持久化。测试计数文件确认 CLI 仅执行一次。测试复用 Runner 原有跨平台夹具，Windows 使用 CI 已构建的原生假 CLI；本轮新增流程的远端结果尚待确认。
 
 提交 `e669779` 的实际打包应用 CI 中，Windows x64 GUI 通过；macOS 两架构均在里程碑详情刷新处失败，日志表明测试点击后未等待路由切换便刷新。测试已增加详情 URL 和标题就绪检查，再执行刷新；本机 macOS arm64 安装副本的业务与 Runner 候选闭环回归通过。三平台修复后结果及 Windows 安装/卸载验收仍待新 CI 确认。
+
+
+桌面直传诊断入口已独立为 `MYCOLLAB_DESKTOP_TRANSFER_TEST=1`（配合 `MYCOLLAB_DESKTOP_TEST=1` 运行 `accounts.test_desktop`），默认业务 GUI 套件不包含这项尚未通过默认网络验收的测试。可用 `MYCOLLAB_TEST_APP_BINARY` 指定实际安装副本；测试断言打包状态及临时配置目录。macOS arm64 安装副本已在 `MYCOLLAB_TEST_RAW_IP=1` 对照模式完成双会话 2 MiB + 7 字节传输、SHA-256 校验与下载字节验证；仅固定保存路径，未验证原生对话框。默认 mDNS 与真实双机网络仍未验收通过，不将诊断成功作为产品网络验收结论。
