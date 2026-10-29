@@ -580,7 +580,7 @@ Intel 构建将上述后缀改为 `x86_64-apple-darwin`。测试会监听临时 
 
 2026-10-29 已以临时签名生成 `desktop/build/electron/mac-arm64/MyCollab.app`（约 259 MiB），通过 `codesign --verify --deep --strict`；静态核对 ASAR 内 4 个宿主模块及资源目录的 68 个共享前端文件与当前构建一致。未启动应用，不代表 GUI、登录或 WebRTC 实测通过。
 
-桌面凭据模块使用 Electron 45 的异步 `safeStorage` 接口（[官方说明](https://www.electronjs.org/docs/latest/api/safe-storage)）；主进程已注入系统实现，macOS arm64 的实际系统加密保存和读取已通过下方 GUI 验收；Windows DPAPI 仍待非模拟环境验证。当前 Node 测试以独立 AES-GCM 测试适配器验证密文落盘、身份隔离、篡改拒绝、密钥轮换与失败保留旧文件，不调用钥匙串，也不代表 Windows DPAPI/macOS 钥匙串实机验收。`electron:check` 包含该模块的严格类型检查。
+桌面凭据模块使用 Electron 45 的异步 `safeStorage` 接口（[官方说明](https://www.electronjs.org/docs/latest/api/safe-storage)）；主进程已注入系统实现，macOS arm64 的实际系统加密保存和读取已通过下方 GUI 验收；Windows DPAPI 已通过下述原生 CI GUI 验收。当前 Node 测试以独立 AES-GCM 测试适配器验证密文落盘、身份隔离、篡改拒绝、密钥轮换与失败保留旧文件，不调用钥匙串，也不代表 Windows DPAPI/macOS 钥匙串实机验收。`electron:check` 包含该模块的严格类型检查。
 
 Runner 的匿名管道入口由 `local_runner/tests/test_private_handoff.py` 使用真实 Python CLI 子进程检查，覆盖中文/空格路径、有界读取、错误脱敏及不创建明文配置。Python 3.13 的 Runner 测试共 30 项；本轮普通沙箱运行 28 项通过，另 2 项因本机监听权限受限，授权后单独重跑 `local_runner.tests.test_delivery_integration` 通过。所有检查均不涉及 GUI 或真实模型调用。
 
@@ -679,3 +679,5 @@ PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`�
 桌面直传排查记录：本机两个隔离 Electron 会话在默认 mDNS 候选下完成配对和 offer/answer 交换，但 45 秒内仍停在建立连接、未传输字节；仅为测试进程启用原始 IP 候选后，2 MiB + 7 字节直传、双方 SHA-256 校验、真实 Chromium Blob 下载落盘与磁盘摘要一致均通过。保存位置由测试固定，未验收原生对话框。产品未启用该开关，默认连接问题尚未解决，不能据此宣称默认网络或双机直传已通过。新增直传验收仍在工作区排查，尚未提交到 CI。
 
 修复页面 beforeunload 阻止退出后客户端无法继续退出的问题：原生确认默认停留，取消后恢复退出控制状态并显示窗口，再次确认可正常结束进程。真实 Electron GUI 测试覆盖取消、窗口隐藏/恢复、再次确认退出；对话框选择由测试固定。桌面 54 项回归与严格类型检查通过。
+
+提交 `44666bf` 的[三平台 GUI CI](https://github.com/5ext9fca/MyCollab/actions/runs/40813474508)已全部通过。Windows x64、macOS arm64/x64 均实际运行隔离 Django 与 Electron 窗口，覆盖登录、Mission 发布/认领/提交/验收、评论、素材上传下载及账号隔离、系统 safeStorage 加密保存/刷新读取、原生 Runner 自检/启停/退出停止。三个目标均生成开发安装包并归档截图与 trace。此提交不包含后续关闭隐藏、离开保护修复或尚在排查的直传测试，不代表安装器交互、所有业务路由、真实双机网络与正式发行通过。
