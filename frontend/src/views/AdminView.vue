@@ -75,7 +75,7 @@ async function onApprove(row: RegistrationRequest) {
   try {
     await approveRegistration(row.id)
     ElMessage.success(`已通过 ${row.username} 的注册申请`)
-    await loadRegistrations()
+    await Promise.all([loadRegistrations(), loadMembers()])
   } catch (error) {
     ElMessage.error(messageOf(error, '操作失败'))
   }

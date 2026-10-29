@@ -16,6 +16,7 @@ class DesktopGuiTests(LiveServerTestCase):
     def test_desktop(self):
         User.objects.create_user('desktop_user', password='desktop-test-password')
         User.objects.create_user('desktop_other', password='desktop-test-password')
+        User.objects.create_user('desktop_admin', password='desktop-test-password', is_staff=True)
         frontend = Path(__file__).resolve().parents[2] / 'frontend'
         with TemporaryDirectory(prefix='mycollab-desktop-media-') as media, self.settings(MEDIA_ROOT=media):
             result = subprocess.run(

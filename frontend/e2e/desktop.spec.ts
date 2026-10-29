@@ -197,3 +197,50 @@ test('退出遇到页面离开保护时可以取消并再次确认退出', async
     await rm(profile, { recursive: true, force: true })
   }
 })
+
+test('桌面注册经管理员审批后可登录且普通用户无法进入管理后台', async () => {
+  const server = process.env.MYCOLLAB_TEST_API_TARGET
+  if (!server) throw new Error('请从隔离 Django 验收入口运行')
+  const profile = await mkdtemp(path.join(tmpdir(), 'mycollab-desktop-admin-'))
+  const app = await electron.launch({
+    executablePath: require('../../desktop/node_modules/electron'),
+    args: [path.resolve('e2e/desktop-launch.cjs')],
+    env: { ...process.env, MYCOLLAB_DESKTOP_TEST_PROFILE: profile },
+  })
+  try {
+    const page = await app.firstWindow()
+    await page.getByPlaceholder('https://collab.example.com').fill(server)
+    await page.getByRole('button', { name: '保存服务器并前往登录' }).click()
+    await page.getByRole('link', { name: '申请注册', exact: true }).click()
+    await expect(page).toHaveURL(/\/register$/)
+    await page.getByLabel('用户名', { exact: true }).fill('desktop_new_member')
+    await page.getByLabel('密码', { exact: true }).fill('desktop-test-password')
+    await page.getByLabel('确认密码', { exact: true }).fill('desktop-test-password')
+    await page.getByRole('button', { name: '提交申请', exact: true }).click()
+    await expect(page).toHaveURL(/\/login$/)
+    await page.getByLabel('用户名', { exact: true }).fill('desktop_new_member')
+    await page.getByLabel('密码', { exact: true }).fill('desktop-test-password')
+    await page.getByRole('button', { name: '登录', exact: true }).click()
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(page).toHaveURL(/\/login$/)
+    await page.getByLabel('用户名', { exact: true }).fill('desktop_admin')
+    await page.getByRole('button', { name: '登录', exact: true }).click()
+    await page.getByRole('menuitem', { name: '管理后台', exact: true }).click()
+    const row = page.getByRole('row').filter({ hasText: 'desktop_new_member' })
+    await row.getByRole('button', { name: '通过', exact: true }).click()
+    await expect(row).toHaveCount(0)
+    await page.getByRole('tab', { name: '成员', exact: true }).click()
+    await expect(page.getByRole('row').filter({ hasText: 'desktop_new_member' })).toBeVisible()
+    await page.getByRole('button', { name: '退出', exact: true }).click()
+    await page.getByLabel('用户名', { exact: true }).fill('desktop_new_member')
+    await page.getByLabel('密码', { exact: true }).fill('desktop-test-password')
+    await page.getByRole('button', { name: '登录', exact: true }).click()
+    await expect(page).toHaveURL(/\/my-work$/)
+    await expect(page.getByRole('menuitem', { name: '管理后台', exact: true })).toHaveCount(0)
+    await page.goto('mycollab://app/manage')
+    await expect(page).toHaveURL(/\/missions$/)
+  } finally {
+    await app.close()
+    await rm(profile, { recursive: true, force: true })
+  }
+})
