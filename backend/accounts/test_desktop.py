@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import subprocess
+import shutil
 from unittest import skipUnless
 from tempfile import TemporaryDirectory
 
@@ -18,7 +19,7 @@ class DesktopGuiTests(LiveServerTestCase):
         frontend = Path(__file__).resolve().parents[2] / 'frontend'
         with TemporaryDirectory(prefix='mycollab-desktop-media-') as media, self.settings(MEDIA_ROOT=media):
             result = subprocess.run(
-                ['npm', 'exec', '--', 'playwright', 'test', '--config=playwright.desktop.config.ts'],
+                [shutil.which('npm') or 'npm', 'exec', '--', 'playwright', 'test', '--config=playwright.desktop.config.ts'],
                 cwd=frontend, env={**os.environ, 'MYCOLLAB_TEST_API_TARGET': self.live_server_url},
                 timeout=180, check=False,
             )

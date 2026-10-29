@@ -671,3 +671,5 @@ PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`�
 桌面业务 GUI 验收新增：通过真实页面发布任务、由发布者认领、提交人工验证说明并验收通过；刷新后读取实际 API 确认状态为 Done，验收记录仍显示。评论发布、编辑后刷新保留、确认删除均通过。本机 macOS arm64 的同一隔离验收同时回归登录、素材与账号隔离；这不替代多用户协作、子任务、其他业务路由或跨系统验收。
 
 本地 Agent GUI 验收使用真实 safeStorage 与 `desktop/build/runner/mac-arm64/mycollab-runner`，覆盖设备创建、加密保存、刷新解密读取、令牌不回显、自检、启动空闲轮询、手动停止、退出登录停止及另一账号绑定隔离。测试设备仅属于独立数据库，配置与密文位于临时 userData；OpenCode 使用不存在的隔离路径，自检应报告不可用，服务器应报告通过。不调用模型，不代表结果采纳、系统登录启动、旧版迁移或 Windows DPAPI 已验收。
+
+跨平台 GUI CI 已接入 `.github/workflows/desktop.yml` 的三个原生目标：构建后安装 Electron 测试运行时，使用 `desktop/scripts/check_gui.py` 新建仅监听本机的临时 PostgreSQL 集群，再运行隔离 Django/Electron 验收并保存截图与 trace 七天。macOS 安装 PostgreSQL 16；Windows 使用运行器预装工具（当前为 PostgreSQL 17），不触碰运行器原有数据库目录或服务。测试结束停止临时集群。该新增远端流程尚待实际运行验证；不等同于安装器交互或最低操作系统版本验收。正式发行工作流复用此桌面验证入口，因而也会包含 GUI 验证，但当前不执行正式发行。
