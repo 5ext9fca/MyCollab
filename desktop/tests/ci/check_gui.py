@@ -3,6 +3,7 @@ import argparse
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
@@ -26,13 +27,24 @@ def main():
         subprocess.run([binaries['initdb'], '-D', str(data), '-U', 'postgres',
                         '--auth=trust', '--encoding=UTF8', '--locale=C'], check=True)
         control = [binaries['pg_ctl'], '-D', str(data)]
-        subprocess.run([*control, '-l', str(Path(temporary) / 'postgres.log'),
-                        '-o', '-h 127.0.0.1 -p 55439', '-w', 'start'], check=True)
+        # Windows 运行器可能保留固定高位端口；让系统选择当前可绑定的端口。
+        with socket.socket() as probe:
+            probe.bind(('127.0.0.1', 0))
+            port = probe.getsockname()[1]
+        log = Path(temporary) / 'postgres.log'
+        try:
+            subprocess.run([*control, '-l', str(log),
+                            '-o', f'-h 127.0.0.1 -p {port}', '-w', 'start'], check=True)
+        except subprocess.CalledProcessError:
+            if log.is_file():
+                print(log.read_text(encoding='utf-8', errors='replace'), flush=True)
+            subprocess.run([*control, '-m', 'immediate', '-w', 'stop'], check=False)
+            raise
         try:
             env = {**os.environ, 'MYCOLLAB_DESKTOP_TEST': '1',
                    'POSTGRES_DB': 'mycollab_desktop_gui', 'POSTGRES_USER': 'postgres',
                    'POSTGRES_PASSWORD': '', 'POSTGRES_HOST': '127.0.0.1',
-                   'POSTGRES_PORT': '55439'}
+                   'POSTGRES_PORT': str(port)}
             if args.app:
                 env['MYCOLLAB_TEST_APP_BINARY'] = str(args.app.resolve())
             source_host = root / 'desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'
