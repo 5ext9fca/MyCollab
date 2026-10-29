@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import shutil
 import signal
+import runpy
 from unittest import skipUnless
 from tempfile import TemporaryDirectory
 
@@ -20,10 +21,16 @@ class DesktopGuiTests(LiveServerTestCase):
         User.objects.create_user('desktop_admin', password='desktop-test-password', is_staff=True)
         frontend = Path(__file__).resolve().parents[2] / 'frontend'
         with TemporaryDirectory(prefix='mycollab-desktop-media-') as media, self.settings(MEDIA_ROOT=media):
+            fixture = Path(media) / '模型 验收'
+            fixture.mkdir()
+            make_fixture = runpy.run_path(str(frontend.parent / 'local_runner/tests/fixture_cli.py'))['model_fixture']
+            cli, model = make_fixture(fixture, 'complete')
             process = subprocess.Popen(
                 [shutil.which('node') or 'node', str(frontend / 'node_modules/@playwright/test/cli.js'),
                  'test', '--config=playwright.desktop.config.ts', '--global-timeout=150000', '--max-failures=1'],
-                cwd=frontend, env={**os.environ, 'MYCOLLAB_TEST_API_TARGET': self.live_server_url},
+                cwd=frontend, env={**os.environ, 'MYCOLLAB_TEST_API_TARGET': self.live_server_url,
+                              'MYCOLLAB_GUI_OPENCODE': cli, 'MYCOLLAB_GUI_MODEL': model,
+                              'MYCOLLAB_GUI_MODEL_COUNTER': str(fixture / 'model-count')},
                 start_new_session=os.name != 'nt',
             )
             try:
