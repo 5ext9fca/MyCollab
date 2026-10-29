@@ -662,42 +662,62 @@ PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`�
 
 ### Electron GUI 隔离验收
 
-#### Windows 安装版 Playwright 本机套件
+#### 桌面测试的三个入口
 
-`desktop/windows-e2e/` 提供独立的 Windows 本机测试入口，使用 Windows Node（开发环境建议 Node 24）和锁定的 `@playwright/test`，直接测试已安装的开发版 `MyCollab.exe`，不需要重新打包、不安装 Chromium、不依赖 PostgreSQL 或模型 CLI。它通过仅监听 `127.0.0.1` 随机端口的 HTTP 夹具提供测试会话、素材及设计树，验证真实 Electron 前端、preload、IPC、主进程 HTTP 转发与文件落盘。**此套件不验证 Django 业务权限或真实网络互通，不能替代下方 Django 集成验收。** 原生保存对话框选择由测试替换，窗口恢复通过宿主事件触发，不代表原生对话框与托盘点击实测。
+桌面环境测试统一位于 `desktop/tests/`，分为本地 macOS、本地 Windows、CI 三类。`shared/` 只存放两种本地入口复用的 Playwright 用例、HTTP 夹具与依赖锁文件；不直接作为第四种环境入口。原有 `desktop/electron/tests/` 边界单元测试和 `local_runner/tests/` 子进程测试保持原位置，供各平台共用。
 
-Windows PowerShell 中执行（在仓库根目录）：
+| 类别 | 入口 | 环境与覆盖 | 报告位置 |
+| --- | --- | --- | --- |
+| 本地 macOS | `desktop/tests/local-macos/run.mjs` | macOS 原生 Node 24、已安装开发版 `.app`；本机 HTTP 夹具与真实 Electron 宿主 | `desktop/test-results/local-macos/<运行标识>/` |
+| 本地 Windows | `desktop/tests/local-windows/run.ps1` | Windows 原生 Node 24、已安装开发版 EXE；同一组本机 HTTP 夹具与宿主用例 | `desktop/test-results/local-windows/<运行标识>/` |
+| CI | `.github/workflows/desktop.yml` → `desktop/tests/ci/check_gui.py`，Windows 另调用 `check_windows_install.py` | 原生三平台构建、真实 Django/PostgreSQL、假模型 CLI、包内 Runner；Windows CI 静默安装卸载 | `frontend/test-results/desktop/`、`desktop/build/windows-install-validation.json`，由工作流归档 |
 
-```powershell
-& .\desktop\windows-e2e\run.ps1 -AppPath 'C:\Program Files\MyCollab\MyCollab.exe'
-# 仅验证当前基线正常项；排除已知问题并不等于完整套件通过。
-& .\desktop\windows-e2e\run.ps1 -AppPath 'C:\Program Files\MyCollab\MyCollab.exe' -SmokeOnly
-```
+本地套件无需重新打包、不安装 Chromium、不依赖 PostgreSQL 或模型 CLI。服务只监听 `127.0.0.1` 随机端口，提供合成账号、素材和设计树；每用例使用独立 `--user-data-dir`，退出后只清理测试配置。保存对话框选择由测试替换，窗口恢复通过宿主事件触发，不代表原生交互实测。**本地 HTTP 夹具不验证 Django 权限、业务状态机或真实网络互通，不替代 CI 集成验收。**
 
-WSL 内可使用 Windows PowerShell 执行同一脚本（需要允许 WSL Windows 互操作）：
+#### 本地 macOS 测试
+
+在 macOS 仓库根目录执行：
 
 ```bash
-powershell.exe -NoProfile -File "$(wslpath -w "$PWD/desktop/windows-e2e/run.ps1")"
+node desktop/tests/local-macos/run.mjs --app /Applications/MyCollab.app
+node desktop/tests/local-macos/run.mjs --app /Applications/MyCollab.app --smoke-only
 ```
 
-如果现有 PowerShell 策略拒绝 WSL UNC 网络路径上的未签名脚本，可将套件复制到 Windows 本地目录后，在原有执行策略下运行。例如在 Windows PowerShell 执行（替换发行版与仓库路径）：
+`--app` 接受已安装开发版 `.app` 目录，默认 `/Applications/MyCollab.app`；`--report-root` 可指定报告根目录。入口检查 `darwin` 平台，拒绝在 WSL/Linux/Windows 上伪造 macOS 测试。需要本机 Node 与 npm；不会自动安装或卸载 App、配置钥匙串、调用模型或修改系统自启动。
+
+#### 本地 Windows 测试
+
+Windows PowerShell 中执行（仓库根目录）：
 
 ```powershell
-$source = '\\wsl.localhost\FedoraLinux-44\home\hx\MyCollab\desktop\windows-e2e'
-$localSuite = Join-Path $env:TEMP ('mycollab-acceptance-source-' + [guid]::NewGuid().ToString('N'))
-Copy-Item -LiteralPath $source -Destination $localSuite -Recurse
-& (Join-Path $localSuite 'run.ps1') -ReportRoot '\\wsl.localhost\FedoraLinux-44\home\hx\MyCollab\desktop\test-results\windows'
+& .\desktop\tests\local-windows\run.ps1 -AppPath 'C:\Program Files\MyCollab\MyCollab.exe'
+& .\desktop\tests\local-windows\run.ps1 -AppPath 'C:\Program Files\MyCollab\MyCollab.exe' -SmokeOnly
 ```
 
-不设置 `ExecutionPolicy Bypass`，不降低系统策略；本地脚本仍被拒绝时由本机管理员处理授权或签名。脚本兼容 Windows PowerShell 5.1（UTF-8 BOM），摘要通过 .NET 计算，不依赖 WSL 继承的 PowerShell 模块搜索路径。
+脚本兼容 Windows PowerShell 5.1（UTF-8 BOM），要求 Windows Node，`-ReportRoot` 可指定报告根目录。WSL 下调用的是 Windows PowerShell 与 Windows Node，不使用 Linux Electron。若系统策略拒绝 WSL UNC 路径上的未签名脚本，将 `tests` 目录复制到 Windows 本地目录、保留 `local-windows` 与 `shared` 的相对关系后，在原策略下运行：
 
-脚本将测试文件复制到 Windows `%TEMP%` 下的独立工具目录，再执行 `npm ci --ignore-scripts`、夹具服务测试和 Playwright。每个用例使用新的 `--user-data-dir`；关闭本次测试进程后只清理其临时配置，不结束日常客户端、不使用真实账号或线上服务器，不更改自启动、网络权限、系统保护、安装目录或模型配置。不要用此套件测试正式发布包的在线更新行为。
+```powershell
+$source = '\\wsl.localhost\FedoraLinux-44\home\hx\MyCollab\desktop\tests'
+$localTests = Join-Path $env:TEMP ('mycollab-acceptance-tests-' + [guid]::NewGuid().ToString('N'))
+Copy-Item -LiteralPath $source -Destination $localTests -Recurse
+& (Join-Path $localTests 'local-windows\run.ps1') -ReportRoot '\\wsl.localhost\FedoraLinux-44\home\hx\MyCollab\desktop\test-results\local-windows'
+```
 
-报告位于 `desktop/test-results/windows/<时间-随机标识>/`：HTML、JSON、每用例截图和 trace、`run.json` 中的 EXE 与 app.asar SHA-256 和运行环境。测试工具暂存目录保留便于复查；报告和工具目录均为本地生成物。报告仅含夹具数据，仍应检查后再分享。退出码保留 Playwright 结果；`@known-issue` 用例仍正常执行并失败，不使用 expected-failure 掩盖问题。当前回归目标包括英文素材默认文件名和跨页面导航后的设计树展开状态。
+不设置 `ExecutionPolicy Bypass`；本地脚本仍被策略拒绝时由本机管理员处理授权或签名。
 
-套件使用 Playwright 的实验性 [Electron API](https://playwright.dev/docs/api/class-electron)；版本升级或安装包变化后应重新验证。真实安装向导、系统登录启动、卸载、Runner 与供应商调用、双机传输矩阵仍按 `desktop/WINDOWS_ACCEPTANCE.md` 独立验收。
+两个本地入口都会将 `shared` 中的测试文件复制到系统临时工具目录，执行 `npm ci --ignore-scripts`、夹具服务测试和 Playwright。报告包含 HTML、JSON、截图、trace、应用可执行文件及 app.asar SHA-256；工具暂存目录保留便于复查。报告仅含测试数据，仍应检查后再分享。默认完整模式保留 `@known-issue` 用例的真实失败；基础模式显式排除这些用例，不等于完整验收通过。
 
-2026-10-29 Windows 11 x64 / Node 24.11.1 本机安装版实测：完整套件 11 项，9 项通过，英文默认文件名和设计树导航展开状态 2 项失败，退出码为 1；`-SmokeOnly` 入口 9 项通过，退出码 0；本机 HTTP 夹具测试 1 项通过。报告保留截图、trace 和失败断言；不把已知失败改成通过，也不代表使用真实 Django 服务的业务验收结果。
+2026-10-29 Windows 11 x64 / Node 24.11.1 既有本机结果：完整套件 11 项中 9 项通过、英文默认文件名和树展开状态 2 项失败；基础模式 9 项通过；HTTP 夹具测试 1 项通过。历史报告保留原 `desktop/test-results/windows/` 路径。新 macOS 本地入口尚需 macOS 实机运行，不能沿用 Windows 或历史 CI 结果宣称通过。
+
+三入口整理后的本机复验：新 Windows 入口完整运行仍为 9 项通过、2 项相同产品失败，报告位于 `desktop/test-results/local-windows/20261029-174840-1f0a525d/`；HTTP 夹具测试通过。macOS 入口仅完成 Node 语法、帮助命令和 Windows 上拒绝执行检查。CI 脚本完成 Python 语法、仓库根路径与工作流引用检查，以及非 CI 环境拒绝执行检查；未触发远端 CI 或本地安装卸载。
+
+本地套件使用 Playwright 的实验性 [Electron API](https://playwright.dev/docs/api/class-electron)；版本或安装包变化后重新验证。真实安装向导、登录启动、卸载、Runner/供应商与双机矩阵按专项验收文档独立执行。
+
+#### CI 测试
+
+CI 专用脚本集中于 `desktop/tests/ci/`，工作流已使用新路径。`check_gui.py` 保留 `CI=true` 环境检查，创建并停止临时 PostgreSQL 集群；调用 `backend/accounts/test_desktop.py`，由其管理隔离测试数据库、媒体目录与假模型夹具，再运行 `frontend/playwright.desktop.config.ts`、`frontend/e2e/desktop*.ts`。业务集成用例保留在前端依赖所在目录，避免复制第二份业务用例或改变模块解析。`check_windows_install.py` 仍只接受 GitHub Windows 临时运行器，不用于本地安装卸载。发布工作流继续复用桌面工作流。
+
+下面保留完整后端集成验收的命令、覆盖和历史记录；本地高级排查可显式运行 Django 隔离命令，但不要伪造 CI 环境变量调用 CI 安装脚本。
 
 #### Django 与完整后端集成验收
 
@@ -711,7 +731,7 @@ Copy-Item -LiteralPath $source -Destination $localSuite -Recurse
 
 本地 Agent GUI 验收使用真实 safeStorage 与 `desktop/build/runner/mac-arm64/mycollab-runner`，覆盖设备创建、加密保存、刷新解密读取、令牌不回显、自检、启动空闲轮询、手动停止、退出登录停止及另一账号绑定隔离。测试设备仅属于独立数据库，配置与密文位于临时 userData；OpenCode 使用不存在的隔离路径，自检应报告不可用，服务器应报告通过。不调用模型，不代表结果采纳、系统登录启动、旧版迁移或 Windows DPAPI 已验收。
 
-跨平台 GUI CI 已接入 `.github/workflows/desktop.yml` 的三个原生目标：构建后安装 Electron 测试运行时，使用 `desktop/scripts/check_gui.py` 新建仅监听本机的临时 PostgreSQL 集群，再运行隔离 Django/Electron 验收并保存截图与 trace 七天。macOS 安装 PostgreSQL 16；Windows 使用运行器预装工具（当前为 PostgreSQL 17），不触碰运行器原有数据库目录或服务。测试结束停止临时集群。该新增远端流程尚待实际运行验证；不等同于安装器交互或最低操作系统版本验收。正式发行工作流复用此桌面验证入口，因而也会包含 GUI 验证，但当前不执行正式发行。
+跨平台 GUI CI 已接入 `.github/workflows/desktop.yml` 的三个原生目标：构建后安装 Electron 测试运行时，使用 `desktop/tests/ci/check_gui.py` 新建仅监听本机的临时 PostgreSQL 集群，再运行隔离 Django/Electron 验收并保存截图与 trace 七天。macOS 安装 PostgreSQL 16；Windows 使用运行器预装工具（当前为 PostgreSQL 17），不触碰运行器原有数据库目录或服务。测试结束停止临时集群。该新增远端流程尚待实际运行验证；不等同于安装器交互或最低操作系统版本验收。正式发行工作流复用此桌面验证入口，因而也会包含 GUI 验证，但当前不执行正式发行。
 
 窗口生命周期 GUI 补验：Runner 空闲运行期间触发真实 BrowserWindow.close，确认窗口仍存在但已隐藏；重新显示后页面可操作且 Runner 继续等待任务。通过的是关闭隐藏与恢复行为，托盘菜单点击、登录系统后启动和系统休眠恢复仍需独立验收。
 
@@ -731,7 +751,7 @@ GUI 验收入口直接运行 Node/Playwright CLI，避免 npm 包装进程超时
 
 macOS arm64 开发安装产物已重新构建：从新版 DMG 只读挂载并复制 `MyCollab.app` 到 `desktop/build/安装验收 e669779/`，卸载镜像后通过签名完整性及实际 GUI 回归，覆盖包内前端、系统加密与原生 Runner。路径包含中文和空格。当前 DMG/ZIP 位于 `desktop/build/electron/`，哈希与源码提交记录在同目录 `local-validation.json`。此项验证安装副本运行，不代表 Finder 拖放交互、Gatekeeper、公证、其他平台安装器或默认 WebRTC 已通过。
 
-新增 Windows CI 开发安装验收入口 `desktop/scripts/check_windows_install.py`：仅允许 GitHub Windows 运行器，使用实际 NSIS `/S /currentuser /D=` 安装到临时中文空格目录，检查 App 与 Runner 后调用打包 GUI 验收，再静默卸载并检查主程序消失。生成 `desktop/build/windows-install-validation.json` 并随 GUI 产物归档。工作流与脚本已通过语法检查，Windows 原生执行结果待 CI 确认；不代表安装向导交互、最低 Windows 客户端版本或正式发行通过。
+新增 Windows CI 开发安装验收入口 `desktop/tests/ci/check_windows_install.py`：仅允许 GitHub Windows 运行器，使用实际 NSIS `/S /currentuser /D=` 安装到临时中文空格目录，检查 App 与 Runner 后调用打包 GUI 验收，再静默卸载并检查主程序消失。生成 `desktop/build/windows-install-validation.json` 并随 GUI 产物归档。工作流与脚本已通过语法检查，Windows 原生执行结果待 CI 确认；不代表安装向导交互、最低 Windows 客户端版本或正式发行通过。
 
 本地 Agent 结果闭环 GUI 补验已通过：实际 macOS 安装副本内的 Runner 使用隔离假 CLI（固定结果、无供应商调用），重新绑定时留空沿用设备令牌，领取设计润色请求并回传；候选未自动更改表单，用户采纳标题后仍须手动保存，刷新后确认持久化。测试计数文件确认 CLI 仅执行一次。测试复用 Runner 原有跨平台夹具，Windows 使用 CI 已构建的原生假 CLI；本轮新增流程的远端结果尚待确认。
 

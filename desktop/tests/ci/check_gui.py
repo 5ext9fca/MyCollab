@@ -19,7 +19,7 @@ def main():
     args = parser.parse_args()
     if args.app and not args.app.is_file():
         raise SystemExit('打包应用可执行文件不存在。')
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[3]
     with TemporaryDirectory(prefix='mycollab-gui-db-') as temporary:
         data = Path(temporary) / 'data'
         subprocess.run([binaries['initdb'], '-D', str(data), '-U', 'postgres',

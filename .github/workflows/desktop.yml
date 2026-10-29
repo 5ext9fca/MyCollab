@@ -109,10 +109,10 @@ jobs:
         shell: pwsh
         run: Add-Content $env:GITHUB_PATH $env:PGBIN
       - name: 真实 Electron GUI 隔离验收
-        run: python desktop/scripts/check_gui.py --app "desktop/build/electron/${{ matrix.app }}"
+        run: python desktop/tests/ci/check_gui.py --app "desktop/build/electron/${{ matrix.app }}"
       - name: Windows 开发安装与卸载验收
         if: runner.os == 'Windows'
-        run: python desktop/scripts/check_windows_install.py
+        run: python desktop/tests/ci/check_windows_install.py
       - name: 保存 GUI 截图与追踪
         if: always()
         uses: actions/upload-artifact@v4

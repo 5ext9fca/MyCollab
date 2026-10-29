@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 def main():
     if sys.platform != 'win32' or os.environ.get('GITHUB_ACTIONS') != 'true':
         raise SystemExit('此安装验收仅供 GitHub Windows 临时运行器。')
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[3]
     installers = list((root / 'desktop/build/electron').glob('*-win-x64-development.exe'))
     if len(installers) != 1:
         raise SystemExit('必须只有一个 Windows 开发安装包。')
@@ -24,7 +24,7 @@ def main():
             runner = destination / 'resources/runner/mycollab-runner.exe'
             if not app.is_file() or not runner.is_file():
                 raise RuntimeError('安装器未在指定目录生成应用与 Runner。')
-            subprocess.run([sys.executable, str(root / 'desktop/scripts/check_gui.py'),
+            subprocess.run([sys.executable, str(root / 'desktop/tests/ci/check_gui.py'),
                             '--app', str(app)], check=True, timeout=270)
         finally:
             uninstallers = list(destination.glob('Uninstall*.exe'))

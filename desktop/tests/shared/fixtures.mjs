@@ -19,7 +19,7 @@ export const test = base.extend({
       page = await app.firstWindow()
       expect(await app.evaluate(({ app }) => app.getPath('userData'))).toBe(profile)
       expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(true)
-      expect(await app.evaluate(() => process.platform)).toBe('win32')
+      expect(await app.evaluate(() => process.platform)).toBe(process.env.MYCOLLAB_TEST_PLATFORM)
     }
     const stop = async label => {
       if (!app) return

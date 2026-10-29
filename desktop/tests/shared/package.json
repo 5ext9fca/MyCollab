@@ -1,5 +1,5 @@
 {
-  "name": "mycollab-windows-acceptance",
+  "name": "mycollab-local-desktop-acceptance",
   "private": true,
   "type": "module",
   "scripts": {

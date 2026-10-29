@@ -1,7 +1,9 @@
 import { defineConfig } from '@playwright/test'
 
-if (process.platform !== 'win32') throw new Error('请在 Windows Node 中运行此套件；WSL 请使用 run.ps1 入口。')
-if (!process.env.MYCOLLAB_TEST_APP_BINARY) throw new Error('需要指定已安装的 MyCollab.exe。')
+if (!['darwin', 'win32'].includes(process.env.MYCOLLAB_TEST_PLATFORM) || process.platform !== process.env.MYCOLLAB_TEST_PLATFORM) {
+  throw new Error('请使用与当前系统匹配的 local-macos 或 local-windows 入口。')
+}
+if (!process.env.MYCOLLAB_TEST_APP_BINARY) throw new Error('需要指定已安装的开发版客户端可执行文件。')
 
 export default defineConfig({
   testDir: '.', testMatch: '*.spec.mjs', workers: 1, fullyParallel: false,

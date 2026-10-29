@@ -1,9 +1,11 @@
 ﻿param(
     [string]$AppPath = 'C:\Program Files\MyCollab\MyCollab.exe',
     [switch]$SmokeOnly,
-    [string]$ReportRoot = (Join-Path $PSScriptRoot '..\test-results\windows')
+    [string]$ReportRoot = (Join-Path $PSScriptRoot '..\..\test-results\local-windows')
 )
 $ErrorActionPreference = 'Stop'
+if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) { throw '本入口仅用于本地 Windows。' }
+$shared = Join-Path $PSScriptRoot '..\shared'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 if (-not (Test-Path -LiteralPath $AppPath -PathType Leaf)) { throw '找不到指定的 MyCollab.exe。' }
 $node = (Get-Command node.exe -ErrorAction Stop).Source
@@ -22,13 +24,15 @@ function Get-Sha256([string]$FilePath) {
 }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 foreach ($name in @('package.json', 'package-lock.json', 'playwright.config.mjs', 'server.mjs', 'server.test.mjs', 'fixtures.mjs', 'acceptance.spec.mjs')) {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $stage
+    Copy-Item -LiteralPath (Join-Path $shared $name) -Destination $stage
 }
 $oldBinary = $env:MYCOLLAB_TEST_APP_BINARY
+$oldPlatform = $env:MYCOLLAB_TEST_PLATFORM
 $oldRunAsNode = $env:ELECTRON_RUN_AS_NODE
 $result = 1
 Push-Location $stage
 try {
+    $env:MYCOLLAB_TEST_PLATFORM = 'win32'
     $env:MYCOLLAB_TEST_APP_BINARY = (Resolve-Path -LiteralPath $AppPath).Path
     Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
     & $node $npm ci --ignore-scripts --no-audit --no-fund
@@ -42,6 +46,7 @@ try {
 } finally {
     Pop-Location
     $env:MYCOLLAB_TEST_APP_BINARY = $oldBinary
+    $env:MYCOLLAB_TEST_PLATFORM = $oldPlatform
     $env:ELECTRON_RUN_AS_NODE = $oldRunAsNode
     New-Item -ItemType Directory -Path $report -Force | Out-Null
     if (Test-Path -LiteralPath (Join-Path $stage 'results')) {

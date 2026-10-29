@@ -40,4 +40,4 @@ desktop/src-tauri/gen/
 desktop/src-tauri/binaries/
 desktop/build/
 desktop/test-results/
-desktop/windows-e2e/results/
+desktop/tests/shared/results/

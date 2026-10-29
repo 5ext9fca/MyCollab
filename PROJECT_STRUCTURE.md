@@ -708,7 +708,9 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 
 `desktop/electron/main.mjs` 为新宿主，加载唯一的 `frontend/dist` 构建产物；旧 Tauri 伴侣暂留到 Runner 等替代能力完整。Electron 使用安全标准协议 `mycollab://app`，静态映射仅暴露构建资产和 SPA 入口，业务页刷新复用入口，不加载远程 HTML。主窗口禁用 Node/WebView，启用 sandbox、context isolation、Web 安全和 CSP。
 
-`desktop/windows-e2e/` 为 Windows 安装版 Playwright 本机回归套件：`run.ps1` 负责 Windows 临时工具目录、锁文件依赖安装和带时间标识的报告；`fixtures.mjs` 管理真实安装版 Electron 的临时配置、启动/重启与清理；`server.mjs` 仅提供本机测试会话、素材和设计树响应，未知接口会使测试失败；`acceptance.spec.mjs` 覆盖会话刷新与退出、窗口隐藏恢复、开发包更新禁用、下载内容/取消/默认名及设计树导航状态。无需真实账号，不变更业务数据模型、API 或权限。默认名与展开状态的已知问题作为实际失败保留；原生对话框、真实后端及双机网络不由此夹具套件证明。命令及边界见 TECH_STACK 的“Windows 安装版 Playwright 本机套件”。
+桌面环境测试分为三个入口：`desktop/tests/local-macos/run.mjs` 测试本地 macOS 已安装开发版 `.app`，`desktop/tests/local-windows/run.ps1` 测试本地 Windows 已安装开发版 EXE，`desktop/tests/ci/` 保存临时运行器的真实后端 GUI 与 Windows 安装卸载脚本。两种本地入口共用 `desktop/tests/shared/` 的依赖锁文件、Playwright 配置、临时客户端生命周期夹具、HTTP 服务及回归用例；平台匹配检查防止跨系统误报。报告分别写入 `desktop/test-results/local-macos/` 与 `local-windows/`。CI 继续由 `.github/workflows/desktop.yml` 编排，复用 `backend/accounts/test_desktop.py` 与 `frontend/e2e/desktop*.ts` 的真实业务集成测试，原有报告路径和发布工作流保持兼容。`desktop/electron/tests/` 与 `local_runner/tests/` 仍为共享底层测试。
+
+本地安装版用例覆盖登录会话、窗口隐藏恢复、更新禁用、下载落盘/取消/默认名与设计树导航状态，使用合成账号和本机 HTTP 夹具，不变更业务数据模型、接口或权限；已知问题保留真实失败。它们不替代 Django、原生对话框或双机网络验收。命令和环境要求见 TECH_STACK 的“桌面测试的三个入口”。
 
 - `transport.mjs` 的 `BusinessTransport` 仅将本地 `/api/` 下现有业务路由映射到配置的 HTTPS 根地址（本机开发可 HTTP），拒绝 Runner API、其他来源、任意请求头及重定向。主进程的服务器独立内存会话持有 Cookie 与 CSRF，渲染会话不持有业务 Cookie，重启需重新登录，不保存密码。私有资源流有取消及超时，响应过滤 Cookie、禁止缓存、隔离附件脚本；身份切换拒绝并发旧请求并中断旧流，断网退出也清 Cookie。
 - `policy.mjs` 校验主窗口/主框架 IPC 来源、业务地址、素材下载和外链。`preload.cjs` 仅暴露读取设置、切换服务器、自启动、局域网权限、打开 HTTP(S) 外链、下载当前用户素材、读取脱敏本机绑定及验证保存设备及 Runner 启动、停止、状态、自检及旧伴侣导入及更新检查、下载、安装、状态十七个固定操作；不能提供任意 IPC、HTTP、文件系统或命令执行。
