@@ -25,7 +25,7 @@ def main():
             if not app.is_file() or not runner.is_file():
                 raise RuntimeError('安装器未在指定目录生成应用与 Runner。')
             subprocess.run([sys.executable, str(root / 'desktop/tests/ci/check_gui.py'),
-                            '--app', str(app)], check=True, timeout=270)
+                            '--app', str(app), '--artifact-group', 'installed'], check=True, timeout=270)
         finally:
             uninstallers = list(destination.glob('Uninstall*.exe'))
             if len(uninstallers) == 1:

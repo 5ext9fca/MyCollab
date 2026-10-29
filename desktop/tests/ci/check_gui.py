@@ -18,6 +18,7 @@ def main():
         raise SystemExit('缺少 PostgreSQL 原生工具。')
     parser = argparse.ArgumentParser()
     parser.add_argument('--app', type=Path)
+    parser.add_argument('--artifact-group', choices=['packaged', 'installed'], default='packaged')
     args = parser.parse_args()
     if args.app and not args.app.is_file():
         raise SystemExit('打包应用可执行文件不存在。')
@@ -54,7 +55,8 @@ def main():
                 with isolated_keychain(temporary):
                     subprocess.run([sys.executable, 'manage.py', 'test', 'accounts.test_desktop',
                                     '--noinput'], cwd=root / 'backend',
-                                   env={**env, 'MYCOLLAB_DESKTOP_TEST_SUITE': suite},
+                                   env={**env, 'MYCOLLAB_DESKTOP_TEST_SUITE': suite,
+                                        'MYCOLLAB_DESKTOP_TEST_ARTIFACT_GROUP': f'ci-{args.artifact_group}'},
                                    check=True, timeout=240)
         finally:
             subprocess.run([*control, '-m', 'immediate', '-w', 'stop'], check=True)

@@ -708,7 +708,7 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 
 `desktop/electron/main.mjs` 为新宿主，加载唯一的 `frontend/dist` 构建产物；旧 Tauri 伴侣暂留到 Runner 等替代能力完整。Electron 使用安全标准协议 `mycollab://app`，静态映射仅暴露构建资产和 SPA 入口，业务页刷新复用入口，不加载远程 HTML。主窗口禁用 Node/WebView，启用 sandbox、context isolation、Web 安全和 CSP。
 
-桌面环境测试分为三个入口：`desktop/tests/local-macos/run.mjs` 测试本地 macOS 已安装开发版 `.app`，`desktop/tests/local-windows/run.ps1` 测试本地 Windows 已安装开发版 EXE，`desktop/tests/ci/` 保存临时运行器的真实后端 GUI 与 Windows 安装卸载脚本。两种本地入口共用 `desktop/tests/shared/` 的依赖锁文件、Playwright 配置、临时客户端生命周期夹具、HTTP 服务及回归用例；平台匹配检查防止跨系统误报。报告分别写入 `desktop/test-results/local-macos/` 与 `local-windows/`。CI 继续由 `.github/workflows/desktop.yml` 编排，复用 `backend/accounts/test_desktop.py` 与 `frontend/e2e/desktop*.ts` 的真实业务集成测试，原有报告路径和发布工作流保持兼容。`desktop/electron/tests/` 与 `local_runner/tests/` 仍为共享底层测试。
+桌面环境测试分为三个入口：`desktop/tests/local-macos/run.mjs` 测试本地 macOS 已安装开发版 `.app`，`desktop/tests/local-windows/run.ps1` 测试本地 Windows 已安装开发版 EXE，`desktop/tests/ci/` 保存临时运行器的真实后端 GUI 与 Windows 安装卸载脚本。两种本地入口共用 `desktop/tests/shared/` 的依赖锁文件、Playwright 配置、临时客户端生命周期夹具、HTTP 服务及回归用例；平台匹配检查防止跨系统误报。报告分别写入 `desktop/test-results/local-macos/` 与 `local-windows/`。CI 继续由 `.github/workflows/desktop.yml` 编排，复用 `backend/accounts/test_desktop.py` 与 `frontend/e2e/desktop*.ts` 的真实业务集成测试，原有报告路径和发布工作流保持兼容。`desktop/electron/tests/` 与 `local_runner/tests/` 仍为共享底层测试。 CI GUI 产物按 `ci-packaged`/`ci-installed` 及 `migration`/`packaged` 子目录保存，防止连续执行时覆盖前一套证据；本机默认路径保持不变。
 
 安装副本性能入口 `desktop/scripts/measure_desktop.mjs` 复用本机 HTTP 夹具，使用隔离配置记录启动、登录、素材列表就绪及空闲进程工作集；只生成显式指定的本地 JSON，不新增业务 API、数据模型或生产遥测。具体口径与命令见 TECH_STACK“安装副本性能测量”。
 

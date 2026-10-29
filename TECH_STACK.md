@@ -814,7 +814,9 @@ D01：下载默认名同时支持普通 `filename` 与 UTF-8 `filename*`，扩�
 
 U05：设计树展开状态改为 Pinia 会话状态；同一用户信息刷新保留，用户 ID 变化或退出同步清空。单元测试覆盖保留和身份隔离，共享安装版用例覆盖离开设计页面再返回。D01、U05 从已知失败标签移除，两种入口模式均执行这两项回归；旧报告的失败结论保留为对应版本的历史记录。
 
-macOS CI 凭据隔离：`desktop/tests/ci/keychain.py` 只允许 GitHub 托管运行器创建一次性空钥匙串，保存并在 finally 恢复默认钥匙串及搜索列表，删除本次钥匙串。源码迁移与打包业务分别启动隔离 Django 套件，各自使用新的钥匙串，由真实 safeStorage 创建加密材料；不预置材料或放宽条目 ACL。本机默认仍运行全部四项测试，不执行这项 CI 设置。依据 [Electron 45 的钥匙串命名](https://github.com/electron/electron/blob/v45.1.0/shell/browser/electron_browser_main_parts.cc)：源码宿主与开发签名应用使用相同服务名，但签名不同。旧 CI 与预置双宿主 ACL 方案均在加密保存等待；该方案已移除。本机同版本由用户确认系统弹窗后四项 GUI 全部通过。
+macOS CI 凭据隔离：CI 的 GUI 证据按宿主及套件隔离输出：`frontend/test-results/desktop/ci-packaged/migration`、`ci-packaged/packaged` 与 `ci-installed/packaged`。`check_gui.py --artifact-group` 仅接受 `packaged` 或 `installed`，Windows 安装验收传入后者；前端配置拒绝未知分组或缺少明确套件。这样后续 Playwright 运行只清理自身目录，不覆盖先前迁移或打包副本证据。工作流仍归档 `frontend/test-results/desktop` 整个目录。本机未指定 CI 分组时保持原输出路径。
+
+`desktop/tests/ci/keychain.py` 只允许 GitHub 托管运行器创建一次性空钥匙串，保存并在 finally 恢复默认钥匙串及搜索列表，删除本次钥匙串。源码迁移与打包业务分别启动隔离 Django 套件，各自使用新的钥匙串，由真实 safeStorage 创建加密材料；不预置材料或放宽条目 ACL。本机默认仍运行全部四项测试，不执行这项 CI 设置。依据 [Electron 45 的钥匙串命名](https://github.com/electron/electron/blob/v45.1.0/shell/browser/electron_browser_main_parts.cc)：源码宿主与开发签名应用使用相同服务名，但签名不同。旧 CI 与预置双宿主 ACL 方案均在加密保存等待；该方案已移除。本机同版本由用户确认系统弹窗后四项 GUI 全部通过。
 
 CI 临时 PostgreSQL 使用系统分配的可绑定本地端口，并将同一端口传给 Django；启动失败会输出仅含启动阶段的日志后清理本次集群。`b6edd60` 的 Windows CI 在数据库启动阶段失败，尚未启动 GUI，旧脚本丢弃了临时日志，具体原因无法追溯；动态端口用于避免固定端口与 Windows 保留范围冲突，不将此推测写成已确认根因。
 
