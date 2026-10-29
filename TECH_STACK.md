@@ -704,3 +704,6 @@ macOS arm64 开发安装产物已重新构建：从新版 DMG 只读挂载并复
 
 
 本地 Runner 自检增加可选 `opencode_error` 固定分类：`not_found`、`permission_denied`、`timeout`、`invalid_output`、`spawn_failed`、`nonzero_exit`、`version_mismatch`。主进程仅在 CLI 未通过时转发允许值；页面将分类显示为路径、权限、超时、安装或版本排错提示。仍只运行 `--version`，不调用模型，不传递异常文本、CLI 输出、设备令牌或供应商信息；账号与服务器隔离规则不变。
+
+
+桌面生产模板 GUI 补验通过：在实际 macOS arm64 安装副本中创建单步骤生产模板，刷新后重新读取；创建资产并选择模板、预览、生成待认领 Mission，刷新后生产批次及模板版本仍存在且不再提供重复生成入口。本机三项 GUI 测试合计 44.5 秒通过；多步骤依赖与生产任务完整协作仍需继续验收。双机开发验收步骤见 `desktop/ACCEPTANCE.md`，用户已确认有 Windows 实机可配合；实际默认网络矩阵尚未通过，本机默认 mDNS 双会话仍在 45 秒内未建立连接。
