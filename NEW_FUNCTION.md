@@ -220,3 +220,5 @@ Electron 内核一致性是迁移收益之一，不作为默认网络一定可�
 实际打包应用 GUI 验收：增加 `MYCOLLAB_TEST_APP_BINARY` 指定 App 可执行文件，测试传入临时 `--user-data-dir` 并断言 `app.isPackaged`。macOS arm64 开发目录包已通过核心业务、设计/里程碑/甘特筛选、私有素材、系统加密、包内 Runner、退出保护与注册审批。此验收发现并修复打包 ESM 主入口顶层等待 ready 的启动死锁；源码引导模式未能暴露该问题。三平台 CI 改为 `check_gui.py --app` 启动实际包内应用，远端新结果待确认。既有开发安装包需重新构建，不应再把旧包作为可启动验收通过的产物。直传对照仍使用源码宿主且不能证明默认连接可用；安装器交互尚未覆盖。
 
 macOS arm64 开发安装产物已重新构建：从新版 DMG 只读挂载并复制 `MyCollab.app` 到 `desktop/build/安装验收 e669779/`，卸载镜像后通过签名完整性及实际 GUI 回归，覆盖包内前端、系统加密与原生 Runner。路径包含中文和空格。当前 DMG/ZIP 位于 `desktop/build/electron/`，哈希与源码提交记录在同目录 `local-validation.json`。此项验证安装副本运行，不代表 Finder 拖放交互、Gatekeeper、公证、其他平台安装器或默认 WebRTC 已通过。
+
+新增 Windows CI 开发安装验收入口 `desktop/scripts/check_windows_install.py`：仅允许 GitHub Windows 运行器，使用实际 NSIS `/S /currentuser /D=` 安装到临时中文空格目录，检查 App 与 Runner 后调用打包 GUI 验收，再静默卸载并检查主程序消失。生成 `desktop/build/windows-install-validation.json` 并随 GUI 产物归档。工作流与脚本已通过语法检查，Windows 原生执行结果待 CI 确认；不代表安装向导交互、最低 Windows 客户端版本或正式发行通过。

@@ -691,3 +691,5 @@ PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`�
 GUI 验收入口直接运行 Node/Playwright CLI，避免 npm 包装进程超时后遗留测试。Playwright 总时限 150 秒、首个失败即停止；外层 180 秒。POSIX 独立进程组先发 TERM 让框架清理浏览器，再清理残留测试组；Windows 超时使用指定 PID 的进程树终止。正常打包 App 回归已通过，强制超时与系统原生弹窗仍可能需要检查遗留进程，不能把失败后的数据库清理当成验收成功。
 
 macOS arm64 开发安装产物已重新构建：从新版 DMG 只读挂载并复制 `MyCollab.app` 到 `desktop/build/安装验收 e669779/`，卸载镜像后通过签名完整性及实际 GUI 回归，覆盖包内前端、系统加密与原生 Runner。路径包含中文和空格。当前 DMG/ZIP 位于 `desktop/build/electron/`，哈希与源码提交记录在同目录 `local-validation.json`。此项验证安装副本运行，不代表 Finder 拖放交互、Gatekeeper、公证、其他平台安装器或默认 WebRTC 已通过。
+
+新增 Windows CI 开发安装验收入口 `desktop/scripts/check_windows_install.py`：仅允许 GitHub Windows 运行器，使用实际 NSIS `/S /currentuser /D=` 安装到临时中文空格目录，检查 App 与 Runner 后调用打包 GUI 验收，再静默卸载并检查主程序消失。生成 `desktop/build/windows-install-validation.json` 并随 GUI 产物归档。工作流与脚本已通过语法检查，Windows 原生执行结果待 CI 确认；不代表安装向导交互、最低 Windows 客户端版本或正式发行通过。
