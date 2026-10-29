@@ -689,3 +689,5 @@ PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`�
 实际打包应用 GUI 验收：增加 `MYCOLLAB_TEST_APP_BINARY` 指定 App 可执行文件，测试传入临时 `--user-data-dir` 并断言 `app.isPackaged`。macOS arm64 开发目录包已通过核心业务、设计/里程碑/甘特筛选、私有素材、系统加密、包内 Runner、退出保护与注册审批。此验收发现并修复打包 ESM 主入口顶层等待 ready 的启动死锁；源码引导模式未能暴露该问题。三平台 CI 改为 `check_gui.py --app` 启动实际包内应用，远端新结果待确认。既有开发安装包需重新构建，不应再把旧包作为可启动验收通过的产物。直传对照仍使用源码宿主且不能证明默认连接可用；安装器交互尚未覆盖。
 
 GUI 验收入口直接运行 Node/Playwright CLI，避免 npm 包装进程超时后遗留测试。Playwright 总时限 150 秒、首个失败即停止；外层 180 秒。POSIX 独立进程组先发 TERM 让框架清理浏览器，再清理残留测试组；Windows 超时使用指定 PID 的进程树终止。正常打包 App 回归已通过，强制超时与系统原生弹窗仍可能需要检查遗留进程，不能把失败后的数据库清理当成验收成功。
+
+macOS arm64 开发安装产物已重新构建：从新版 DMG 只读挂载并复制 `MyCollab.app` 到 `desktop/build/安装验收 e669779/`，卸载镜像后通过签名完整性及实际 GUI 回归，覆盖包内前端、系统加密与原生 Runner。路径包含中文和空格。当前 DMG/ZIP 位于 `desktop/build/electron/`，哈希与源码提交记录在同目录 `local-validation.json`。此项验证安装副本运行，不代表 Finder 拖放交互、Gatekeeper、公证、其他平台安装器或默认 WebRTC 已通过。
