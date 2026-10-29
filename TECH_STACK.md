@@ -662,6 +662,45 @@ PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`�
 
 ### Electron GUI 隔离验收
 
+#### Windows 安装版 Playwright 本机套件
+
+`desktop/windows-e2e/` 提供独立的 Windows 本机测试入口，使用 Windows Node（开发环境建议 Node 24）和锁定的 `@playwright/test`，直接测试已安装的开发版 `MyCollab.exe`，不需要重新打包、不安装 Chromium、不依赖 PostgreSQL 或模型 CLI。它通过仅监听 `127.0.0.1` 随机端口的 HTTP 夹具提供测试会话、素材及设计树，验证真实 Electron 前端、preload、IPC、主进程 HTTP 转发与文件落盘。**此套件不验证 Django 业务权限或真实网络互通，不能替代下方 Django 集成验收。** 原生保存对话框选择由测试替换，窗口恢复通过宿主事件触发，不代表原生对话框与托盘点击实测。
+
+Windows PowerShell 中执行（在仓库根目录）：
+
+```powershell
+& .\desktop\windows-e2e\run.ps1 -AppPath 'C:\Program Files\MyCollab\MyCollab.exe'
+# 仅验证当前基线正常项；排除已知问题并不等于完整套件通过。
+& .\desktop\windows-e2e\run.ps1 -AppPath 'C:\Program Files\MyCollab\MyCollab.exe' -SmokeOnly
+```
+
+WSL 内可使用 Windows PowerShell 执行同一脚本（需要允许 WSL Windows 互操作）：
+
+```bash
+powershell.exe -NoProfile -File "$(wslpath -w "$PWD/desktop/windows-e2e/run.ps1")"
+```
+
+如果现有 PowerShell 策略拒绝 WSL UNC 网络路径上的未签名脚本，可将套件复制到 Windows 本地目录后，在原有执行策略下运行。例如在 Windows PowerShell 执行（替换发行版与仓库路径）：
+
+```powershell
+$source = '\\wsl.localhost\FedoraLinux-44\home\hx\MyCollab\desktop\windows-e2e'
+$localSuite = Join-Path $env:TEMP ('mycollab-acceptance-source-' + [guid]::NewGuid().ToString('N'))
+Copy-Item -LiteralPath $source -Destination $localSuite -Recurse
+& (Join-Path $localSuite 'run.ps1') -ReportRoot '\\wsl.localhost\FedoraLinux-44\home\hx\MyCollab\desktop\test-results\windows'
+```
+
+不设置 `ExecutionPolicy Bypass`，不降低系统策略；本地脚本仍被拒绝时由本机管理员处理授权或签名。脚本兼容 Windows PowerShell 5.1（UTF-8 BOM），摘要通过 .NET 计算，不依赖 WSL 继承的 PowerShell 模块搜索路径。
+
+脚本将测试文件复制到 Windows `%TEMP%` 下的独立工具目录，再执行 `npm ci --ignore-scripts`、夹具服务测试和 Playwright。每个用例使用新的 `--user-data-dir`；关闭本次测试进程后只清理其临时配置，不结束日常客户端、不使用真实账号或线上服务器，不更改自启动、网络权限、系统保护、安装目录或模型配置。不要用此套件测试正式发布包的在线更新行为。
+
+报告位于 `desktop/test-results/windows/<时间-随机标识>/`：HTML、JSON、每用例截图和 trace、`run.json` 中的 EXE 与 app.asar SHA-256 和运行环境。测试工具暂存目录保留便于复查；报告和工具目录均为本地生成物。报告仅含夹具数据，仍应检查后再分享。退出码保留 Playwright 结果；`@known-issue` 用例仍正常执行并失败，不使用 expected-failure 掩盖问题。当前回归目标包括英文素材默认文件名和跨页面导航后的设计树展开状态。
+
+套件使用 Playwright 的实验性 [Electron API](https://playwright.dev/docs/api/class-electron)；版本升级或安装包变化后应重新验证。真实安装向导、系统登录启动、卸载、Runner 与供应商调用、双机传输矩阵仍按 `desktop/WINDOWS_ACCEPTANCE.md` 独立验收。
+
+2026-10-29 Windows 11 x64 / Node 24.11.1 本机安装版实测：完整套件 11 项，9 项通过，英文默认文件名和设计树导航展开状态 2 项失败，退出码为 1；`-SmokeOnly` 入口 9 项通过，退出码 0；本机 HTTP 夹具测试 1 项通过。报告保留截图、trace 和失败断言；不把已知失败改成通过，也不代表使用真实 Django 服务的业务验收结果。
+
+#### Django 与完整后端集成验收
+
 当前已恢复 GUI 验收授权，但不执行正式发行。先构建共享前端并安装锁定 Electron：`npm --prefix frontend run build`、`npm --prefix desktop run electron:setup`。在 backend 运行 `MYCOLLAB_DESKTOP_TEST=1 POSTGRES_DB=mycollab_desktop_gui .venv/bin/python manage.py test accounts.test_desktop --noinput`。此入口创建并销毁独立 PostgreSQL 测试库，启动真实 Django LiveServer 和 Electron 窗口；测试引导文件在加载产品宿主前指定临时 userData，不修改产品安全策略、用户配置或模型账号。
 
 `frontend/playwright.desktop.config.ts` 与浏览器文件传输配置分开；截图和 trace 位于 `frontend/test-results/desktop`。普通后端测试跳过此显式 GUI 入口。本机 macOS arm64 已通过服务器设置、登录、导航、刷新和退出流程；其他平台及真实安装产物的 GUI 行为仍需单独验证。此测试不启动 Runner 或调用模型。

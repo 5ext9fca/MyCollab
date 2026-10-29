@@ -708,6 +708,8 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 
 `desktop/electron/main.mjs` 为新宿主，加载唯一的 `frontend/dist` 构建产物；旧 Tauri 伴侣暂留到 Runner 等替代能力完整。Electron 使用安全标准协议 `mycollab://app`，静态映射仅暴露构建资产和 SPA 入口，业务页刷新复用入口，不加载远程 HTML。主窗口禁用 Node/WebView，启用 sandbox、context isolation、Web 安全和 CSP。
 
+`desktop/windows-e2e/` 为 Windows 安装版 Playwright 本机回归套件：`run.ps1` 负责 Windows 临时工具目录、锁文件依赖安装和带时间标识的报告；`fixtures.mjs` 管理真实安装版 Electron 的临时配置、启动/重启与清理；`server.mjs` 仅提供本机测试会话、素材和设计树响应，未知接口会使测试失败；`acceptance.spec.mjs` 覆盖会话刷新与退出、窗口隐藏恢复、开发包更新禁用、下载内容/取消/默认名及设计树导航状态。无需真实账号，不变更业务数据模型、API 或权限。默认名与展开状态的已知问题作为实际失败保留；原生对话框、真实后端及双机网络不由此夹具套件证明。命令及边界见 TECH_STACK 的“Windows 安装版 Playwright 本机套件”。
+
 - `transport.mjs` 的 `BusinessTransport` 仅将本地 `/api/` 下现有业务路由映射到配置的 HTTPS 根地址（本机开发可 HTTP），拒绝 Runner API、其他来源、任意请求头及重定向。主进程的服务器独立内存会话持有 Cookie 与 CSRF，渲染会话不持有业务 Cookie，重启需重新登录，不保存密码。私有资源流有取消及超时，响应过滤 Cookie、禁止缓存、隔离附件脚本；身份切换拒绝并发旧请求并中断旧流，断网退出也清 Cookie。
 - `policy.mjs` 校验主窗口/主框架 IPC 来源、业务地址、素材下载和外链。`preload.cjs` 仅暴露读取设置、切换服务器、自启动、局域网权限、打开 HTTP(S) 外链、下载当前用户素材、读取脱敏本机绑定及验证保存设备及 Runner 启动、停止、状态、自检及旧伴侣导入及更新检查、下载、安装、状态十七个固定操作；不能提供任意 IPC、HTTP、文件系统或命令执行。
 - `frontend/src/platform/desktop.ts` 适配已清洗 Markdown 和普通链接；素材下载由主进程再次鉴权、用户选择目的地后流式写入临时文件并原子替换。外链交给系统浏览器，不获得桌面能力；普通 Web 端维持原行为。

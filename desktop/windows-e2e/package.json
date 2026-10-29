@@ -1,0 +1,12 @@
+{
+  "name": "mycollab-windows-acceptance",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:fixture": "node --test server.test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
+  }
+}
