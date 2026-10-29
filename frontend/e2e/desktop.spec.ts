@@ -175,6 +175,8 @@ test('真实宿主设置服务器、登录、导航、刷新与退出', async ({
     await page.getByRole('textbox', { name: 'OpenCode 可执行文件', exact: true }).fill(fixtureCLI)
     await page.getByRole('button', { name: '验证并加密保存到本机', exact: true }).click()
     await expect(page.getByRole('button', { name: '启动 Runner', exact: true })).toBeEnabled()
+    await page.getByRole('button', { name: '自检（不调用模型）', exact: true }).click()
+    await expect(page.getByText('通过', { exact: true })).toHaveCount(2, { timeout: 20000 })
     await page.getByRole('button', { name: '启动 Runner', exact: true }).click()
     await expect(page.getByRole('button', { name: '停止 Runner', exact: true })).toBeEnabled({ timeout: 20000 })
     await page.getByRole('menuitem', { name: '设计与资产', exact: true }).click()

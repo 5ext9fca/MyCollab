@@ -10,7 +10,8 @@ if '--version' in sys.argv:
     print('opencode v2.1.3')
     raise SystemExit(0)
 settings = json.loads(Path(sys.argv[sys.argv.index('--model') + 1]).read_text(encoding='utf-8'))
-sys.stdin.read()
+# 夹具只消费输入，不依赖运行器或 Windows 控制台的文本编码。
+sys.stdin.buffer.read()
 if settings['mode'] == 'complete':
     counter = Path(settings['counter'])
     counter.write_text(counter.read_text() + '1' if counter.exists() else '1')

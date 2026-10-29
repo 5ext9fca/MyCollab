@@ -16,6 +16,17 @@ from local_runner.parent_process import ParentProcess
 
 
 class DeliveryIntegrationTests(unittest.TestCase):
+    def test_fixture_accepts_utf8_input_with_ascii_stdio(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cli, model = model_fixture(root, 'complete')
+            result = subprocess.run([cli, '--model', model], input='中文候选'.encode('utf-8'),
+                                    capture_output=True, timeout=20,
+                                    env={**os.environ, 'PYTHONIOENCODING': 'ascii'})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(json.loads(result.stdout)['part']['text'])['title'], '候选')
+            self.assertEqual((root / 'model-count').read_text(), '1')
+
     def test_restart_after_server_commit_lost_ack_never_regenerates(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
