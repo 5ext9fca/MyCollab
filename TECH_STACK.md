@@ -580,11 +580,11 @@ Intel 构建将上述后缀改为 `x86_64-apple-darwin`。测试会监听临时 
 
 2026-10-29 已以临时签名生成 `desktop/build/electron/mac-arm64/MyCollab.app`（约 259 MiB），通过 `codesign --verify --deep --strict`；静态核对 ASAR 内 4 个宿主模块及资源目录的 68 个共享前端文件与当前构建一致。未启动应用，不代表 GUI、登录或 WebRTC 实测通过。
 
-桌面凭据模块使用 Electron 45 的异步 `safeStorage` 接口（[官方说明](https://www.electronjs.org/docs/latest/api/safe-storage)）；主进程已注入系统实现，实际钥匙串/DPAPI 行为待非模拟环境验证。当前 Node 测试以独立 AES-GCM 测试适配器验证密文落盘、身份隔离、篡改拒绝、密钥轮换与失败保留旧文件，不调用钥匙串，也不代表 Windows DPAPI/macOS 钥匙串实机验收。`electron:check` 包含该模块的严格类型检查。
+桌面凭据模块使用 Electron 45 的异步 `safeStorage` 接口（[官方说明](https://www.electronjs.org/docs/latest/api/safe-storage)）；主进程已注入系统实现，macOS arm64 的实际系统加密保存和读取已通过下方 GUI 验收；Windows DPAPI 仍待非模拟环境验证。当前 Node 测试以独立 AES-GCM 测试适配器验证密文落盘、身份隔离、篡改拒绝、密钥轮换与失败保留旧文件，不调用钥匙串，也不代表 Windows DPAPI/macOS 钥匙串实机验收。`electron:check` 包含该模块的严格类型检查。
 
 Runner 的匿名管道入口由 `local_runner/tests/test_private_handoff.py` 使用真实 Python CLI 子进程检查，覆盖中文/空格路径、有界读取、错误脱敏及不创建明文配置。Python 3.13 的 Runner 测试共 30 项；本轮普通沙箱运行 28 项通过，另 2 项因本机监听权限受限，授权后单独重跑 `local_runner.tests.test_delivery_integration` 通过。所有检查均不涉及 GUI 或真实模型调用。
 
-桌面绑定使用独立内存 `device-probe` Session，只对已配置服务器的固定状态端点发送设备 Bearer，`credentials: omit`、`redirect: error`；不借用业务 Cookie。后端状态接口的身份字段为加法兼容变更，无新增迁移。GUI 绑定交互测试尚待执行，核验逻辑通过 Node 测试及后端 API 回归验证。
+桌面绑定使用独立内存 `device-probe` Session，只对已配置服务器的固定状态端点发送设备 Bearer，`credentials: omit`、`redirect: error`；不借用业务 Cookie。后端状态接口的身份字段为加法兼容变更，无新增迁移。macOS arm64 的 GUI 绑定交互已通过下方隔离验收，核验逻辑另通过 Node 测试及后端 API 回归验证。
 
 
 Runner 原生构建与非 GUI 二进制检查（仓库根，使用 Python 3.13）：
@@ -669,3 +669,5 @@ PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`�
 素材 GUI 验收已覆盖真实 multipart 上传、缩略图解码、授权读取与下载字节一致、退出拒绝读取、跨账号列表隔离及删除拒绝后保持登录。测试使用临时 MEDIA_ROOT；下载只替换系统保存路径选择，点击、IPC、主进程认证和流式落盘使用实际实现，不代表原生文件对话框验收通过。
 
 桌面业务 GUI 验收新增：通过真实页面发布任务、由发布者认领、提交人工验证说明并验收通过；刷新后读取实际 API 确认状态为 Done，验收记录仍显示。评论发布、编辑后刷新保留、确认删除均通过。本机 macOS arm64 的同一隔离验收同时回归登录、素材与账号隔离；这不替代多用户协作、子任务、其他业务路由或跨系统验收。
+
+本地 Agent GUI 验收使用真实 safeStorage 与 `desktop/build/runner/mac-arm64/mycollab-runner`，覆盖设备创建、加密保存、刷新解密读取、令牌不回显、自检、启动空闲轮询、手动停止、退出登录停止及另一账号绑定隔离。测试设备仅属于独立数据库，配置与密文位于临时 userData；OpenCode 使用不存在的隔离路径，自检应报告不可用，服务器应报告通过。不调用模型，不代表结果采纳、系统登录启动、旧版迁移或 Windows DPAPI 已验收。

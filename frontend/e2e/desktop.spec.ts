@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { mkdtemp, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
@@ -90,6 +90,35 @@ test('真实宿主设置服务器、登录、导航、刷新与退出', async ({
     await fileLink.click()
     await expect.poll(async () => (await readFile(destination).catch(() => Buffer.alloc(0))).toString('base64')).toBe(png.toString('base64'))
     await page.screenshot({ path: testInfo.outputPath('library.png'), fullPage: true })
+    await page.getByRole('menuitem', { name: '本地 Agent', exact: true }).click()
+    await page.getByRole('textbox', { name: '设备名称', exact: true }).fill('隔离桌面验收设备')
+    await page.getByRole('button', { name: '创建设备凭据', exact: true }).click()
+    const deviceToken = await page.getByRole('textbox', { name: '设备凭据', exact: true }).inputValue()
+    expect(deviceToken.length).toBeGreaterThan(20)
+    await page.getByPlaceholder('provider/model').fill('test/no-provider')
+    // 明确使用不存在的测试路径；此次验收不执行真实供应商 CLI。
+    await page.getByRole('textbox', { name: 'OpenCode 可执行文件', exact: true }).fill(path.join(profile, 'missing-opencode'))
+    await page.getByRole('button', { name: '验证并加密保存到本机', exact: true }).click()
+    await expect(page.getByRole('button', { name: '启动 Runner', exact: true })).toBeEnabled({ timeout: 20000 })
+    await expect(page.getByRole('textbox', { name: '设备令牌', exact: true })).toHaveValue('')
+    const encryptedFiles = (await readdir(path.join(profile, 'devices'))).filter(name => name.endsWith('.encrypted'))
+    expect(encryptedFiles).toHaveLength(1)
+    expect((await readFile(path.join(profile, 'devices', encryptedFiles[0]!))).includes(Buffer.from(deviceToken))).toBe(false)
+    await page.reload()
+    await expect(page.getByPlaceholder('provider/model')).toHaveValue('test/no-provider')
+    await page.getByRole('button', { name: '自检（不调用模型）', exact: true }).click()
+    await expect(page.getByText('不可用', { exact: true })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText('通过', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '启动 Runner', exact: true }).click()
+    await expect(page.getByRole('button', { name: '停止 Runner', exact: true })).toBeEnabled({ timeout: 20000 })
+    await expect(page.getByText('等待任务', { exact: true })).toBeVisible({ timeout: 15000 })
+    await page.getByRole('button', { name: '停止 Runner', exact: true }).click()
+    await expect(page.getByText('已停止', { exact: true })).toBeVisible({ timeout: 15000 })
+    // 再启动后通过退出登录触发产品的身份切换清理。
+    await page.getByRole('button', { name: '启动 Runner', exact: true }).click()
+    await expect(page.getByRole('button', { name: '停止 Runner', exact: true })).toBeEnabled({ timeout: 20000 })
+    await page.screenshot({ path: testInfo.outputPath('runner.png'), fullPage: true })
+
     await page.getByRole('button', { name: '退出', exact: true }).click()
     await expect(page).toHaveURL(/\/login$/)
     await page.reload()
@@ -106,6 +135,13 @@ test('真实宿主设置服务器、登录、导航、刷新与退出', async ({
     expect(await page.evaluate(async url => (await fetch(url!)).status, fileURL)).toBe(200)
     expect(await page.evaluate(async url => (await fetch(url!, { method: 'DELETE' })).status, fileURL)).toBe(403)
     expect(await page.evaluate(async () => (await fetch('/api/auth/me/')).status)).toBe(200)
+    await page.getByRole('menuitem', { name: '本地 Agent', exact: true }).click()
+    await expect(page.getByText('已停止', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '启动 Runner', exact: true })).toBeDisabled()
+    await expect(page.getByPlaceholder('provider/model')).toHaveValue('')
+    await expect(page.getByRole('textbox', { name: '设备令牌', exact: true })).toHaveValue('')
+    await expect(page.getByText('隔离桌面验收设备', { exact: true })).toHaveCount(0)
+
   } catch (error) {
     await page.screenshot({ path: testInfo.outputPath('failure.png'), fullPage: true }).catch(() => {})
     throw error
