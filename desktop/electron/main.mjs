@@ -219,6 +219,22 @@ function createWindow() {
     return { action: 'deny' }
   })
   window.webContents.on('will-attach-webview', event => event.preventDefault())
+  window.webContents.on('will-prevent-unload', event => {
+    const leave = dialog.showMessageBoxSync(window, {
+      type: 'warning', title: '确认离开当前页面',
+      message: '当前页面仍有未完成的操作，离开可能中断文件传输。',
+      detail: quitting ? 'Runner 已停止。取消退出后可按需重新启动。' : '请选择继续停留，或中断当前操作并离开。',
+      buttons: ['中断并离开', '继续停留'], defaultId: 1, cancelId: 1,
+    }) === 0
+    // Electron 在此事件中 preventDefault 表示忽略页面的离开阻止。
+    if (leave) event.preventDefault()
+    else if (quitting) {
+      quitting = false
+      finishingQuit = false
+      reveal()
+    }
+  })
+
   window.on('close', event => { if (!quitting) { event.preventDefault(); window.hide() } })
   void window.loadURL(APP_ORIGIN + (settings.server ? '/' : '/desktop-settings'))
 }

@@ -712,7 +712,7 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - `policy.mjs` 校验主窗口/主框架 IPC 来源、业务地址、素材下载和外链。`preload.cjs` 仅暴露读取设置、切换服务器、自启动、局域网权限、打开 HTTP(S) 外链、下载当前用户素材、读取脱敏本机绑定及验证保存设备及 Runner 启动、停止、状态、自检及旧伴侣导入及更新检查、下载、安装、状态十七个固定操作；不能提供任意 IPC、HTTP、文件系统或命令执行。
 - `frontend/src/platform/desktop.ts` 适配已清洗 Markdown 和普通链接；素材下载由主进程再次鉴权、用户选择目的地后流式写入临时文件并原子替换。外链交给系统浏览器，不获得桌面能力；普通 Web 端维持原行为。
 - `DesktopSettingsView.vue` 的 `/desktop-settings` 在登录前可用，桌面首次无服务器时进入此页；登录页和业务导航提供入口。更换服务器清会话、前端存储并重新载入页面；退出重新载入登录页。局域网权限默认关闭，启用后仅本地业务主框架可申请局域网权限；仍拒绝摄像头、麦克风及读取剪贴板等无关权限。
-- 宿主已有单实例、托盘、关闭隐藏、明确退出及用户自选的登录系统后启动。当前 Electron 已接入设备绑定与系统加密配置，已接入 Runner 启停、自检及默认 macOS 旧配置导入，已接入手动更新控制流程（正式发行验证仍未完成），不能将新宿主视作旧伴侣的完整替代；尚未执行 GUI 或真实跨系统验收。
+- 宿主已有单实例、托盘、关闭隐藏、明确退出及用户自选的登录系统后启动。当前 Electron 已接入设备绑定与系统加密配置，已接入 Runner 启停、自检及默认 macOS 旧配置导入，已接入手动更新控制流程（正式发行验证仍未完成），不能将新宿主视作旧伴侣的完整替代；GUI 验收进展见 TECH_STACK；尚未完成全部业务、安装与双机网络验收。
 
 ### 桌面 Runner 凭据交接基础
 
@@ -776,3 +776,5 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 桌面打包入口区分开发目录、开发安装包和正式发行：`electron:pack`、`electron:dist:dev`、`electron:dist`。开发安装包仍禁用在线更新，macOS 临时签名且不公证，Windows 不签名；产物名标记 `development`。CI 构建安装产物但不安装或启动 GUI。
 
 `backend/accounts/test_desktop.py` 提供显式 Electron GUI 验收入口，使用独立测试数据库建立用户并启动 LiveServer；`frontend/e2e/desktop-launch.cjs` 仅在测试中隔离配置后加载真实宿主，`desktop.spec.ts` 通过真实页面检查服务器设置、认证和导航，不向产品加入测试 IPC 或降低安全策略。
+
+桌面页面阻止离开时，宿主通过 `will-prevent-unload` 显示原生确认对话框，默认继续停留。明确中断才允许离开；取消退出会恢复退出控制状态并显示窗口。退出准备阶段已停止的 Runner 不自动重启，界面提示用户按需启动。普通关闭窗口仍只隐藏，不触发页面销毁。

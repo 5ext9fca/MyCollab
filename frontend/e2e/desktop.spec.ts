@@ -160,3 +160,40 @@ test('真实宿主设置服务器、登录、导航、刷新与退出', async ({
     await rm(profile, { recursive: true, force: true })
   }
 })
+
+test('退出遇到页面离开保护时可以取消并再次确认退出', async () => {
+  const profile = await mkdtemp(path.join(tmpdir(), 'mycollab-desktop-quit-'))
+  const app = await electron.launch({
+    executablePath: require('../../desktop/node_modules/electron'),
+    args: [path.resolve('e2e/desktop-launch.cjs')],
+    env: { ...process.env, MYCOLLAB_DESKTOP_TEST_PROFILE: profile },
+  })
+  let closed = false
+  try {
+    const page = await app.firstWindow()
+    await page.getByPlaceholder('https://collab.example.com').click()
+    await page.evaluate(() => { window.onbeforeunload = event => { event.preventDefault(); event.returnValue = '' } })
+    // 固定原生对话框选择，仍通过真实 before-quit / beforeunload 事件链。
+    await app.evaluate(({ app, dialog, BrowserWindow }) => {
+      dialog.showMessageBoxSync = () => { BrowserWindow.getAllWindows()[0]!.setTitle('已取消退出'); return 1 }
+      setTimeout(() => app.quit(), 0)
+    })
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getTitle())).toBe('已取消退出')
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close())
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isVisible())).toBe(false)
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.show())
+    const exiting = app.waitForEvent('close')
+    await app.evaluate(({ app, dialog }) => {
+      dialog.showMessageBoxSync = () => 0
+      setTimeout(() => app.quit(), 0)
+    })
+    await exiting
+    closed = true
+  } finally {
+    if (!closed) {
+      await app.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.destroy() }).catch(() => {})
+      await app.close()
+    }
+    await rm(profile, { recursive: true, force: true })
+  }
+})
