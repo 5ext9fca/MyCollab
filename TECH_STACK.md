@@ -506,6 +506,8 @@ backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
 
 ### 安装副本性能测量
 
+三平台开发 CI 在业务 GUI 和 Windows 安装卸载步骤之后执行三轮性能测量，报告写入开发归档内 `performance-baseline.json`，同时保存在 GUI 证据归档；`development-validation.json` 的 `performance_baseline` 记录该步骤的真实结果。流水线任一步骤失败均不得据此声称性能基线通过；CI 运行器数据与用户实机分开记录，不设置缺少历史依据的速度阈值。
+
 在已安装前端开发依赖的仓库中，显式运行 `node desktop/scripts/measure_desktop.mjs --app "实际客户端可执行文件" --installer "对应安装包" --output "desktop/build/performance/result.json"`；macOS 的可执行文件位于 `.app/Contents/MacOS/MyCollab`，Windows 指向安装后的 EXE。默认三轮，`--runs` 允许 1–10 轮。每轮创建新临时配置和本机 HTTP 夹具，测试结束退出应用并删除该配置；不使用业务数据库、不启动 Runner 或调用模型。
 
 测量从启动调用到服务器设置输入框可见、登录到工作区导航就绪、切换素材库到列表内容可见的耗时；含 Playwright 通信开销，使用小型固定夹具，不是正式服务器或大规模业务性能。每轮素材库静置 10 秒后以 1 秒间隔采样五次 `app.getAppMetrics()`。保留各进程工作集及其总和，单位为 [Electron 定义的 KB](https://www.electronjs.org/docs/latest/api/structures/memory-info)；共享内存可能重复计算，不能称为系统独占内存。报告包含系统/CPU/架构、Electron/Chromium 版本、安装包大小与 SHA-256、可执行文件及 app.asar SHA-256 和逐轮原始样本。每轮为新进程/新配置，但不清空操作系统文件缓存，不能当作重启系统后的冷启动。失败时保留部分报告并令 `complete=false`，不得用于通过判定。传输峰值、真实服务器页面与其他平台的性能仍需单独测量。

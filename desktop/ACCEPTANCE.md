@@ -39,6 +39,8 @@ macOS arm64 安装副本 `真实模型验收 2.2.0/MyCollab.app`，Apple M2（8 
 
 每轮静置 10 秒再采样五次，全部进程工作集求和的 15 个样本中位数为 482480 KB（范围 473008–513984 KB）；共享页可能重复计入，不能当作应用独占内存。对应 DMG 为 129820410 字节。原始样本与系统、安装包哈希见 `desktop/build/performance/mac-arm64-4331749.json`。补全 app.asar 指纹和失败报告状态后的最终入口另执行一轮成功（启动 2569 ms、登录 534 ms、素材列表 174 ms），结果见同目录 `mac-arm64-4331749-final.json`。尚无同条件历史基线，不能据此宣称性能提升或没有回归；Windows/macOS x64、真实大规模页面、传输峰值内存和长时间稳定性仍未完成测量。
 
+三平台 CI 已接入同一测量入口并归档结果，首次远端执行尚待确认；接入配置本身不代表 Windows/macOS x64 性能已经验收。
+
 ## Windows 验收汇总
 
 受测环境为 Windows 11 x64（10.0.26300），Intel Core i9-14900HX、约 31.7 GiB 内存；自动化由 Fedora Linux 44 / WSL2 调用 Windows Node 24.11.1 和实际安装的 Electron 客户端。

@@ -28,6 +28,7 @@ def record(directory, environment):
         'target': environment.get('VALIDATION_TARGET', ''),
         'packaged_gui': outcome('VALIDATION_PACKAGED_GUI'),
         'installed_gui_and_uninstall': outcome('VALIDATION_INSTALLED_GUI'),
+        'performance_baseline': outcome('VALIDATION_PERFORMANCE'),
         'files': files,
     }
     destination = directory / 'development-validation.json'
