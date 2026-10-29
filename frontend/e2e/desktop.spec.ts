@@ -1,6 +1,6 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdtemp, rm, readFile, readdir, writeFile } from 'node:fs/promises'
+import { tmpdir, release } from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 
@@ -9,6 +9,7 @@ test('真实宿主设置服务器、登录、导航、刷新与退出', async ({
   const server = process.env.MYCOLLAB_TEST_API_TARGET
   if (!server) throw new Error('请从隔离 Django 验收入口运行')
   const profile = await mkdtemp(path.join(tmpdir(), 'mycollab-desktop-gui-'))
+  const launchStarted = performance.now()
   const app = await electron.launch({
     executablePath: process.env.MYCOLLAB_TEST_APP_BINARY || require('../../desktop/node_modules/electron'),
     args: process.env.MYCOLLAB_TEST_APP_BINARY ? [`--user-data-dir=${profile}`] : [path.resolve('e2e/desktop-launch.cjs')],
@@ -20,6 +21,16 @@ test('真实宿主设置服务器、登录、导航、刷新与退出', async ({
     expect(await app.evaluate(({ app }) => app.getPath('userData'))).toBe(profile)
     expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(Boolean(process.env.MYCOLLAB_TEST_APP_BINARY))
     await expect(page.getByText('桌面设置', { exact: true })).toBeVisible()
+    const readyMs = Math.round(performance.now() - launchStarted)
+    const baseline = await app.evaluate(({ app }) => ({
+      appVersion: app.getVersion(), packaged: app.isPackaged,
+      electronVersion: process.versions.electron, chromiumVersion: process.versions.chrome,
+      processes: app.getAppMetrics().map(({ type, memory }: { type: string; memory: { workingSetSize: number } }) => ({ type, workingSetKB: memory.workingSetSize })),
+    }))
+    await writeFile(testInfo.outputPath('startup-baseline.json'), JSON.stringify({ ...baseline, platform: process.platform, arch: process.arch,
+        osRelease: release(), timeToSettingsMs: readyMs,
+        scope: '新进程和临时配置；启用 Playwright 与 trace；系统磁盘缓存未清理；仅 Electron 进程，不含 Runner。',
+      }, null, 2) + '\n')
     await page.getByPlaceholder('https://collab.example.com').fill(server)
     await page.getByRole('button', { name: '保存服务器并前往登录' }).click()
     await expect(page).toHaveURL(/\/login$/)
@@ -184,6 +195,7 @@ test('真实宿主设置服务器、登录、导航、刷新与退出', async ({
     await expect(page.getByPlaceholder('provider/model')).toHaveValue('test/no-provider')
     await page.getByRole('button', { name: '自检（不调用模型）', exact: true }).click()
     await expect(page.getByText('不可用', { exact: true })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText('找不到可执行文件，请核对完整路径。', { exact: true })).toBeVisible()
     await expect(page.getByText('通过', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '启动 Runner', exact: true }).click()
     await expect(page.getByRole('button', { name: '停止 Runner', exact: true })).toBeEnabled({ timeout: 20000 })

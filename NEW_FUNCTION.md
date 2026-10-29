@@ -239,3 +239,8 @@ Windows `7bd8052` 的 CLI 自检仍报告不可用，说明假 CLI 输入编码�
 
 
 桌面生产模板 GUI 补验通过：在实际 macOS arm64 安装副本中创建单步骤生产模板，刷新后重新读取；创建资产并选择模板、预览、生成待认领 Mission，刷新后生产批次及模板版本仍存在且不再提供重复生成入口。本机三项 GUI 测试合计 44.5 秒通过；多步骤依赖与生产任务完整协作仍需继续验收。双机开发验收步骤见 `desktop/ACCEPTANCE.md`，用户已确认有 Windows 实机可配合；实际默认网络矩阵尚未通过，本机默认 mDNS 双会话仍在 45 秒内未建立连接。
+
+
+macOS arm64 开发安装包已更新至 `dbea94a`，从 DMG 复制的 `desktop/build/安装验收 dbea94a/MyCollab.app` 通过三项 GUI 回归（49.4 秒），包括缺失 CLI 的具体提示与正常 CLI 自检、候选回传和模板实例化。首次等待系统密码访问确认后，用户完成授权，重跑通过。DMG/ZIP 哈希和验收状态已更新至 `desktop/build/electron/local-validation.json`。
+
+GUI 套件新增 `startup-baseline.json`：记录新进程到设置页可见的耗时、系统/架构、Electron/Chromium 版本与 `getAppMetrics()` 各进程内存快照（KB，按 Electron MemoryInfo 定义）。使用临时配置但未清系统磁盘缓存，启用 Playwright 与 trace，不包含 Runner；只用于后续同条件比较，不能视为纯冷启动、稳定空闲或传输峰值验收。JSON 直接落在 GUI 输出目录，随现有 CI 产物归档；本机副本保存在安装验收目录。
