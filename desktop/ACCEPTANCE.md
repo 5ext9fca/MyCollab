@@ -39,7 +39,13 @@ macOS arm64 安装副本 `真实模型验收 2.2.0/MyCollab.app`，Apple M2（8 
 
 每轮静置 10 秒再采样五次，全部进程工作集求和的 15 个样本中位数为 482480 KB（范围 473008–513984 KB）；共享页可能重复计入，不能当作应用独占内存。对应 DMG 为 129820410 字节。原始样本与系统、安装包哈希见 `desktop/build/performance/mac-arm64-4331749.json`。补全 app.asar 指纹和失败报告状态后的最终入口另执行一轮成功（启动 2569 ms、登录 534 ms、素材列表 174 ms），结果见同目录 `mac-arm64-4331749-final.json`。尚无同条件历史基线，不能据此宣称性能提升或没有回归；Windows/macOS x64、真实大规模页面、传输峰值内存和长时间稳定性仍未完成测量。
 
-三平台 CI 已接入同一测量入口并归档结果，首次远端执行尚待确认；接入配置本身不代表 Windows/macOS x64 性能已经验收。
+`36fce73` 的[三平台 CI](https://github.com/5ext9fca/MyCollab/actions/runs/40875524907) 已全部通过，包括原有业务 GUI、Windows 安装/卸载和新增性能步骤。已下载并读取三个 GUI 归档中的 `performance-baseline.json`：每个平台 `complete=true`、三轮样本、每轮五次内存采样，含安装包及 app.asar 指纹。原始证据保存在 `desktop/build/performance/ci-40875524907/`。
+
+- Windows x64：运行器 Windows 10.0.26100、Xeon Platinum 8573C；启动/登录/素材列表中位数 554/262/122 ms，工作集求和样本中位数 400324 KB，EXE 131348172 字节。
+- macOS x64：Darwin 24.6.0、Core i7-8700B；对应中位数 943/349/220 ms、364116 KB，DMG 136170457 字节。
+- macOS arm64：Darwin 24.6.0、Apple M1（Virtual）；对应中位数 972/570/147 ms、495024 KB，DMG 129625113 字节。
+
+这些是不同 CI 机器上的固定本机夹具基线，不是跨平台速度排名，也不证明真实服务器、最低配置、系统冷启动或长时间稳定性通过。该运行早于 GUI 产物目录隔离修复：执行日志证明测试成功，但先前套件的 trace 仍可能被后续覆盖；修复后的证据完整性还需下次 CI 核验。
 
 ## 安装副本直传内存补验（2026-10-29）
 
