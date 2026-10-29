@@ -504,6 +504,12 @@ backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
 
 在发布编译结束后，以本机已有演示账号 `alice` 对当前数据库执行 `performance_probe --iterations 20`，每端点预热一次：任务列表 p95 87.995 ms、SQL 最多 69 次；工作台概览 p95 114.484 ms、SQL 最多 74 次；工作台图 p95 117.321 ms、SQL 最多 76 次；任务详情 p95 41.883 ms、SQL 最多 14 次。此为当时数据与设备上的串行服务端基线，不含网络/渲染，不证明 50 人并发容量；后续优先分析列表与工作台查询数，不据此直接重写技术栈。
 
+### 安装副本性能测量
+
+在已安装前端开发依赖的仓库中，显式运行 `node desktop/scripts/measure_desktop.mjs --app "实际客户端可执行文件" --installer "对应安装包" --output "desktop/build/performance/result.json"`；macOS 的可执行文件位于 `.app/Contents/MacOS/MyCollab`，Windows 指向安装后的 EXE。默认三轮，`--runs` 允许 1–10 轮。每轮创建新临时配置和本机 HTTP 夹具，测试结束退出应用并删除该配置；不使用业务数据库、不启动 Runner 或调用模型。
+
+测量从启动调用到服务器设置输入框可见、登录到工作区导航就绪、切换素材库到列表内容可见的耗时；含 Playwright 通信开销，使用小型固定夹具，不是正式服务器或大规模业务性能。每轮素材库静置 10 秒后以 1 秒间隔采样五次 `app.getAppMetrics()`。保留各进程工作集及其总和，单位为 [Electron 定义的 KB](https://www.electronjs.org/docs/latest/api/structures/memory-info)；共享内存可能重复计算，不能称为系统独占内存。报告包含系统/CPU/架构、Electron/Chromium 版本、安装包大小与 SHA-256、可执行文件及 app.asar SHA-256 和逐轮原始样本。每轮为新进程/新配置，但不清空操作系统文件缓存，不能当作重启系统后的冷启动。失败时保留部分报告并令 `complete=false`，不得用于通过判定。传输峰值、真实服务器页面与其他平台的性能仍需单独测量。
+
 ## 19. Runner 恢复与诊断
 
 本批最初使用 POSIX 本机进程锁；当前 Windows 原生文件锁实现与 CI 结果见后文桌面章节。配置旁 `runner-state/<identity>/` 保存私有待发结果；旧设备/服务器的结果不能跨配置回传。原有“心跳失败立即停止”“回传最多三次后丢弃”的行为由本节替代：仅在已确认租约内短暂容忍断网，持久化结果按原轮次重传。服务器过期后仍拒收，保留期不是租约延长。

@@ -255,3 +255,5 @@ GUI 套件新增 `startup-baseline.json`：记录新进程到设置页可见的�
 开发包归档新增 `development-validation.json`，记录实际构建提交、PR 头提交、CI 运行编号、架构、打包 GUI 与安装/卸载步骤的原始 outcome，以及安装文件 SHA-256。仅构建成功且清单/归档成功时上传；GUI 失败也可保留该开发包用于诊断，清单如实保留 failure/skipped/not_run，不能把归档存在当成验收通过。仍为七天保留的开发产物，不正式发行。
 
 OpenCode 2.2.0 兼容与实际 macOS 安装副本的真实供应商闭环已补验：一次候选生成、显式采纳、保存刷新核对及 Runner 停止整项通过（47.8 秒）；版本白名单、自检提示、用户文档同步。实际记录见 TECH_STACK 对应章节，Windows 原生真实调用和网络异常矩阵仍未完整验证。
+
+性能基线补验：新增 `desktop/scripts/measure_desktop.mjs`，显式针对实际安装副本，用临时配置及本机 HTTP 夹具测量启动、登录、素材列表就绪与空闲进程工作集，并记录安装包大小及内容指纹。macOS arm64 三轮已完成，详细范围及原始样本位置见 `desktop/ACCEPTANCE.md`；不清空 OS 缓存，不替代真实业务大数据、传输峰值或其他平台性能验收。
