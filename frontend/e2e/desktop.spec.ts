@@ -96,6 +96,8 @@ test('真实宿主设置服务器、登录、导航、刷新与退出', async ({
     await milestoneForm.getByRole('button', { name: '创建', exact: true }).click()
     await expect(milestoneForm).not.toBeVisible()
     await page.getByRole('link', { name: '桌面里程碑验收', exact: true }).click()
+    await expect(page).toHaveURL(/\/milestones\/[^/?]+$/)
+    await expect(page.getByRole('heading', { name: '桌面里程碑验收', exact: true })).toBeVisible()
     await page.reload()
     await expect(page.getByRole('heading', { name: '桌面里程碑验收', exact: true })).toBeVisible()
     await expect(page.getByText('验证跨页面创建和持久化。', { exact: true })).toBeVisible()

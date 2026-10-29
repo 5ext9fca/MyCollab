@@ -224,3 +224,5 @@ macOS arm64 开发安装产物已重新构建：从新版 DMG 只读挂载并复
 新增 Windows CI 开发安装验收入口 `desktop/scripts/check_windows_install.py`：仅允许 GitHub Windows 运行器，使用实际 NSIS `/S /currentuser /D=` 安装到临时中文空格目录，检查 App 与 Runner 后调用打包 GUI 验收，再静默卸载并检查主程序消失。生成 `desktop/build/windows-install-validation.json` 并随 GUI 产物归档。工作流与脚本已通过语法检查，Windows 原生执行结果待 CI 确认；不代表安装向导交互、最低 Windows 客户端版本或正式发行通过。
 
 本地 Agent 结果闭环 GUI 补验已通过：实际 macOS 安装副本内的 Runner 使用隔离假 CLI（固定结果、无供应商调用），重新绑定时留空沿用设备令牌，领取设计润色请求并回传；候选未自动更改表单，用户采纳标题后仍须手动保存，刷新后确认持久化。测试计数文件确认 CLI 仅执行一次。测试复用 Runner 原有跨平台夹具，Windows 使用 CI 已构建的原生假 CLI；本轮新增流程的远端结果尚待确认。
+
+提交 `e669779` 的实际打包应用 CI 中，Windows x64 GUI 通过；macOS 两架构均在里程碑详情刷新处失败，日志表明测试点击后未等待路由切换便刷新。测试已增加详情 URL 和标题就绪检查，再执行刷新；本机 macOS arm64 安装副本的业务与 Runner 候选闭环回归通过。三平台修复后结果及 Windows 安装/卸载验收仍待新 CI 确认。
