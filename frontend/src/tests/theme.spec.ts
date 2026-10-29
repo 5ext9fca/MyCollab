@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import html from '../../index.html?raw'
+import bootstrap from '../../public/theme-init.js?raw'
 
 let dark = false
 let change: (() => void) | undefined
@@ -96,7 +97,8 @@ describe('外观主题', () => {
     wrapper.unmount()
   })
   it('页面引导脚本在应用挂载前恢复深色或跟随系统', () => {
-    const bootstrap = html.match(/<script>([\s\S]*?)<\/script>/)![1]!
+    expect(html).toContain('<script src="/theme-init.js"></script>')
+    expect(html.indexOf('/theme-init.js')).toBeLessThan(html.indexOf('/src/main.ts'))
     localStorage.setItem('mycollab-theme', 'dark')
     new Function(bootstrap)()
     expect(document.documentElement.classList.contains('dark')).toBe(true)
