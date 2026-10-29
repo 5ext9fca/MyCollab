@@ -112,6 +112,15 @@ test('真实宿主设置服务器、登录、导航、刷新与退出', async ({
     await page.getByRole('button', { name: '启动 Runner', exact: true }).click()
     await expect(page.getByRole('button', { name: '停止 Runner', exact: true })).toBeEnabled({ timeout: 20000 })
     await expect(page.getByText('等待任务', { exact: true })).toBeVisible({ timeout: 15000 })
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close())
+    expect(await app.evaluate(({ BrowserWindow }) => {
+      const windows = BrowserWindow.getAllWindows()
+      return { count: windows.length, visible: windows[0]!.isVisible() }
+    })).toEqual({ count: 1, visible: false })
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.show())
+    await expect(page.getByRole('button', { name: '停止 Runner', exact: true })).toBeEnabled()
+    await expect(page.getByText('等待任务', { exact: true })).toBeVisible()
+
     await page.getByRole('button', { name: '停止 Runner', exact: true }).click()
     await expect(page.getByText('已停止', { exact: true })).toBeVisible({ timeout: 15000 })
     // 再启动后通过退出登录触发产品的身份切换清理。
