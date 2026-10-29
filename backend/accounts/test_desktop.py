@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import subprocess
 import shutil
+import signal
 from unittest import skipUnless
 from tempfile import TemporaryDirectory
 
@@ -19,9 +20,31 @@ class DesktopGuiTests(LiveServerTestCase):
         User.objects.create_user('desktop_admin', password='desktop-test-password', is_staff=True)
         frontend = Path(__file__).resolve().parents[2] / 'frontend'
         with TemporaryDirectory(prefix='mycollab-desktop-media-') as media, self.settings(MEDIA_ROOT=media):
-            result = subprocess.run(
-                [shutil.which('npm') or 'npm', 'exec', '--', 'playwright', 'test', '--config=playwright.desktop.config.ts'],
+            process = subprocess.Popen(
+                [shutil.which('node') or 'node', str(frontend / 'node_modules/@playwright/test/cli.js'),
+                 'test', '--config=playwright.desktop.config.ts', '--global-timeout=150000', '--max-failures=1'],
                 cwd=frontend, env={**os.environ, 'MYCOLLAB_TEST_API_TARGET': self.live_server_url},
-                timeout=180, check=False,
+                start_new_session=os.name != 'nt',
             )
-        self.assertEqual(result.returncode, 0, 'Electron GUI 验收失败，见 frontend/test-results/desktop。')
+            try:
+                self.assertEqual(process.wait(timeout=180), 0,
+                                 'Electron GUI 验收失败，见 frontend/test-results/desktop。')
+            finally:
+                # POSIX 只清理本次独立进程组；Windows 超时则终止指定测试进程树。
+                if os.name != 'nt':
+                    if process.poll() is None:
+                        os.killpg(process.pid, signal.SIGTERM)
+                        try:
+                            process.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            pass
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                elif process.poll() is None:
+                    subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
+                                   check=False, capture_output=True, timeout=15)
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=15)
