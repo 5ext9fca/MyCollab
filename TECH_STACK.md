@@ -659,3 +659,9 @@ PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`�
 安装目标自身的 `arch` 数组会优先于 electron-builder 命令行架构；脚本因此在生成配置时把所有目标限定为当前 `process.arch`，与已检查存在的 Runner 保持一致，禁止在本机顺带生成缺少对应 Runner 的其他架构安装包。macOS arm64 本机开发 DMG/ZIP 已通过构建、DMG 校验和、ZIP 完整性与所需文件检查，未启动应用。
 
 开发安装包原生验证：提交 `04239f0` 的[三平台 CI](https://github.com/5ext9fca/MyCollab/actions/runs/40746830510)全部通过，实际生成 `MyCollab-0.1.0-win-x64-development.exe`、`MyCollab-0.1.0-mac-arm64-development.dmg/.zip` 和 `MyCollab-0.1.0-mac-x64-development.dmg/.zip`，包含于对应平台归档中。两种 macOS 各 54 项桌面测试通过，Windows 52 通过/2 项 macOS 专属跳过；其他既有回归及包内检查通过。未执行安装或 GUI；仓库发行环境列表目前为空，正式签名与更新服务仍需配置。
+
+### Electron GUI 隔离验收
+
+当前已恢复 GUI 验收授权，但不执行正式发行。先构建共享前端并安装锁定 Electron：`npm --prefix frontend run build`、`npm --prefix desktop run electron:setup`。在 backend 运行 `MYCOLLAB_DESKTOP_TEST=1 POSTGRES_DB=mycollab_desktop_gui .venv/bin/python manage.py test accounts.test_desktop --noinput`。此入口创建并销毁独立 PostgreSQL 测试库，启动真实 Django LiveServer 和 Electron 窗口；测试引导文件在加载产品宿主前指定临时 userData，不修改产品安全策略、用户配置或模型账号。
+
+`frontend/playwright.desktop.config.ts` 与浏览器文件传输配置分开；截图和 trace 位于 `frontend/test-results/desktop`。普通后端测试跳过此显式 GUI 入口。本机 macOS arm64 已通过服务器设置、登录、导航、刷新和退出流程；其他平台及真实安装产物的 GUI 行为仍需单独验证。此测试不启动 Runner 或调用模型。
