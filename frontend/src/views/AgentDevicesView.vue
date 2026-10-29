@@ -20,6 +20,7 @@ const runnerState = ref<RunnerState>({ state: 'stopped', pending_results: 0, rej
 const diagnosis = ref<RunnerDiagnosis | null>(null)
 const runnerLabels: Record<string, string> = { stopped: '已停止', starting: '启动中', running: '运行中', idle: '等待任务', offline: '等待网络恢复', delivering: '回传结果中', unauthorized: '设备失效', expired: '租约过期' }
 const checkLabels: Record<string, string> = { ok: '通过', unavailable: '不可用', incompatible: '版本不兼容', unauthorized: '设备失效' }
+const diagnosisErrors: Record<string, string> = { not_found: '找不到可执行文件，请核对完整路径。', permission_denied: '系统拒绝启动，请检查文件权限与安全提示。', timeout: '版本检查超时，请检查 CLI 是否等待交互。', invalid_output: '版本输出无法读取，请检查 CLI 安装。', spawn_failed: '无法创建模型进程，请检查 CLI 安装与系统环境。', nonzero_exit: 'CLI 版本检查异常退出，请检查安装及依赖。', version_mismatch: '请安装已验证的 OpenCode 2.1.3。' }
 let disposed = false
 let refreshingRunner = false
 let statusTimer: ReturnType<typeof setInterval> | undefined
@@ -153,6 +154,7 @@ onMounted(async () => {
       <el-button :disabled="busy || !localBinding || runnerState.state !== 'stopped'" type="primary" @click="runnerAction('start')">启动 Runner</el-button>
       <el-button :disabled="busy || runnerState.state === 'stopped'" @click="runnerAction('stop')">停止 Runner</el-button>
       <el-button :disabled="busy || !localBinding || runnerState.state !== 'stopped'" @click="runnerAction('diagnose')">自检（不调用模型）</el-button>
+      <el-alert v-if="diagnosis?.opencode_error && diagnosisErrors[diagnosis.opencode_error]" :title="diagnosisErrors[diagnosis.opencode_error]" type="warning" :closable="false" />
       <el-descriptions v-if="diagnosis" :column="2">
         <el-descriptions-item label="OpenCode">{{ checkLabels[diagnosis.opencode] }}</el-descriptions-item>
         <el-descriptions-item label="服务器">{{ checkLabels[diagnosis.server] }}</el-descriptions-item>

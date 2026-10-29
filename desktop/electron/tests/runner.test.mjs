@@ -75,3 +75,9 @@ test('停止期间仍显示同一设备待发箱摘要，不采用旧运行状�
     rejected_results: 1, request_id: 'private-request', device_token: binding.device_token }))
   assert.deepEqual(await runner.status(), { state: 'stopped', pending_results: 3, rejected_results: 1, error: '' })
 })
+
+
+test('自检错误分类只传递允许值，原始错误不能穿过 IPC', async t => {
+  const runner = await fixture(t, async () => ({ binding: { ...binding, model: 'classified-error' }, assertCurrent() {} }))
+  assert.deepEqual(await runner.diagnose(), { opencode: 'unavailable', server: 'ok', protocol: 1, opencode_error: 'permission_denied' })
+})

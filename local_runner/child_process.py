@@ -42,3 +42,24 @@ def version_check(executable):
         process.wait()
         if process.stdout:
             process.stdout.close()
+
+
+def diagnose_executable(executable):
+    """只返回固定失败分类，不暴露路径、异常文本或模型输出。"""
+    try:
+        version = version_check(executable)
+    except FileNotFoundError:
+        return {'opencode': 'unavailable', 'opencode_error': 'not_found'}
+    except PermissionError:
+        return {'opencode': 'unavailable', 'opencode_error': 'permission_denied'}
+    except subprocess.TimeoutExpired:
+        return {'opencode': 'unavailable', 'opencode_error': 'timeout'}
+    except UnicodeError:
+        return {'opencode': 'unavailable', 'opencode_error': 'invalid_output'}
+    except OSError:
+        return {'opencode': 'unavailable', 'opencode_error': 'spawn_failed'}
+    if version.returncode:
+        return {'opencode': 'unavailable', 'opencode_error': 'nonzero_exit'}
+    if version.stdout.strip() != 'opencode v2.1.3':
+        return {'opencode': 'incompatible', 'opencode_error': 'version_mismatch'}
+    return {'opencode': 'ok'}

@@ -189,7 +189,9 @@ export class RunnerController {
             const value = JSON.parse(output)
             const allowed = ['ok', 'unavailable', 'incompatible', 'unauthorized']
             if (!allowed.includes(value.opencode) || !allowed.includes(value.server)) throw new Error('自检响应无效。')
-            resolve({ opencode: value.opencode, server: value.server, protocol: value.protocol === 1 ? 1 : 0 })
+            const reasons = ['not_found', 'permission_denied', 'timeout', 'invalid_output', 'spawn_failed', 'nonzero_exit', 'version_mismatch']
+            const reason = value.opencode !== 'ok' && reasons.includes(value.opencode_error) ? { opencode_error: value.opencode_error } : {}
+            resolve({ opencode: value.opencode, server: value.server, protocol: value.protocol === 1 ? 1 : 0, ...reason })
           } catch { reject(new Error('自检失败或登录身份已经变化。')) }
         })
       })

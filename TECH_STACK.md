@@ -701,3 +701,6 @@ macOS arm64 开发安装产物已重新构建：从新版 DMG 只读挂载并复
 
 
 本机 GUI 曾因 macOS 密码访问等待手动授权而超时（用户确认）。运行真实 safeStorage 验收前应留意系统弹窗并由用户完成授权；不以关闭系统保护、明文回退或替换加密实现通过验收。超时本身不能证明应用启动死锁。
+
+
+本地 Runner 自检增加可选 `opencode_error` 固定分类：`not_found`、`permission_denied`、`timeout`、`invalid_output`、`spawn_failed`、`nonzero_exit`、`version_mismatch`。主进程仅在 CLI 未通过时转发允许值；页面将分类显示为路径、权限、超时、安装或版本排错提示。仍只运行 `--version`，不调用模型，不传递异常文本、CLI 输出、设备令牌或供应商信息；账号与服务器隔离规则不变。

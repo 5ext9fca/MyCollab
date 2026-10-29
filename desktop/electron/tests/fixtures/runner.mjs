@@ -12,7 +12,7 @@ process.stdin.on('data', chunk => {
   if (process.argv.includes(config.device_token) || process.env.MYCOLLAB_TEST_SECRET) process.exit(3)
   if (config.model === 'exit') process.exit(2)
   if (process.argv.includes('--diagnose')) {
-    console.log(JSON.stringify({ opencode: 'ok', server: 'ok', protocol: 1, secret: config.device_token }))
+    console.log(JSON.stringify({ opencode: config.model === 'classified-error' ? 'unavailable' : 'ok', server: 'ok', protocol: 1, opencode_error: config.model === 'classified-error' ? 'permission_denied' : config.device_token, secret: config.device_token }))
     process.exit(0)
   }
   console.log(JSON.stringify({ event: 'ready' }))

@@ -15,6 +15,22 @@ from local_runner.parent_process import ParentProcess
 
 
 class ProcessCreationTests(unittest.TestCase):
+    def test_diagnosis_redacts_exception_details_and_classifies_failures(self):
+        from local_runner.child_process import diagnose_executable
+        for error, reason in [(FileNotFoundError('secret path'), 'not_found'),
+                              (PermissionError('secret token'), 'permission_denied'),
+                              (subprocess.TimeoutExpired('secret command', 15), 'timeout'),
+                              (UnicodeError('secret output'), 'invalid_output'),
+                              (OSError('secret configuration'), 'spawn_failed')]:
+            with self.subTest(reason=reason), patch('local_runner.child_process.version_check', side_effect=error):
+                self.assertEqual(diagnose_executable('private-path'),
+                                 {'opencode': 'unavailable', 'opencode_error': reason})
+        for code, output, expected in [(1, 'secret', {'opencode': 'unavailable', 'opencode_error': 'nonzero_exit'}),
+                                       (0, 'secret', {'opencode': 'incompatible', 'opencode_error': 'version_mismatch'}),
+                                       (0, 'opencode v2.1.3\n', {'opencode': 'ok'})]:
+            with patch('local_runner.child_process.version_check', return_value=subprocess.CompletedProcess([], code, output)):
+                self.assertEqual(diagnose_executable('private-path'), expected)
+
     def test_windows_assignment_failure_kills_suspended_process_without_fallback(self):
         process = Mock(pid=123)
         process.poll.return_value = None

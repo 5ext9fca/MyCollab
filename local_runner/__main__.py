@@ -1,7 +1,6 @@
 import argparse
 import _thread
 from datetime import datetime
-import subprocess
 import ssl
 import threading
 import json
@@ -18,7 +17,7 @@ from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_ope
 from .opencode import run, LocalFailure, Cancelled
 from .state import StateStore
 from .parent_process import ParentProcess
-from .child_process import version_check
+from .child_process import diagnose_executable
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -204,11 +203,7 @@ def run_cli(argv=None):
         threading.Thread(target=watch_control, daemon=True).start()
     if args.diagnose:
         checks = {"config": "ok", "opencode": "unavailable", "server": "unavailable", "protocol": 1}
-        try:
-            version = version_check(config.get("opencode", "opencode"))
-            checks["opencode"] = "ok" if version.returncode == 0 and version.stdout.strip() == "opencode v2.1.3" else "incompatible"
-        except (OSError, subprocess.TimeoutExpired):
-            pass
+        checks.update(diagnose_executable(config.get("opencode", "opencode")))
         try:
             info = client.post("status/", {})
             checks["server"] = "ok" if info.get("schema_versions") == [1] else "incompatible"

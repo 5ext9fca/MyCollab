@@ -780,3 +780,6 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 桌面页面阻止离开时，宿主通过 `will-prevent-unload` 显示原生确认对话框，默认继续停留。明确中断才允许离开；取消退出会恢复退出控制状态并显示窗口。退出准备阶段已停止的 Runner 不自动重启，界面提示用户按需启动。普通关闭窗口仍只隐藏，不触发页面销毁。
 
 Electron 打包 ESM 主入口不在顶层等待 `app.whenReady()`；通过异步启动函数完成初始化，避免入口加载与 ready 相互等待。显式命令行 `--user-data-dir=<绝对路径>` 可使用独立配置目录，启动时创建目录；此路径不由 renderer/IPC 设置，不改变凭据加密或 API 权限。
+
+
+本地 Runner 自检增加可选 `opencode_error` 固定分类：`not_found`、`permission_denied`、`timeout`、`invalid_output`、`spawn_failed`、`nonzero_exit`、`version_mismatch`。主进程仅在 CLI 未通过时转发允许值；页面将分类显示为路径、权限、超时、安装或版本排错提示。仍只运行 `--version`，不调用模型，不传递异常文本、CLI 输出、设备令牌或供应商信息；账号与服务器隔离规则不变。
