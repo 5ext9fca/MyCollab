@@ -1,0 +1,152 @@
+/** 本地设备绑定必须同时核验业务会话与设备令牌，身份由服务端给出。 */
+import { APP_ORIGIN } from './transport.mjs'
+import { readLegacyConfig } from './legacy.mjs'
+import { validateBinding } from './vault.mjs'
+
+/** @param {Response} response */
+async function boundedJSON(response) {
+  if (!response.ok || !response.body) { await response.body?.cancel(); throw new Error('身份验证失败，请检查登录和设备有效期。') }
+  const reader = response.body.getReader()
+  const chunks = []
+  let length = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      length += value.length
+      if (length > 128 * 1024) throw new Error('设备验证响应过大。')
+      chunks.push(value)
+    }
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } finally { await reader.cancel().catch(() => {}) }
+}
+
+/** @param {import('./vault.mjs').RunnerBinding | null} binding */
+function publicBinding(binding) {
+  return binding ? { deviceId: binding.deviceId, model: binding.model, opencode: binding.opencode } : null
+}
+
+export class DeviceBindings {
+  /** @param {() => import('./transport.mjs').BusinessTransport | undefined} current
+   * @param {import('./vault.mjs').BindingVault} vault
+   * @param {typeof fetch} probe */
+  constructor(current, vault, probe) {
+    this.current = current; this.vault = vault; this.probe = probe; this.busy = false
+    /** @type {{transport: import('./transport.mjs').BusinessTransport, owner: string, assertCurrent: () => void} | null} */
+    this.cachedIdentity = null
+  }
+
+  async identity() {
+    const transport = this.current()
+    if (!transport || transport.changingIdentity) throw new Error('请先登录协作服务器。')
+    const generation = transport.generation
+    const user = await boundedJSON(await transport.handle(new Request(APP_ORIGIN + '/api/auth/me/')))
+    const owner = String(user?.id)
+    if (!/^[1-9][0-9]*$/.test(owner)) throw new Error('登录身份无效。')
+    const assertCurrent = () => {
+      if (this.current() !== transport || generation !== transport.generation || transport.changingIdentity) {
+        throw new Error('登录身份已改变，请重新操作。')
+      }
+    }
+    assertCurrent()
+    this.cachedIdentity = { transport, owner, assertCurrent }
+    return this.cachedIdentity
+  }
+
+  async read() {
+    let identity = this.cachedIdentity
+    try { identity?.assertCurrent() } catch { identity = null }
+    if (!identity) identity = await this.identity()
+    const binding = await this.vault.load(identity.transport.server, identity.owner)
+    identity.assertCurrent()
+    return publicBinding(binding)
+  }
+
+  /** @param {import('./vault.mjs').RunnerBinding} binding */
+  async verify(binding) {
+    // 只访问固定设备探测接口；绝不携带业务 Cookie，也不跟随重定向。
+    const status = await boundedJSON(await this.probe(binding.server + '/api/agent-runner/status/', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + binding.device_token, 'Content-Type': 'application/json' },
+      body: '{}', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(15_000),
+    }))
+    if (status.device_id !== binding.deviceId || String(status.owner_id) !== binding.owner ||
+        !Array.isArray(status.schema_versions) || !status.schema_versions.includes(1)) {
+      throw new Error('设备令牌不属于当前用户或所选设备，请重新创建。')
+    }
+  }
+
+  async local() {
+    if (this.busy) throw new Error('设备绑定正在处理。')
+    const identity = this.cachedIdentity
+    if (!identity) throw new Error('请先登录并读取本机绑定。')
+    identity.assertCurrent()
+    const binding = await this.vault.load(identity.transport.server, identity.owner)
+    identity.assertCurrent()
+    if (!binding) throw new Error('请先绑定本机设备。')
+    return { binding, assertCurrent: identity.assertCurrent }
+  }
+
+  async verified() {
+    if (this.busy) throw new Error('设备绑定正在处理。')
+    const identity = await this.identity()
+    const binding = await this.vault.load(identity.transport.server, identity.owner)
+    if (!binding) throw new Error('请先绑定本机设备。')
+    await this.verify(binding)
+    identity.assertCurrent()
+    return { binding, assertCurrent: identity.assertCurrent }
+  }
+
+  /** @param {string} filename */
+  async importLegacy(filename) {
+    if (this.busy) throw new Error('设备绑定正在处理。')
+    this.busy = true
+    try {
+      const identity = await this.identity()
+      const legacy = await readLegacyConfig(filename)
+      if (legacy.server !== identity.transport.server) throw new Error('请先登录旧配置对应的服务器。')
+      if (await this.vault.load(legacy.server, identity.owner)) throw new Error('当前账户已有本机绑定，不能覆盖导入。')
+      const status = await boundedJSON(await this.probe(legacy.server + '/api/agent-runner/status/', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + legacy.token, 'Content-Type': 'application/json' },
+        body: '{}', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(15_000),
+      }))
+      if (String(status.owner_id) !== identity.owner || !Array.isArray(status.schema_versions) || !status.schema_versions.includes(1)) {
+        throw new Error('旧设备不属于当前登录用户或服务端版本不兼容。')
+      }
+      const binding = validateBinding({ server: legacy.server, owner: identity.owner, deviceId: status.device_id,
+        device_token: legacy.token, model: legacy.model, opencode: legacy.opencode, legacyState: true })
+      identity.assertCurrent()
+      await this.vault.save(binding)
+      identity.assertCurrent()
+      return publicBinding(binding)
+    } finally { this.busy = false }
+  }
+
+  /** @param {unknown} input */
+  async bind(input) {
+    if (this.busy) throw new Error('设备绑定正在处理。')
+    this.busy = true
+    try {
+      const identity = await this.identity()
+      if (!input || typeof input !== 'object') throw new Error('设备配置无效。')
+      const fields = /** @type {Record<string, unknown>} */ (input)
+      const previous = await this.vault.load(identity.transport.server, identity.owner)
+      identity.assertCurrent()
+      let token = fields.token
+      if (token === '') {
+        const existing = previous
+        identity.assertCurrent()
+        if (!existing || existing.deviceId !== fields.deviceId) throw new Error('更换设备需要填写新的设备令牌。')
+        token = existing.device_token
+      }
+      const binding = validateBinding({ server: identity.transport.server, owner: identity.owner,
+        legacyState: previous?.legacyState === true && previous.deviceId === fields.deviceId && previous.device_token === token,
+        deviceId: fields.deviceId, device_token: token, model: fields.model, opencode: fields.opencode })
+      if (!/^[\x21-\x7e]{1,128}$/.test(binding.device_token)) throw new Error('设备令牌格式无效。')
+      await this.verify(binding)
+      identity.assertCurrent()
+      await this.vault.save(binding)
+      identity.assertCurrent()
+      return publicBinding(binding)
+    } finally { this.busy = false }
+  }
+}

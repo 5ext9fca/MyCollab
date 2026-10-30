@@ -68,8 +68,14 @@ def _acquire_team_lock() -> None:
     (dependency vs dependency, milestone completion vs reassignment, ...) cannot
     both validate against a stale graph.
     """
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_advisory_xact_lock(%s)", [TEAM_OPS_LOCK_KEY])
+    from time import perf_counter
+    from common.observability import add_lock_wait
+    started = perf_counter()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", [TEAM_OPS_LOCK_KEY])
+    finally:
+        add_lock_wait(perf_counter() - started)
 
 
 def _notify_dependency_changes(func):

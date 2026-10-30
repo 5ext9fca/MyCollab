@@ -32,3 +32,12 @@ coverage/
 # 浏览器测试产物
 frontend/test-results/
 frontend/playwright-report/
+
+# 桌面伴侣构建与本机产物
+desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/src-tauri/binaries/
+desktop/build/
+desktop/test-results/
+desktop/tests/shared/results/

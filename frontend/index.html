@@ -5,15 +5,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- 在应用和样式加载前应用外观，避免已选深色时闪现浅色。 -->
-    <script>
-      (() => {
-        let preference = 'system'
-        try { preference = localStorage.getItem('mycollab-theme') || 'system' } catch {}
-        const dark = preference === 'dark' || (preference !== 'light' && preference !== 'dark' && window.matchMedia?.('(prefers-color-scheme: dark)').matches)
-        document.documentElement.classList.toggle('dark', !!dark)
-        document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
-      })()
-    </script>
+    <script src="/theme-init.js"></script>
     <style>html { background: #f5f6f8; } html.dark { background: #141414; }</style>
     <title>Mission 协作</title>
   </head>

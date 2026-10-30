@@ -24,7 +24,7 @@ frontend/src/         Vue SPA
   workspace/          工作台辅助逻辑
   tests/              前端测试
 local_runner/         用户本机 OpenCode 适配器及测试
-deploy/               Caddy、生产 Compose 与部署操作指南
+deploy/               内部 Web、生产 Compose 与部署操作指南（公网入口由 MyCaddy 管理）
 .cursor/rules/        AGENTS 索引的项目规则
 docker-compose.yml    本地 PostgreSQL
 testrun.sh            本地环境启动脚本
@@ -229,7 +229,7 @@ Bob 将其拆成：
 - **里程碑（`/milestones`）**：新建与筛选里程碑，查看进度、延期提示与关联任务；里程碑详情可编辑字段并做受控状态流转。
 - **工作台（`/workspace`）**：把同一批任务按「里程碑 × 状态」概览和「甘特图」两种联动视图呈现，配合筛选、摘要与详情抽屉，快速回答「现在能做什么、被什么阻塞、每个里程碑的进展」（见第 9 节）。
 - **素材库（`/library`）**：上传、查看、复制 Markdown 引用、删除自己的文件。任务与评论编辑器提供「插入素材」按钮，可从素材库选择或直接上传，并把引用插入到光标处。
-- **管理后台（`/manage`，仅管理员）**：审批注册申请、查看成员列表。由 SPA 自行实现，与 Django Admin（`/admin/`）相互独立。
+- **管理后台（`/manage`，仅管理员）**：审批注册申请、查看成员列表；批准后同时刷新申请与成员列表，使新成员立即可见。由 SPA 自行实现，与 Django Admin（`/admin/`）相互独立。
 
 未登录用户可访问 **注册页（`/register`）** 提交注册申请，等待管理员审批后方可登录。
 
@@ -630,7 +630,7 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 
 `/agent-devices`（AgentDevicesView）管理绑定、撤销、有效期、最近联系及本人请求历史。`api/agentBridge.ts` 只访问 MyCollab；不接收供应商密钥。公共辅助面板仅在活动请求存在时轮询；网络状态不明重发同一幂等键；采纳前重新读取过期状态。生成期间表单变化须明确比较后逐字段合并。设计、模板、Mission 编辑冲突不自动换用新版本覆盖，需比较服务器内容后确认。
 
-`local_runner/` 是用户电脑上的 Python 标准库客户端，首个适配器为 OpenCode CLI 2.1.3。每次以私有非交互会话、临时工作目录与专用禁止工具的配置运行；模型供应商认证和调用全部留在本地。Runner 主动轮询并续租，断线或取消尽力终止进程，最多重传同一结果三次，不自动重新调用模型。默认配置路径为 `~/.config/MyCollab/mycollab-runner.json`，`--config` 可覆盖并展开 `~`；缺失、无效或权限过宽的配置以明确提示退出。Ctrl-C 清理模型进程和临时目录后以 130 退出，不输出异常堆栈；未回传请求沿用租约过期机制，不新增服务端接口、数据模型或权限。安装与真实验证记录见 `local_runner/README.md`。
+`local_runner/` 是用户电脑上的 Python 标准库客户端，当前适配器接受 OpenCode CLI 2.1.3 与 2.2.0 两个精确版本，自检与执行复用同一版本检查，未知版本仍拒绝。每次以私有非交互会话、临时工作目录与专用禁止工具的配置运行；模型供应商认证和调用全部留在本地。Runner 主动轮询并续租，断线或取消尽力终止进程，最多重传同一结果三次，不自动重新调用模型。默认配置路径为 `~/.config/MyCollab/mycollab-runner.json`，`--config` 可覆盖并展开 `~`；缺失、无效或权限过宽的配置以明确提示退出。Ctrl-C 清理模型进程和临时目录后以 130 退出，不输出异常堆栈；未回传请求沿用租约过期机制，不新增服务端接口、数据模型或权限。安装与真实验证记录见 `local_runner/README.md`。
 
 本批不包含图像文件产出、仓库操作、构建测试、自动提交或自动验收；第二、三批继续由 NEW_FUNCTION.md 规划。后端不包含供应商 SDK/网络调用或常驻执行器，不新增 Redis/Celery/WebSocket。
 
@@ -675,3 +675,129 @@ Runner 仅专用 Bearer：`POST /api/agent-runner/claim/`、`POST /api/agent-run
 - 前端 API 集中在 `api/transfers.ts`，复用 request 的 CSRF/错误处理并使用 15 秒请求超时。活动状态约每秒轮询，错误指数退避至 8 秒，连续 4 次失败停止；终态停止。收集 ICE 最多 10 秒，缓冲等待最多 30 秒，accepted 状态 60 秒无文件处理进展失败。
 - 浏览器 SHA-256 依赖安全上下文：局域网访问使用受信任 HTTPS（本机开发 localhost 可用）。用户需允许浏览器与操作系统的局域网访问；防火墙和 mDNS/UDP 可达性仍影响 WebRTC。文件校验使用完整缓冲，100 MiB 文件峰值内存高于文件大小，不承诺多 GB 支持。
 - `cleanup_transfers` 删除总期限已过的会话，部署每 5 分钟运行一次；不依赖 Redis/Celery/WebSocket。测试入口：`transfers.tests` 覆盖状态、权限、CSRF、大小、checksum、过期和并发配对；`fileTransferProtocol.spec.ts` 覆盖标准 SHA-256、损坏/截断拒收及背压，`fileTransferController.spec.ts` 覆盖确认、取消竞态、未本地验证禁止成功和轮询停止；`transfers.test_browser` 显式启用后以隔离 PostgreSQL 测试库和真实 Chrome/Chromium 页面运行 `frontend/e2e/file-transfer.spec.ts`。
+
+## 性能与 Agent 接入指标
+
+- `common/observability.py` 的可选中间件记录 API 路由模板、HTTP 状态、请求耗时、SQL 次数/耗时及团队锁等待；不记录 SQL、正文、用户、查询参数或凭据。`missions/services.py` 保留原团队锁，仅增加计时。
+- `AssistanceRequest.claimed_at`（迁移 `0007`）在首次领取时写入，心跳不覆盖；`agent_metrics` 读取状态分布、创建至领取、领取至完成回传的耗时。旧记录不回填虚构时间，统计不执行清理或调用模型。
+- `performance_probe` 在指定有效成员身份下，只读测量任务列表、详情及工作台接口；临时登录会话在结束时删除，不修改任务。它测量本进程服务端处理，不代表浏览器或公网端到端表现。
+- 前端可选记录 `gantt_layout`（布局计算）与 `workspace_reload`（加载至 Vue 更新，不代表 GPU 绘制完成），最多保留 200 条本机样本，不上传。未开启时不保留样本。
+- 验证入口：`common.tests.test_observability`、`agent_bridge.tests.test_metrics`、`frontend/src/tests/performance.spec.ts`。开启及读取方法见 TECH_STACK“性能测量”。
+
+## 本地 Runner 断线恢复
+
+- `local_runner/state.py` 按服务器地址与设备令牌摘要隔离私有状态目录；结果采用原子替换落盘，文件权限 0600、目录 0700。待发箱最多 100 条，每条最多 512 KiB，保留 24 小时；不持久化请求输入或令牌。
+- 领取后先写执行标记，模型结果先落盘再回传。启动时优先回传未确认结果，复用 request/attempt 和原始结果；没有结果的中断执行不自动重跑。服务器的终态、版本、设备和轮次校验仍生效。
+- 非重试型 4xx 拒收的结果留本机到保留期结束，不重复上传、不写业务对象；401/403 停止设备，429/网络/5xx 留待后续回传。每设备本机文件锁阻止重复 Runner。
+- 心跳在上一次已确认租约的保守安全窗口内允许短暂网络失败；明确取消或鉴权失败立即停止，超过安全窗口终止模型。并不延长服务器租约，也不自动重新生成。
+- 新增设备认证的 `POST /api/agent-runner/status/`，只返回协议版本、声明能力、凭据有效期与租约时长，不领取任务。`--diagnose` 检查本机 CLI 版本和服务器协议；`--status` 输出脱敏本地状态。
+- 验证入口：`local_runner/tests/test_recovery.py`、`test_delivery_integration.py`，包含真实本机 HTTP 丢失回传确认与 Runner 重启；供应商调用使用假 CLI。
+
+## macOS 本地 Agent 桌面伴侣
+
+- `desktop/` 为独立 Tauri 2 + Vue/Element Plus 应用；复用 `local_runner` 的打包 sidecar，业务界面仍在系统浏览器中打开，不把远程网页放入有原生权限的窗口。
+- `desktop/src/App.vue` 管理连接、模型、可选内部 CA、脱敏状态、自检和用户明确开启的登录启动；运行中禁止修改配置。读取配置不回传已存设备令牌，保存留空仅在服务器未变时保留原令牌。
+- `desktop/src-tauri/src/main.rs` 只提供固定配置、进程管理、诊断、网站打开与签名更新命令，不提供任意 shell 或文件读写接口。配置与 CLI 共用 `~/.config/MyCollab/mycollab-runner.json`；原子保存、0600 权限。模型供应商认证仍由 OpenCode 管理。
+- 状态轮询直接读取 Runner 原子更新的脱敏小型状态文件，不反复启动或解包 Python；状态目录标识在 Rust/Python 两端使用相同的服务器与设备摘要。
+- 单实例插件使重复启动聚焦已有窗口，Runner 文件锁防止 CLI/桌面重复执行。关闭窗口隐藏到菜单栏，退出停止 Runner；父进程消失会触发 Runner 清理。异常退出后由用户决定重新启动，不自动重新执行模型。
+- `desktop/scripts/build_sidecar.py` 将 Python 3.13 Runner 打包进 macOS 应用，用户无需安装 Python。当前仅 macOS，其他平台未宣称支持；Intel 需在对应架构另行构建验收。
+- 更新器仅接受发布构建注入的 HTTPS 地址与签名公钥；没有发布配置时明确提示手动更新。业务 Session/CSRF 与设备权限没有改变，无额外本机 HTTP 服务。
+- 测试入口：桌面 Vue 交互测试、Rust 地址/进程测试、Runner 真实 HTTP 与进程退出集成测试。构建与发布说明见 TECH_STACK“桌面伴侣构建”。
+
+### Electron 完整客户端（开发中）
+
+`desktop/electron/main.mjs` 为新宿主，加载唯一的 `frontend/dist` 构建产物；旧 Tauri 伴侣暂留到 Runner 等替代能力完整。Electron 使用安全标准协议 `mycollab://app`，静态映射仅暴露构建资产和 SPA 入口，业务页刷新复用入口，不加载远程 HTML。主窗口禁用 Node/WebView，启用 sandbox、context isolation、Web 安全和 CSP。
+
+桌面环境测试分为三个入口：`desktop/tests/local-macos/run.mjs` 测试本地 macOS 已安装开发版 `.app`，`desktop/tests/local-windows/run.ps1` 测试本地 Windows 已安装开发版 EXE，`desktop/tests/ci/` 保存临时运行器的真实后端 GUI 与 Windows 安装卸载脚本。两种本地入口共用 `desktop/tests/shared/` 的依赖锁文件、Playwright 配置、临时客户端生命周期夹具、HTTP 服务及回归用例；平台匹配检查防止跨系统误报。报告分别写入 `desktop/test-results/local-macos/` 与 `local-windows/`。CI 继续由 `.github/workflows/desktop.yml` 编排，复用 `backend/accounts/test_desktop.py` 与 `frontend/e2e/desktop*.ts` 的真实业务集成测试，原有报告路径和发布工作流保持兼容。`desktop/electron/tests/` 与 `local_runner/tests/` 仍为共享底层测试。 CI GUI 产物按 `ci-packaged`/`ci-installed` 及 `migration`/`packaged` 子目录保存，防止连续执行时覆盖前一套证据；本机默认路径保持不变。
+
+安装副本性能入口 `desktop/scripts/measure_desktop.mjs` 复用本机 HTTP 夹具，使用隔离配置记录启动、登录、素材列表就绪及空闲进程工作集；只生成显式指定的本地 JSON，不新增业务 API、数据模型或生产遥测。具体口径与命令见 TECH_STACK“安装副本性能测量”。
+
+
+本地安装版用例覆盖登录会话、窗口隐藏恢复、更新禁用、下载落盘/取消/默认名与设计树导航状态，使用合成账号和本机 HTTP 夹具，不变更业务数据模型、接口或权限；已知问题保留真实失败。它们不替代 Django、原生对话框或双机网络验收。命令和环境要求见 TECH_STACK 的“桌面测试的三个入口”。
+
+Windows 入口的显式 `-LiveServer` 模式单独运行 `tests/shared/live.config.mjs` 与 `live.spec.mjs`：用户在独立窗口登录，真实页面创建专用里程碑、两步模板及资产生产任务并完成状态流，验证个人甘特筛选与包内 Runner 绑定/启停；只读 API 复核写入。使用唯一数据前缀，`acceptance.json` 记录分项结果与新增数据 ID，不保存 trace、截图、Cookie 或设备令牌。站点测试数据保留；此模式需已有写入授权，不随默认 HTTP 夹具套件执行。常规共享用例另覆盖下载 HTTP 错误和落盘失败后的提示、临时文件清理与恢复。
+
+- `transport.mjs` 的 `BusinessTransport` 仅将本地 `/api/` 下现有业务路由映射到配置的 HTTPS 根地址（本机开发可 HTTP），拒绝 Runner API、其他来源、任意请求头及重定向。主进程的服务器独立内存会话持有 Cookie 与 CSRF，渲染会话不持有业务 Cookie，重启需重新登录，不保存密码。私有资源流有取消及超时，响应过滤 Cookie、禁止缓存、隔离附件脚本；身份切换拒绝并发旧请求并中断旧流，断网退出也清 Cookie。
+- `policy.mjs` 校验主窗口/主框架 IPC 来源、业务地址、素材下载和外链。`preload.cjs` 仅暴露读取设置、切换服务器、自启动、局域网权限、打开 HTTP(S) 外链、下载当前用户素材、读取脱敏本机绑定及验证保存设备及 Runner 启动、停止、状态、自检及旧伴侣导入及更新检查、下载、安装、状态十七个固定操作；不能提供任意 IPC、HTTP、文件系统或命令执行。
+- `frontend/src/platform/desktop.ts` 适配已清洗 Markdown 和普通链接；素材下载由主进程再次鉴权、用户选择目的地后流式写入临时文件并原子替换。外链交给系统浏览器，不获得桌面能力；普通 Web 端维持原行为。 默认保存名称由 `desktop/electron/filename.mjs` 解析：优先有效 UTF-8 `filename*`，回退普通 `filename`，移除路径和跨平台非法字符；缺失或无效时使用“素材文件”。
+- `DesktopSettingsView.vue` 的 `/desktop-settings` 在登录前可用，桌面首次无服务器时进入此页；登录页和业务导航提供入口。更换服务器清会话、前端存储并重新载入页面；退出重新载入登录页。局域网权限默认关闭，启用后仅本地业务主框架可申请局域网权限；仍拒绝摄像头、麦克风及读取剪贴板等无关权限。
+- 宿主已有单实例、托盘、关闭隐藏、明确退出及用户自选的登录系统后启动。当前 Electron 已接入设备绑定与系统加密配置，已接入 Runner 启停、自检及默认 macOS 旧配置导入，已接入手动更新控制流程（正式发行验证仍未完成），不能将新宿主视作旧伴侣的完整替代；GUI 验收进展见 TECH_STACK；尚未完成全部业务、安装与双机网络验收。
+
+### 桌面 Runner 凭据交接基础
+
+`desktop/electron/vault.mjs` 提供 `BindingVault`：按服务器规范根地址和用户 ID 派生文件名，使用注入的 Electron 异步系统加密接口保存完整设备绑定（服务器、用户、设备 ID、设备令牌、模型、OpenCode 路径）。读取时再次核对密文身份，密钥轮换时重新加密；加密服务不可用时拒绝保存，不回退明文。只允许固定字段，不接受供应商凭据等附加配置。该模块已接入主进程的设备绑定操作，已接入 Runner 启动；系统凭据存储尚未完成实机验证。
+
+`local_runner/__main__.py` 新增 `--config-stdin`，从标准输入读取最多 32 KiB、以换行结束的一行 UTF-8 JSON；开启后 `--config` 仅决定隔离状态目录，不读取或创建明文配置。桌面宿主后续通过匿名管道交接，不把令牌放入 argv、环境变量或临时配置。现有文件配置与 CLI 用法保持兼容，结果待发箱身份派生方式不变。
+
+
+### 桌面设备身份核验
+
+`POST /api/agent-runner/status/` 增加 `device_id`、`owner_id` 字符串，均来自设备 Bearer 认证，保留协议版本、能力、有效期和租约信息。该接口不领取任务、不返回令牌，浏览器 Session 不能替代设备认证。
+
+`desktop/electron/binding.mjs` 的 `DeviceBindings` 通过当前业务 Session 的 `/api/auth/me/` 取得用户身份，再用无 Cookie 的独立请求调用固定 Runner 状态接口，要求设备、用户与协议匹配才加密保存；不信任 renderer 传入的服务器或用户标识。探测禁止重定向、限制 15 秒与 128 KiB 响应，身份切换时拒绝保存/返回旧配置。读取绑定仅返回设备 ID、模型和 OpenCode 路径，永不回显已保存令牌。
+
+桌面 `/agent-devices` 增加本机绑定卡片；新创建设备可自动填入本次令牌，保存成功清除页面令牌。Web 用户仍使用原设备页面。保存配置不启动 Runner 或模型，旧服务器缺少身份字段时拒绝绑定并提示升级。
+
+
+### Runner 平台状态与宿主监测
+
+`local_runner/private_files.py` 统一私有目录和独占锁：POSIX 使用 700/600 与 `flock`，Windows 使用 `msvcrt.locking` 非阻塞锁定第 0 字节，并通过 `windows_security.py` 的原生 DACL 仅授予当前用户访问及子项继承；拒绝状态目录的符号链接/目录联接。权限建立失败时抛错，不回退到 Windows chmod。原子结果文件在私有目录中创建，继续 fsync 后 replace，不改变服务器/设备隔离、结果重传及保留限额。
+
+`parent_process.py` 在 Windows 持有可同步等待的宿主进程句柄，以零超时 `WaitForSingleObject` 探测退出，避免调用 Windows 的 `os.kill(pid, 0)`；POSIX 保留存活探测。监测退出后触发主线程的既有清理路径。Windows 模型子进程树已接入下述 Job Object 管理；原生 Windows CI 已通过 Job/ACL 与独立 Runner 宿主退出检查，覆盖命令行进程行为，不替代 Electron GUI 崩溃或安装验收。
+
+`desktop/scripts/build_sidecar.py --electron` 在本机 Python 3.13 上构建独立 Runner，输出 `desktop/build/runner/mac-arm64`、`mac-x64` 或 `win-x64`；禁止从其他系统伪造目标架构。未加参数时仍保留旧 macOS Tauri 伴侣的 dist 与 sidecar 复制路径。
+
+
+### Runner 模型进程树与停止管道
+
+`child_process.py` 是模型进程与版本探测的统一创建入口。Windows 使用 `windows_job.py` 的原生 Job Object：Runner 先加入外层 KILL_ON_JOB_CLOSE Job；模型以 CREATE_SUSPENDED 创建，加入独立 Job 后才恢复主线程，不允许 breakaway。外层覆盖创建/分配间隙的 Runner 崩溃，内层在取消、超时、正常结果收尾时清理后代；即使直接子进程已退出，也关闭模型 Job。创建或分配失败时终止挂起进程，不降级为无保护运行。POSIX 保持现有进程组清理。
+
+`--control-stdin` 与 `--config-stdin` 配合用于桌面长期 Runner：配置行之后收到字节或 EOF 即触发既有退出清理；不能与 `--status` 组合；自检也可通过此管道取消。配置和控制均使用无缓冲 fd 读取，避免提前吞掉停止指令或解释器退出时占用 stdin 缓冲锁；空闲等待可被控制事件唤醒。该协议已接入 Electron 启停控制器，不自动启动或重试模型。
+
+`desktop/electron/runner.mjs` 使用固定的内置程序路径及匿名管道启动 Runner，等待取得独占锁后的 `ready` 事件才报告成功；启动前重新核验当前用户、设备和服务器。页面提供启停、自检及有界脱敏状态，隐藏页面暂停状态轮询。本地 Agent 与桌面设置页在卸载后禁止延迟创建定时器，并丢弃迟到的轮询结果；同类状态轮询不并发叠加。退出、切换身份与重新绑定先等待进程关闭；停止超时保留客户端和会话，不伪装已停止。自检只返回固定枚举与协议版本，不转发原始日志。
+
+- 桌面修改同一已绑定设备的模型和 OpenCode 路径时，可将令牌留空；主进程仅从当前服务器、当前用户的加密绑定读取原令牌，再次验证设备归属后保存，不向页面回显。更换设备或没有本机绑定时必须提供令牌。绑定期间拒绝启动和自检，开始绑定前取消尚在验证的启动并等待已有进程停止。
+
+### macOS 旧伴侣导入
+
+`desktop/electron/legacy.mjs` 仅从宿主固定的 `~/.config/MyCollab/mycollab-runner.json` 读取旧配置，最多 32 KiB，拒绝符号链接、非当前用户所有或开放组/其他人权限的文件。导入入口只在 macOS 桌面设备页显示，主进程再次限制平台，不接受页面指定路径。必须登录同一服务器；设备身份由服务端 Bearer 探测返回并与当前业务用户核验。已有本机绑定时拒绝覆盖，自定义 CA 配置暂不支持导入。
+
+成功后仅将凭据加密保存并记录 `legacyState: true`；此标记不向页面暴露，普通绑定不能任意指定它。Runner 根据标记使用宿主固定旧配置路径作为状态目录入口，凭据仍走匿名管道，不再读取该明文文件。原待发箱和独占锁原地复用，不复制、不删除、不重复调用模型；旧 Runner 未释放锁时，新 Runner 无法报告就绪或领取任务。修改相同设备/令牌的模型与路径保留该标记。用户需先退出旧伴侣并关闭旧自启动，再手动安装、导入新客户端；导入本身不启动 Runner，也不删除旧配置。
+
+### 桌面更新控制
+
+`desktop/electron/updates.mjs` 使用锁定的 `electron-updater` 运行时；开发包不启用在线更新。发行元数据绑定系统、架构和固定 HTTPS 更新目录，独立更新会话拒绝跨源/跨目录下载与重定向，不使用业务 Cookie。renderer 只可调用检查、下载、安装、脱敏状态四个固定操作，不能提供更新地址、文件路径或命令。
+
+更新默认关闭自动下载、退出时自动安装、预发布与降级。桌面设置提供三个明确步骤；检查/下载不中断 Runner，点击“停止 Runner 并安装更新”后才阻止新启动、等待停止并进入原生安装。停止失败不会调用安装；安装错误恢复退出保护并保留错误状态。更新状态不暴露原始日志、下载地址或本机路径。Windows 保持库默认 Authenticode 校验并配置签名发布者；macOS 安装仍由原生更新器校验签名。普通业务后端与设备协议不变。
+
+桌面业务请求返回 401/403 时，若此前已确认登录，主进程通过只读 `/api/auth/me/` 区分普通权限拒绝与会话过期；确认过期后先停止 Runner、取消旧流、清 Cookie，再重新载入登录页。网络失败不作为过期证据。停止失败不清会话、不重载页面。显式退出在停止成功后即使服务器断网也清理本机会话并返回成功；前端只有收到该确认才清空用户和跳转，不在失败的 finally 中伪装退出。此处理由业务请求触发，不承诺无业务请求期间立即探测服务器会话过期。
+
+本机自检与启动使用不同的配置解析入口：启动仍需在线核验业务用户和设备；自检使用本次进程中已核验身份对应的加密配置，让断网、设备失效或缺少 OpenCode 能由 Runner 自检返回固定结果。身份缓存只保存服务器、用户与会话代次，不保存令牌；切换登录、服务器或清理会话后不能再读取旧身份配置。首次尚未核验身份时不允许离线读取。停止时也读取当前设备已有状态文件的有界待发摘要，旧文件中的运行状态不会覆盖宿主的“已停止”。
+
+正式 macOS 打包由 `desktop/electron/release.mjs` 检查公证凭据配置，再交给打包器实际公证；缺失或不完整时失败，避免打包器默认跳过。此规则不新增业务接口或权限，开发包仍禁用在线更新。
+
+`.github/workflows/desktop-release.yml` 是默认分支手动触发的正式包入口，复用原生非 GUI CI 后在分平台发行环境签名、公证、验证包内 Runner 与系统签名；`desktop/scripts/collect_release.py` 归档安装包、更新清单、校验摘要和提交信息。不发布到更新服务，不新增业务数据或接口。配置方式与未执行状态见 TECH_STACK“手动构建正式发行产物”。
+
+开发打包从子进程环境剥离签名与公证身份，macOS 仅临时签名且不公证，Windows 不执行签名；正式打包继续强制签名与 macOS 公证，不受开发隔离逻辑影响。
+
+页面生成的 Markdown 与已校验接收文件仍通过 Blob 下载，不通过 IPC 搬运文件内容。`desktop/electron/downloads.mjs` 只接收当前主窗口主框架的本地 Blob 保存，使用 Chromium 原生保存对话框；身份切换、退出或安装更新在 Runner 停止成功后取消未完成保存，切换期间拒绝新保存。保存中断显示通用错误，用户主动取消不报错；已保存完成的文件不受清理影响。
+
+桌面打包入口区分开发目录、开发安装包和正式发行：`electron:pack`、`electron:dist:dev`、`electron:dist`。开发安装包仍禁用在线更新，macOS 临时签名且不公证，Windows 不签名；产物名标记 `development`。CI 构建安装产物但不安装或启动 GUI。
+
+`backend/accounts/test_desktop.py` 提供显式 Electron GUI 验收入口，使用独立测试数据库建立用户并启动 LiveServer；`frontend/e2e/desktop-launch.cjs` 仅在测试中隔离配置后加载真实宿主，`desktop.spec.ts` 通过真实页面检查服务器设置、认证和导航，不向产品加入测试 IPC 或降低安全策略。
+
+桌面页面阻止离开时，宿主通过 `will-prevent-unload` 显示原生确认对话框，默认继续停留。明确中断才允许离开；取消退出会恢复退出控制状态并显示窗口。退出准备阶段已停止的 Runner 不自动重启，界面提示用户按需启动。普通关闭窗口仍只隐藏，不触发页面销毁。
+
+Electron 打包 ESM 主入口不在顶层等待 `app.whenReady()`；通过异步启动函数完成初始化，避免入口加载与 ready 相互等待。显式命令行 `--user-data-dir=<绝对路径>` 可使用独立配置目录，启动时创建目录；此路径不由 renderer/IPC 设置，不改变凭据加密或 API 权限。
+
+
+本地 Runner 自检增加可选 `opencode_error` 固定分类：`not_found`、`permission_denied`、`timeout`、`invalid_output`、`spawn_failed`、`nonzero_exit`、`version_mismatch`。主进程仅在 CLI 未通过时转发允许值；页面将分类显示为路径、权限、超时、安装或版本排错提示。仍只运行 `--version`，不调用模型，不传递异常文本、CLI 输出、设备令牌或供应商信息；账号与服务器隔离规则不变。
+
+
+版本检查子进程的标准输入改为关闭输入（DEVNULL），不继承桌面宿主持续开启的停止控制管道；模型请求仍使用独立 stdin 管道传递上下文，Windows Job 保护保持不变。新增真实 HTTP/子进程回归：保持宿主控制管道开启，自检应返回 CLI/服务器通过且不产生模型调用；三平台 CI 的独立二进制测试也运行此项。本机 Runner 42 项测试通过（2 项 Windows 专属跳过）。Windows GUI 的最新失败分类是版本检查超时，本项是否解决该阻塞仍待 Windows 原生复验。
+
+设计树展开状态由 `frontend/src/stores/designTree.ts` 在当前登录会话内共享，递归分支和页面重新挂载使用同一组条目 ID。路由切换保留，账户变化或退出清空；不写入本地持久存储。
+
+`desktop/tests/ci/keychain.py` 在 GitHub 托管 macOS 环境为源码迁移和打包业务两套测试分别建立全新的临时系统钥匙串，避免不同签名的宿主共享同名凭据条目；本地入口拒绝执行此设置，产品凭据策略不变。
+
+`frontend/e2e/desktop-real-model.spec.ts` 提供显式单次真实模型验收与同断言的假 CLI 模式；普通桌面套件不自动包含真实供应商调用。真实模式必须指定已安装应用、本机 CLI 和模型，经隔离 Django 验证候选仅在显式采纳、保存后持久化。

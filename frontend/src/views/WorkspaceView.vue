@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { recordPerformance } from '../performance'
 import BlockedLink from '../components/BlockedLink.vue'
 /**
  * F5 workspace page (WorkspacePage).
@@ -277,6 +278,8 @@ async function loadGraph(seq: number) {
 }
 
 async function reload(options: { fitGraph?: boolean } = {}) {
+  const measuredAt = performance.now()
+  let outcome: 'ok' | 'error' = 'ok'
   const seq = ++requestSeq
   loading.value = true
   error.value = ''
@@ -294,9 +297,11 @@ async function reload(options: { fitGraph?: boolean } = {}) {
     }
   } catch (err) {
     if (seq !== requestSeq) return
+    outcome = 'error'
     error.value = err instanceof ApiException ? err.message : '加载失败，请重试'
     ElMessage.error(error.value)
   } finally {
+    recordPerformance({ name: 'workspace_reload', duration_ms: performance.now() - measuredAt, outcome: seq === requestSeq ? outcome : 'superseded' })
     if (seq === requestSeq) loading.value = false
   }
 }

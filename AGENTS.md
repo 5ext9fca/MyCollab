@@ -34,7 +34,7 @@ MyCollab 是一个**单团队 Mission 协作系统**：发布 Mission、认领�
 - `AGENTS.md` 是维护 Agent 的入口，记录文档分工与规则加载要求；具体工作约定继续由下列规则文件维护。
 - `PROJECT_STRUCTURE.md` 记录当前目录职责、数据模型、接口、权限、页面与业务规则。
 - `TECH_STACK.md` 记录技术选型、实现约束、开发环境、验证命令、部署与升级操作。
-- `deploy/README.md` 与 `local_runner/README.md` 分别提供部署负责人和 Runner 用户的专项操作指南；实现细节与开发验证归入上述技术文档。
+- `deploy/README.md`、`local_runner/README.md` 与 `desktop/README.md` 分别提供部署负责人、Runner 用户与桌面伴侣用户的专项操作指南；实现细节与开发验证归入上述技术文档。
 - `NEW_FUNCTION.md` 保留本次需求规格职责，更新方式遵循文档同步规则；不作为长期结构说明的替代。
 
 ## 维护方式

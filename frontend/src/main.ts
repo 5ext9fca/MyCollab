@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
+import { installDesktopLinks } from './platform/desktop'
 import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
 
@@ -22,4 +23,5 @@ app.use(ElementPlus)
 // Make sure the CSRF cookie exists before any unsafe request is sent.
 ensureCsrf().catch(() => undefined)
 
+installDesktopLinks(message => ElMessage.error(message))
 app.mount('#app')

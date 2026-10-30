@@ -8,6 +8,8 @@ import tempfile
 import threading
 import time
 
+from .child_process import spawn, version_check, supported_version
+from .private_files import private_directory
 from .protocol import INPUT_LIMIT, RESULT_LIMIT, ProtocolError, bounded_json, validate_result, validate_evidence
 
 SYSTEM = """你是 MyCollab 的文本辅助。只能分析提供的文本，禁止调用任何工具、读取文件、运行命令或浏览网络。
@@ -62,6 +64,11 @@ Agent 需求文档必须返回 markdown 字段：按给定章节整理完整且�
 
 
 def _terminate(process):
+    if os.name == "nt" and getattr(process, '_mycollab_job', None) is not None:
+        # 即使直接子进程已经退出，也终止仍持有 stdout 的后代。
+        process._mycollab_job.close()
+        process.wait(timeout=5)
+        return
     if process.poll() is not None:
         return
     if os.name == "posix":
@@ -97,10 +104,11 @@ def terminate(process):
 def run(request, *, model, executable="opencode", heartbeat=lambda: True, timeout=780):
     """使用新私有会话，标准输入传递上下文；不将模型日志回传服务器。"""
     prompt = prompt_for(request)
-    version = subprocess.run([executable, "--version"], capture_output=True, text=True, timeout=15)
-    if version.returncode or version.stdout.strip() != "opencode v2.1.3":
+    version = version_check(executable)
+    if version.returncode or not supported_version(version.stdout):
         raise LocalFailure("local_configuration")
     with tempfile.TemporaryDirectory(prefix="mycollab-text-") as directory:
+        private_directory(directory)
         config = configuration()
         path = Path(directory, "opencode.json")
         path.write_text(json.dumps(config), encoding="utf-8")
@@ -111,7 +119,7 @@ def run(request, *, model, executable="opencode", heartbeat=lambda: True, timeou
             if key.startswith("MYCOLLAB_") or key.startswith("OPENCODE_"):
                 del env[key]
         env.update(OPENCODE_CONFIG=str(path), OPENCODE_CONFIG_CONTENT=json.dumps(config))
-        process = subprocess.Popen([executable, "run", "--standalone", "--format", "json", "--agent", "mycollab-text", "--model", model],
+        process = spawn([executable, "run", "--standalone", "--format", "json", "--agent", "mycollab-text", "--model", model],
             cwd=directory, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             start_new_session=os.name == "posix")
         events = queue.Queue(maxsize=256)

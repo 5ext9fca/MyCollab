@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useDesignTreeStore } from '../stores/designTree'
 import { ElMessage } from 'element-plus'
 import { listDesignElements } from '../api/designElements'
 import type { DesignElement } from '../api/types'
 const props = defineProps<{ parent?: string; archived: string; query?: string; kind?: string }>()
 const items = ref<DesignElement[]>([])
-const expanded = ref(new Set<string>())
+const treeState = useDesignTreeStore()
+const { expanded } = storeToRefs(treeState)
 const page = ref(0)
 const more = ref(true)
 const loading = ref(false)
@@ -17,7 +20,7 @@ async function load() {
   } catch { ElMessage.error('加载设计树失败') }
   finally { loading.value = false }
 }
-function toggle(id: string) { if (expanded.value.has(id)) expanded.value.delete(id); else expanded.value.add(id) }
+const toggle = treeState.toggle
 onMounted(load)
 </script>
 <template>

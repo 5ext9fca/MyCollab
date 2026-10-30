@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { observeTransfers, transferDiagnostics } from './transfer-diagnostics.js'
 
 async function login(page: Page, username: string) {
   await page.goto('/login')
@@ -26,6 +27,7 @@ async function pair(sender: Page, receiver: Page) {
 async function pages(browser: Browser, sameAccount = false) {
   const first = await browser.newContext({ permissions: ['local-network-access'] })
   const second = await browser.newContext({ permissions: ['local-network-access'] })
+  await Promise.all([observeTransfers(first), observeTransfers(second)])
   const sender = await first.newPage()
   const receiver = await second.newPage()
   await login(sender, 'transfer_sender')
@@ -69,7 +71,14 @@ for (const bytes of [0, 2 * 1024 * 1024 + 7, 100 * 1024 * 1024]) {
         await receiver.screenshot({ path: info.outputPath('verified-mobile.png'), fullPage: true })
         expect(await receiver.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
       }
-    } finally { await close(); await rm(dir, { recursive: true, force: true }) }
+    } finally {
+      const [senderState, receiverState] = await Promise.all([transferDiagnostics(sender), transferDiagnostics(receiver)])
+      await writeFile(info.outputPath('connection-diagnostics.json'), JSON.stringify({
+        browser: browser.version(), rawIpTestOnly: process.env.MYCOLLAB_TEST_RAW_IP === '1',
+        fileBytes: bytes, sender: senderState, receiver: receiverState,
+      }, null, 2) + '\n')
+      await close(); await rm(dir, { recursive: true, force: true })
+    }
   })
 }
 

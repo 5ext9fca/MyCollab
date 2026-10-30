@@ -59,7 +59,7 @@ class RequestSerializer(serializers.ModelSerializer):
         model = AssistanceRequest
         fields = ("id", "device_id", "kind", "schema_version", "object_id", "base_version", "submission_id",
                   "input", "status", "attempt_id", "lease_expires_at", "expires_at", "result", "error",
-                  "stopped_at", "retry_of_id", "created_at", "updated_at", "stale_reason")
+                  "claimed_at", "stopped_at", "retry_of_id", "created_at", "updated_at", "stale_reason")
 
 
 class RequestSummarySerializer(serializers.ModelSerializer):

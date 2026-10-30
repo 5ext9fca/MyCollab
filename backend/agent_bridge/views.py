@@ -97,3 +97,11 @@ class RunnerResult(RunnerView):
     def post(self, request, pk):
         item = services.finish(request.auth.pk, pk, **parsed(ResultSerializer, request))
         return Response({"id": str(item.pk), "status": item.status})
+
+
+class RunnerStatus(RunnerView):
+    def post(self, request):
+        # 只读探测不领取任务，不扩大设备令牌权限。
+        return Response({"device_id": str(request.auth.pk), "owner_id": str(request.user.pk),
+                         "schema_versions": [1], "capabilities": request.auth.capabilities,
+                         "expires_at": request.auth.expires_at, "lease_seconds": 180})

@@ -26,8 +26,8 @@
 | 身份认证 | Django Session、Cookie、CSRF | 同域浏览器登录与请求认证 |
 | 管理界面 | Django Admin + SPA 自建管理后台 | 数据检查、注册审批、成员与标签管理 |
 | 应用服务器 | Gunicorn，WSGI 部署 | 运行 Django HTTP 应用 |
-| HTTP 入口 | Caddy | HTTPS、静态文件、反向代理 |
-| 服务部署 | Docker Compose | 管理 Caddy、应用和数据库 |
+| HTTP 入口 | MyCaddy + 内部 Caddy | 公共入口负责 HTTPS，内部 Web 负责静态文件、反向代理 |
+| 服务部署 | Docker Compose | 管理内部 Web、应用和数据库；公共 MyCaddy 独立部署 |
 
 运行时 MUST 使用 Python 3.13（后端及 LocalRunner），本地虚拟环境与 Docker 镜像保持一致；Python 补丁版本跟随 3.13 系列更新。
 
@@ -265,7 +265,7 @@ Redis、后台任务队列、WebSocket、独立搜索服务与 Kubernetes 不属
 
 设计/资产的依赖图 MUST 与父子组成树、Mission 执行依赖分别维护和验环。添加或替换依赖必须在团队锁内检查完整可达路径，防止并发反向依赖成环；数据库兜底禁止自依赖与重复边。
 
-第一批本地适配器锁定 OpenCode CLI 2.1.3，使用 Python 标准库启动独立非交互会话，显式传入专用禁用工具配置。MUST 在本地和服务端重复校验输出，正常服务端测试不得调用付费模型；真实接入测试须显式设置 MYCOLLAB_LIVE_MODEL。服务器仅存 MyCollab 设备凭据摘要，不配置模型、供应商 URL 或供应商认证信息。
+本地适配器只接受 OpenCode CLI 2.1.3 与 2.2.0 两个精确版本，使用 Python 标准库启动独立非交互会话，显式传入专用禁用工具配置。MUST 在本地和服务端重复校验输出，正常服务端测试不得调用付费模型；真实接入测试须显式设置 MYCOLLAB_LIVE_MODEL。服务器仅存 MyCollab 设备凭据摘要，不配置模型、供应商 URL 或供应商认证信息。
 
 
 主分支使用本地 LLM 整理 Agent 需求 Markdown，MUST 复用有界文本交接，不增加服务器模型 SDK 或执行环境，不将模板拼接当作 LLM 整理。图像/代码执行及审批实现仅保留于 `feature/agent-delegation`；恢复该分支须使用独立数据库，不能假定主分支迁移后的执行历史仍存在。
@@ -395,6 +395,8 @@ MYCOLLAB_BROWSER_TEST=1 POSTGRES_DB=mycollab_browser .venv/bin/python manage.py 
 
 已有 Google Chrome 时可增加 `MYCOLLAB_BROWSER_CHANNEL=chrome`，无需下载 Chromium。测试自动启动临时 Django 服务及 localhost:5179 的 Vite，执行 `npm run test:transfer`；该 npm 命令依赖测试服务和测试用户，不作为单独启动应用的命令。覆盖空文件、普通文件、100 MiB 文件下载摘要一致、篡改字节拒收和取消；同机两个独立浏览器会话不能替代实际两台设备的网络环境验收。失败截图/trace 保存在 `frontend/test-results/`，不提交版本库。
 
+三项文件大小用例无论成功或失败均输出 `connection-diagnostics.json`：浏览器版本、测试对照标记、文件大小、首次连接耗时、最终 ICE/连接状态、双方描述中的候选与 mDNS 数量，以及原生统计中的候选对/通道计数。仅记录白名单计数，不保存地址、完整 SDP、令牌或正文。统计是最终快照，连接关闭后浏览器可能清空计数，零值不能解释为整个传输期间没有候选或数据；首次连接耗时独立保留。诊断仅注入临时测试上下文，不进入产品构建。
+
 若自动验收机器的 mDNS 解析受限，可在上述验收命令中额外设置 `MYCOLLAB_TEST_RAW_IP=1` 进行对照测试：仅让临时 Chrome/Chromium 测试进程使用原始 IP 候选，不修改系统或日常浏览器设置，也不改变应用代码。该模式下通过的结果证明文件传输及校验协议可用，不证明默认 mDNS 或真实跨设备网络可达；实际部署仍需正常浏览器双机验证。
 
 文档重组前已有的本机验收记录（本次未重跑）：Chrome 默认 mDNS 候选未能建立连接，独立 WebRTC 探针也复现该现象；临时测试浏览器启用原始 IP 候选后，6 项真实浏览器测试全部通过（空文件、约 2 MiB、100 MiB、字节篡改拒收、配对后取消、传输中取消）。桌面与 390px 窄屏截图已检查。未修改系统或日常浏览器权限；真实两台设备的默认浏览器环境仍需部署后验证。
@@ -403,15 +405,15 @@ MYCOLLAB_BROWSER_TEST=1 POSTGRES_DB=mycollab_browser .venv/bin/python manage.py 
 
 ### 生产部署
 
-无域名的局域网 IP 与公网 IP HTTPS 部署，见 [deploy/README.md](deploy/README.md)，包含内部 CA、公共 IP 短期证书、客户端信任和续期流程。
+生产部署见 [deploy/README.md](deploy/README.md)。独立 MyCaddy 管理公网地址、证书与 80/443，业务栈仅通过外部 `caddy-public` 网络接入；先创建该网络。
 
 ```bash
 cd deploy
-cp .env.example .env     # 填入 DJANGO_SECRET_KEY、POSTGRES_PASSWORD、DOMAIN 等
+cp .env.example .env     # 填入 DJANGO_SECRET_KEY、POSTGRES_PASSWORD、CADDY_NETWORK 等
 docker compose up -d --build
 ```
 
-Caddy 在同一域名下按 `/api/*`、`/admin/*`、`/static/*`、其余交给 SPA 的顺序处理请求；数据库只在内部网络开放。上传的附件保存在 `media_data` 卷（`/app/media`），Caddy 不提供该目录，下载一律经 `GET /api/library/files/{id}/`。备份、关闭 DEBUG、使用真实密钥等要求见 `TECH_STACK.md` 第 9 节。
+公共 MyCaddy 将网站请求代理至 `mycollab-web:80`；内部 Web 保留可信代理传入的 HTTPS 信息，并按 `/api/*`、`/admin/*`、`/static/*`、其余交给 SPA 的顺序处理请求；数据库只在内部网络开放。上传的附件保存在 `media_data` 卷（`/app/media`），Caddy 不提供该目录，下载一律经 `GET /api/library/files/{id}/`。备份、关闭 DEBUG、使用真实密钥等要求见 `TECH_STACK.md` 第 9 节。
 
 #### 站内日期提醒调度
 
@@ -482,3 +484,348 @@ backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
 
 
 2026-10-26 真实需求文档验收：`MYCOLLAB_LIVE_MODEL=deepseek/deepseek-flash` 运行 `agent_bridge.tests.test_requirements_live`，浏览器 API 创建请求、真实本地 OpenCode 整理、Bearer 回传、浏览器 API 读取均通过；输出包含 Markdown 章节及 Mission 来源 ID，任务状态与版本未改变。服务端进程限制为本机网络，供应商调用仅在本地 OpenCode 子进程；这不等同于浏览器人工验收。
+
+## 18. 性能测量
+
+性能指标先于技术栈迁移。默认不采集；生产可设置 `MYCOLLAB_PERFORMANCE_SAMPLE_RATE=0.1` 采样 10% API 请求，设为 `1` 全量记录，`0` 关闭。JSON 日志写入标准错误，由部署方收集和轮转；`X-Request-ID` 仅在采样请求返回。SQL 耗时包含锁等待，不能与团队锁耗时相加。流式下载的后续传输不计入请求处理耗时。
+
+后端先迁移，随后可在 `backend/` 执行：
+
+```bash
+.venv/bin/python manage.py performance_probe --username alice --iterations 20
+.venv/bin/python manage.py agent_metrics --hours 24
+```
+
+探针需要已存在的有效用户；可用 `--mission-id UUID` 指定详情任务，空库不测详情。每个端点一次预热后统计 p50/p95、最大 SQL 数和 SQL 中位耗时；并非并发压测。Agent 统计最近 1–720 小时内创建的请求，输出样本数；未出现样本返回 null，不将无数据当成零耗时。运行耗时包含模型及回传，不能当作纯模型速度。
+
+前端在开发/构建时设置 `VITE_PERFORMANCE_METRICS=1`。完成工作台操作后，在浏览器控制台调用 `window.mycollabPerformance.snapshot()` 读取最近 200 条记录，`clear()` 清空。记录只有固定事件名、耗时、图规模与完成状态，不含业务文本；切换页面或刷新会影响样本范围，比较时固定设备、任务规模、日期窗口和筛选。
+
+### 本机性能基线（2026-10-28）
+
+在发布编译结束后，以本机已有演示账号 `alice` 对当前数据库执行 `performance_probe --iterations 20`，每端点预热一次：任务列表 p95 87.995 ms、SQL 最多 69 次；工作台概览 p95 114.484 ms、SQL 最多 74 次；工作台图 p95 117.321 ms、SQL 最多 76 次；任务详情 p95 41.883 ms、SQL 最多 14 次。此为当时数据与设备上的串行服务端基线，不含网络/渲染，不证明 50 人并发容量；后续优先分析列表与工作台查询数，不据此直接重写技术栈。
+
+### 安装副本性能测量
+
+三平台开发 CI 在业务 GUI 和 Windows 安装卸载步骤之后执行三轮性能测量，报告写入开发归档内 `performance-baseline.json`，同时保存在 GUI 证据归档；`development-validation.json` 的 `performance_baseline` 记录该步骤的真实结果。流水线任一步骤失败均不得据此声称性能基线通过；CI 运行器数据与用户实机分开记录，不设置缺少历史依据的速度阈值。
+
+在已安装前端开发依赖的仓库中，显式运行 `node desktop/scripts/measure_desktop.mjs --app "实际客户端可执行文件" --installer "对应安装包" --output "desktop/build/performance/result.json"`；macOS 的可执行文件位于 `.app/Contents/MacOS/MyCollab`，Windows 指向安装后的 EXE。默认三轮，`--runs` 允许 1–10 轮。每轮创建新临时配置和本机 HTTP 夹具，测试结束退出应用并删除该配置；不使用业务数据库、不启动 Runner 或调用模型。
+
+测量从启动调用到服务器设置输入框可见、登录到工作区导航就绪、切换素材库到列表内容可见的耗时；含 Playwright 通信开销，使用小型固定夹具，不是正式服务器或大规模业务性能。每轮素材库静置 10 秒后以 1 秒间隔采样五次 `app.getAppMetrics()`。保留各进程工作集及其总和，单位为 [Electron 定义的 KB](https://www.electronjs.org/docs/latest/api/structures/memory-info)；共享内存可能重复计算，不能称为系统独占内存。报告包含系统/CPU/架构、Electron/Chromium 版本、安装包大小与 SHA-256、可执行文件及 app.asar SHA-256 和逐轮原始样本。每轮为新进程/新配置，但不清空操作系统文件缓存，不能当作重启系统后的冷启动。失败时保留部分报告并令 `complete=false`，不得用于通过判定。传输峰值、真实服务器页面与其他平台的性能仍需单独测量。
+
+## 19. Runner 恢复与诊断
+
+本批最初使用 POSIX 本机进程锁；当前 Windows 原生文件锁实现与 CI 结果见后文桌面章节。配置旁 `runner-state/<identity>/` 保存私有待发结果；旧设备/服务器的结果不能跨配置回传。原有“心跳失败立即停止”“回传最多三次后丢弃”的行为由本节替代：仅在已确认租约内短暂容忍断网，持久化结果按原轮次重传。服务器过期后仍拒收，保留期不是租约延长。
+
+```bash
+backend/.venv/bin/python -m local_runner --diagnose
+backend/.venv/bin/python -m local_runner --status
+backend/.venv/bin/python -m unittest discover -s local_runner/tests -v
+```
+
+诊断不领取任务、不调用收费模型；CLI 版本通过不代表供应商额度或登录一定有效。空闲领取间隔约 3–10 秒（加 0–1 秒抖动），网络失败退避最多 30 秒。恢复的是结果投递；模型本身不自动重试。待发箱错误或存储耗尽时应修复本机存储，不能通过删除执行记录来假定任务可安全重跑。
+
+Runner 可配置可选 `ca_file` 指向管理员提供的 PEM 根证书；用于内部 CA 的 HTTPS，仍进行证书与主机名校验，不提供跳过验证开关。桌面进程通过 `--parent-pid` 启动 Runner；父进程消失时 Runner 收到 SIGTERM 并清理模型子进程。命令行独立运行不受桌面父进程约束。
+
+## 20. 桌面伴侣构建
+
+macOS 首批使用 Tauri 2，原生层只管理固定 Runner 进程，前端沿用 Vue + Element Plus。独立 Node 依赖在 `desktop/package-lock.json`，Rust 依赖在 `desktop/src-tauri/Cargo.lock`。需要 Xcode Command Line Tools、Rust（依赖要求至少 1.90）、Node 24+、Python 3.13。
+
+从仓库根执行：
+
+```bash
+backend/.venv/bin/python -m pip install -r desktop/requirements-build.txt
+npm ci --prefix desktop
+npm --prefix desktop run sidecar
+npm --prefix desktop run build
+npm --prefix desktop run test
+cargo test --manifest-path desktop/src-tauri/Cargo.toml --features custom-protocol
+npm --prefix desktop run tauri -- build --features custom-protocol --bundles app
+```
+
+产物位于 `desktop/src-tauri/target/release/bundle/macos/MyCollab Companion.app`。运行时不依赖源码目录或用户 Python，OpenCode 仍由用户安装并认证。当前构建架构取宿主机；本机 Apple Silicon 验收不代表 Intel 或旧版 macOS 已验收。
+
+`npm --prefix desktop run tauri -- dev` 用于界面联调，需先构建 sidecar；`build --debug --features custom-protocol --bundles app` 可生成带本地前端的调试包。只有调试构建支持 `MYCOLLAB_COMPANION_TEST_CONFIG` 指向隔离测试配置，不修改用户 HOME 或默认凭据；发布构建忽略该变量。
+
+验证独立二进制的真实断线恢复与桌面父进程退出（假 CLI，不调用供应商）：
+
+```bash
+MYCOLLAB_TEST_RUNNER_BINARY="$PWD/desktop/src-tauri/binaries/mycollab-runner-aarch64-apple-darwin" backend/.venv/bin/python -m unittest local_runner.tests.test_delivery_integration -v
+```
+
+Intel 构建将上述后缀改为 `x86_64-apple-darwin`。测试会监听临时 localhost 端口，需要运行环境允许本机网络。
+
+### 对外发行与签名更新
+
+本地验证不要求使用开发者证书；对外分发需维护者配置 Apple Developer ID 签名和公证。更新公钥和固定 HTTPS 端点分别由构建环境的 `MYCOLLAB_UPDATE_PUBLIC_KEY`、`MYCOLLAB_UPDATE_URL` 注入，不能由网页、配置文件或模型结果覆盖。
+
+发布时配置 Tauri `bundle.createUpdaterArtifacts=true`，提供 `TAURI_SIGNING_PRIVATE_KEY`（仅发布环境保管）及相应密码，生成带签名的更新包和版本清单；更新清单需使用实际平台/架构、版本、HTTPS 下载地址与签名。不得将签名私钥提交仓库。本地构建没有发布源时不发起更新请求，界面提示手动安装。
+
+参考：[Tauri sidecar](https://v2.tauri.app/develop/sidecar/)、[原生权限](https://v2.tauri.app/security/capabilities/)、[签名更新](https://v2.tauri.app/plugin/updater/)。
+
+### 本批验证记录（2026-10-28）
+
+- 后端迁移检查与系统检查通过；完整测试 272 项，其中 3 项需显式开启的浏览器/真实模型验收跳过。
+- 原 SPA 类型检查、149 项测试和生产构建通过；桌面类型检查、3 项界面测试、5 项 Rust 测试及发布模式打包通过。
+- Runner 28 项测试通过；最终 `.app` 内独立 Runner 在临时目录完成两项真实本机 HTTP/进程验收：服务器接受结果后丢失确认再重启仍只调用一次假模型；桌面父进程消失会终止正在运行的假模型。未调用收费供应商。
+- 原生窗口已检查配置脱敏、自检、启动、假模型结果回传、停止、单实例、关闭后恢复，以及未配置签名更新源的提示。最终发布包可加载内置页面，Runner 保持停止。未实际开启用户登录启动设置、未进行操作系统重启验收。
+- 当前产物为 Apple Silicon macOS 本机版，未做 Developer ID 公证或实际远程更新发布；Intel/其他系统尚未验收。构建存在 Element Plus 主包体积提示，不影响打包；现有前端也有类似提示。
+
+### Electron 迁移与非 GUI 检查
+
+新桌面宿主固定使用 Electron 45.1.0、electron-builder 26.18.0，依赖及锁文件在 `desktop/`，业务前端继续复用 `frontend/`。依据 [Electron 破坏性变更说明](https://www.electronjs.org/docs/latest/breaking-changes)，Electron 44 起最低 macOS 13，打包元数据已明确 `minimumSystemVersion: 13.0`；首批目标 macOS arm64/x64、Windows x64。Windows 具体最低受测系统版本仍待原生 CI/环境验证，不以声明的架构替代实测支持。Electron 自带 Node 与开发用 Node 各自独立。安全升级须同时更新固定版本、锁文件并重新运行边界检查。
+
+`desktop/electron-builder.json` 包含 macOS DMG/ZIP、Windows NSIS 配置，打包时复制 Vue 静态资源到 `resources/frontend`。`scripts/package_electron.mjs` 限制原生平台/架构构建：开发目录包使用临时签名，不自动使用钥匙串的个人开发证书；正式分发命令强制代码签名，发行证书、公证与更新源仍待配置。当前开发包已包含对应架构 Runner，但尚未完成正式发行与 GUI 验收。
+
+在 `desktop/`：
+
+- `npm run electron:check`：主进程、策略、传输与打包脚本的严格 JS 类型检查，以及 preload 语法检查。
+- `npm run electron:test`：Node 单元测试，检查实际 preload 固定接口、IPC 来源、路径、外链、局域网权限、CSRF、身份清理、资源流取消和重定向失败，不启动 Electron 窗口。
+- `npm run electron:build`：共享 Vue 类型检查与生产构建。
+- `npm run electron:pack`：构建本机架构的临时签名目录包，不启动应用；macOS 产物位于 `desktop/build/electron/mac-arm64` 或 `mac` 等 builder 平台目录。
+- `npm run electron:dist`：原生架构安装产物，强制签名；需发布环境的证书。公证与发行验收未完成前不能发布。
+- `npm run electron:setup`：下载开发运行所需的 Electron 可执行文件，不启动应用。
+- `npm run electron:dev`：确保 Electron 已安装后构建并启动 GUI；已获用户授权，可用于当前 GUI 验收。
+
+前期曾暂缓 GUI 测试与验收；当前已恢复授权，实测进展见下方“Electron GUI 隔离验收”。已选择性运行前端 API 和文件传输纯逻辑测试：`npm run test -- src/tests/desktopAuth.spec.ts src/tests/client.spec.ts src/tests/missions.spec.ts src/tests/library.spec.ts src/tests/fileTransferProtocol.spec.ts src/tests/fileTransferController.spec.ts`。这些测试不渲染组件，不替代真实 Electron 会话、系统权限、GUI 或跨系统验证。
+
+2026-10-29 已以临时签名生成 `desktop/build/electron/mac-arm64/MyCollab.app`（约 259 MiB），通过 `codesign --verify --deep --strict`；静态核对 ASAR 内 4 个宿主模块及资源目录的 68 个共享前端文件与当前构建一致。未启动应用，不代表 GUI、登录或 WebRTC 实测通过。
+
+桌面凭据模块使用 Electron 45 的异步 `safeStorage` 接口（[官方说明](https://www.electronjs.org/docs/latest/api/safe-storage)）；主进程已注入系统实现，macOS arm64 的实际系统加密保存和读取已通过下方 GUI 验收；Windows DPAPI 已通过下述原生 CI GUI 验收。当前 Node 测试以独立 AES-GCM 测试适配器验证密文落盘、身份隔离、篡改拒绝、密钥轮换与失败保留旧文件，不调用钥匙串，也不代表 Windows DPAPI/macOS 钥匙串实机验收。`electron:check` 包含该模块的严格类型检查。
+
+Runner 的匿名管道入口由 `local_runner/tests/test_private_handoff.py` 使用真实 Python CLI 子进程检查，覆盖中文/空格路径、有界读取、错误脱敏及不创建明文配置。Python 3.13 的 Runner 测试共 30 项；本轮普通沙箱运行 28 项通过，另 2 项因本机监听权限受限，授权后单独重跑 `local_runner.tests.test_delivery_integration` 通过。所有检查均不涉及 GUI 或真实模型调用。
+
+桌面绑定使用独立内存 `device-probe` Session，只对已配置服务器的固定状态端点发送设备 Bearer，`credentials: omit`、`redirect: error`；不借用业务 Cookie。后端状态接口的身份字段为加法兼容变更，无新增迁移。macOS arm64 的 GUI 绑定交互已通过下方隔离验收，核验逻辑另通过 Node 测试及后端 API 回归验证。
+
+
+Runner 原生构建与非 GUI 二进制检查（仓库根，使用 Python 3.13）：
+
+```bash
+backend/.venv/bin/python desktop/scripts/build_sidecar.py --electron
+backend/.venv/bin/python desktop/scripts/check_runner.py desktop/build/runner/mac-arm64/mycollab-runner
+```
+
+Windows 使用其 Python 3.13 解释器运行同一构建脚本，将检查路径替换为 `desktop/build/runner/win-x64/mycollab-runner.exe`；Intel macOS 使用 `mac-x64`。验证器创建临时本机 HTTP 服务，仅空领取一次、不执行模型，检查管道配置、中文/空格路径、状态与不落盘令牌，不启动 GUI。
+
+早期本机验证记录（当前结果见下方原生 CI）：Runner 回归 34 项完成，33 项通过，1 项 Windows 原生 ACL 测试在 macOS 上明确跳过；macOS arm64 独立 Runner 构建及上述二进制检查通过。Windows 和 Intel macOS 未实际构建/运行，Windows Job Object 的原生验证和原生 CI 仍待完成。DACL 实现依据 [Microsoft SetNamedSecurityInfoW](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-setnamedsecurityinfow)，文件锁依据 [Python msvcrt](https://docs.python.org/3.13/library/msvcrt.html)；不能以 POSIX 测试替代 Windows 验证。
+
+
+Windows 模型树使用 [Microsoft Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) 的 KILL_ON_JOB_CLOSE；通过挂起创建、Job 分配、主线程恢复保证模型执行前已受控制。非 Windows 的模拟失败测试仅证明不会在分配失败时回退，不替代 `test_child_process.WindowsJobTests` 的 Windows 原生父进程崩溃与孙进程清理测试。
+
+Runner 最新回归共 39 项：37 项通过，Windows 原生 DACL 与 Job 测试 2 项在 macOS 跳过。`check_runner.py` 增加打包后持续运行、停止管道 EOF、退出码和停止状态检查，仍不启动 GUI 或调用模型。
+
+Electron Runner 控制器的非 GUI 子进程测试覆盖就绪、重复启动、启动取消、EOF 停止、自检脱敏与缺失程序；业务传输测试覆盖停止失败时保留会话。打包前必须先运行 `backend/.venv/bin/python desktop/scripts/build_sidecar.py --electron`（仓库根目录），打包脚本拒绝缺少本平台 Runner 的产物；electron-builder 将其复制到 `resources/runner`。`--desktop-events` 仅供私有控制管道，在获得设备锁后输出就绪事件。
+
+### 桌面原生 CI（不启动 GUI）
+
+`.github/workflows/desktop.yml` 配置 PR 路径触发与手动触发，分别使用 `macos-15`（arm64）、`macos-15-intel`（x64）和 `windows-2025`（x64）。标签依据 [GitHub 官方运行器列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。每个平台安装锁文件依赖、执行 Electron 类型和边界测试、前端纯逻辑测试、构建原生 Python 3.13 Runner 与 Electron 开发安装包（保留解包目录），再对实际包内 Runner 执行管道及状态检查。macOS 另外检查临时签名完整性。
+
+三个原生目标均执行完整 Runner 非 GUI 测试发现入口；Windows 使用 PyInstaller 构建测试专用假模型 CLI，覆盖结果恢复、取消、文件锁、ACL、Job、凭据交接与停止。只有 POSIX 权限位、进程组、符号链接及 `testrun.sh` 的专属测试按平台跳过，Windows 对应机制由原生测试覆盖。构建后通过 `MYCOLLAB_TEST_RUNNER_BINARY` 对实际 Runner 二进制额外执行结果确认丢失恢复和宿主退出清理。产物以 tar.gz 归档保留可执行权限，保存七天，只作为开发产物，不发布、不安装、不启动窗口、不使用发行密钥。Windows Server CI 不等于 Windows 客户端最低版本验收。用户已授权推送独立分支并创建草稿 PR。提交 `2b32024` 的[三平台原生 CI](https://github.com/5ext9fca/MyCollab/actions/runs/40744537700)已全部通过，三份开发包已归档；不代表正式签名发行或 GUI 验收通过。
+
+旧 macOS 配置导入采用原地复用状态目录与锁的方案，不复制待发箱。新增非 GUI 测试覆盖文件权限、符号链接、有界读取、服务器/用户核验、拒绝覆盖、加密状态标记及固定路径选择；`check_runner.py` 额外尝试竞争启动，验证实际二进制拒绝同状态目录的第二个 Runner。自定义 CA 的旧配置明确拒绝导入，相关信任适配仍待实现。
+
+### Electron 更新与发行构建
+
+更新运行时固定为 `electron-updater 6.8.12`（生产依赖），与现有 electron-builder 26 配套。采用该版本的 `autoDownload = false`、`autoInstallOnAppQuit = false`；不混用 updater 7 的破坏性 API。来源：[electron-builder v26 更新说明](https://www.electron.build/v26/docs/features/auto-update/)。下载完成只表示可进入安装流程，不替代 macOS 原生安装阶段的签名验证。
+
+`electron:pack` 生成更新禁用的开发目录包；`electron:dist:dev` 使用相同的凭据隔离和更新禁用策略生成 macOS DMG/ZIP 或 Windows NSIS 开发安装包，文件名含 `development`，不等于正式签名、公证发行；打包子进程剥离继承的 `CSC_*`、`WIN_CSC_*` 与 `APPLE_*` 发行身份，macOS 明确使用临时签名并禁用公证，Windows 明确关闭签名但保留可执行文件资源编辑，避免本机发行凭据影响开发构建；`electron:dist` 要求发布环境提供 `MYCOLLAB_UPDATE_URL`（以 `/` 结尾的 HTTPS 目录，每个系统/架构使用独立目录）。Windows 另外要求 `MYCOLLAB_UPDATE_PUBLISHER` 匹配签名证书发布者；构建强制代码签名并保持更新签名验证。macOS 正式构建强制签名及公证，证书与公证认证使用 electron-builder 的标准发布环境配置。脚本生成 `build/electron-config.json`，把更新策略写入包元数据，生成匹配的 `app-update.yml`；始终 `--publish never`，不自动上传或发布。
+
+发布负责人需把同次构建的安装包、ZIP、blockmap 与更新清单放到对应固定目录，先传包再传清单；禁止配置跨域 CDN 跳转，更新网络策略会拒绝。当前没有配置真实发布证书、公证身份及更新服务，不能宣称正式签名发行或线上升级已通过。控制器以注入更新适配器运行非 GUI 测试，覆盖停止失败、并发操作、错误脱敏与手动安装边界，不调用原生安装器。
+
+Windows 测试假 CLI 源码为 `local_runner/tests/fixtures/opencode.py`，由 CI 打包后经 `MYCOLLAB_TEST_OPENCODE_BINARY` 指定；该夹具只在测试中使用，不随客户端分发、不调用供应商。路径由 Python 生成原生绝对路径，避免 Git Bash `/d/...` 路径进入 Windows 子进程环境。
+
+`frontend/src/tests/desktopAuth.spec.ts` 是不挂载组件的 Pinia 状态测试，覆盖桌面停止失败时保留身份、成功退出后才重载。桌面传输测试另覆盖权限拒绝与会话过期区分、过期清理顺序及停止失败保护。
+
+独立 Runner 检查脚本另验证 `--diagnose --control-stdin` 在缺少 OpenCode、服务器拒绝设备时可返回 `unavailable` / `unauthorized`，管道保持打开直到自检结束，不领取或执行模型任务。桌面单元测试区分本地自检解析和在线启动核验，并验证会话代次变化使本地缓存失效。
+
+### macOS 正式打包的公证前置检查
+
+`electron:dist` 在调用打包器前必须通过公证配置检查，不能仅依赖 `notarize: true`：当前锁定打包器在未找到凭据时会警告后跳过公证。支持完整的 `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID` 组合，或 `APPLE_API_KEY`、`APPLE_API_KEY_ID`、`APPLE_API_ISSUER` 组合，或 `APPLE_KEYCHAIN_PROFILE`（可选 `APPLE_KEYCHAIN`）。检查按打包器的账户 → API → 钥匙串优先级执行；残缺的高优先级配置直接失败，不回退。不输出凭据值。此检查只证明配置存在，实际凭据有效性及公证成功仍由发行构建验证；开发包不要求这些凭据。
+
+### 手动构建正式发行产物
+
+`.github/workflows/desktop-release.yml` 仅支持手动触发，只允许默认分支；先复用 `desktop.yml` 完成同一提交的三个原生目标非 GUI 验证，再在对应原生运行器重新构建正式安装包。工作流只拥有 `contents: read`，不创建 Release、不上传更新源、不启动安装器或应用窗口。此工作流已随草稿 PR 推送，但尚未配置发行环境、执行或取得正式签名产物，不能把工作流存在视为跨平台发行通过。
+
+发布负责人需预先建立 `desktop-release-mac-arm64`、`desktop-release-mac-x64`、`desktop-release-win-x64` 三个 GitHub Environments，并限制为默认分支；按团队需求配置审批。环境隔离机制见 [GitHub 环境说明](https://docs.github.com/en/actions/concepts/workflows-and-actions/deployment-environments)。每个环境设置：
+
+- 变量 `MYCOLLAB_UPDATE_URL`：该平台/架构独立的 HTTPS 更新目录，以 `/` 结尾。
+- Windows 变量 `MYCOLLAB_UPDATE_PUBLISHER`：与证书匹配的发布者名称。
+- Secret `CSC_LINK`：electron-builder 支持的签名证书（此工作流建议使用导出证书的 base64 内容）；Secret `CSC_KEY_PASSWORD`：对应密码。Windows 需适用于该证书供应商的可导出签名方案；若供应商要求硬件或云签名，必须先接入其方案，不能退回未签名发行。
+- 两个 macOS 环境另需 Secrets `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`，使用 Developer ID Application 签名证书。此工作流使用账户公证方式；本地发行脚本仍支持技术文档上节列出的其他方式。
+
+变量名依据 [electron-builder v26 签名文档](https://www.electron.build/v26/docs/features/code-signing/)。签名与 Apple 凭据仅注入正式打包步骤，不传给依赖安装、普通回归或产物归档。工作流引用环境不会自动配置环境的分支限制或审批，维护者必须在 GitHub 中完成设置。不要把任何真实凭据写入仓库。
+
+正式构建后检查实际包内 Runner；macOS 执行 `codesign --verify --deep --strict`、`xcrun stapler validate` 和 `spctl --assess --type execute`；Windows 使用 `Get-AuthenticodeSignature` 检查应用、Runner 和唯一安装器，必须返回 `Valid`。这些非 GUI 检查不替代首次安装、更新恢复或用户交互验收。
+
+`desktop/scripts/collect_release.py` 只收集顶层安装包（macOS DMG/ZIP、Windows EXE）、对应 `latest*.yml` 与 blockmap，生成 `SHA256SUMS.txt` 和包含提交及目标的 `build-info.json`，不归档整个构建目录或调试配置。缺少安装包/清单、同类型多个安装包或输出目录已有文件时失败，防止混入旧产物。工作流归档保存 14 天；下载同次构建的归档后，仍由发布负责人按前述顺序上传更新服务。测试命令：`backend/.venv/bin/python -m unittest discover -s desktop/scripts -p test_collect_release.py -v`。
+
+页面 Blob 导出与接收文件保存通过 Session 的 `will-download` 和 DownloadItem 交给 Chromium 管理，不开放文件系统 IPC。使用 Electron 45 的下载来源主框架参数校验调用方；保存失败只返回通用提示，不记录路径或正文。依据 [Electron DownloadItem](https://www.electronjs.org/docs/latest/api/download-item) 与 [Session 下载事件](https://www.electronjs.org/docs/latest/api/session#event-will-download)。非 GUI 注入对象测试覆盖来源、身份切换取消、完成清理和中断提示；系统保存对话框、真实 Blob 下载和跨平台磁盘失败尚未进行 GUI 验收。
+
+PR 开发构建在剥离全部发行身份后设置 `CSC_FOR_PULL_REQUEST=true`，仅让 electron-builder 执行命令行固定的 macOS `identity=-` 临时签名；否则工具在 PR 中默认跳过签名，导致打包后的资源封装无法通过完整性检查。此开关不放入正式发行环境，也不向 PR 提供证书或 Apple 凭据。首轮原生 CI 已确认 Windows 全部通过、两个 macOS 在此签名步骤失败；修复后的结果以对应运行记录为准。
+
+2026-10-29 原生 CI 汇总（提交 `2b32024`）：Windows Electron 51 通过/2 项 macOS 专属跳过，Runner 35 通过/4 项 POSIX 专属跳过；两种 macOS 各 Electron 53 通过、Runner 37 通过/2 项 Windows 专属跳过。三平台各前端纯逻辑 29 项、归档脚本 3 项和实际二进制恢复/退出 2 项通过，包内 Runner 检查通过，两种 macOS 开发签名完整性通过。详见[运行记录](https://github.com/5ext9fca/MyCollab/actions/runs/40744537700)；没有执行 GUI、签名发行或实际升级。
+
+开发打包模式只接受 `--dir` 或 `--development` 单一参数，无参数才是正式发行；未知/冲突参数拒绝执行。原生 CI 已切换到 `electron:dist:dev`，只生成安装产物，不运行安装器或应用窗口。开发安装包的系统签名/信任限制不应通过关闭系统安全设置绕过。
+
+安装目标自身的 `arch` 数组会优先于 electron-builder 命令行架构；脚本因此在生成配置时把所有目标限定为当前 `process.arch`，与已检查存在的 Runner 保持一致，禁止在本机顺带生成缺少对应 Runner 的其他架构安装包。macOS arm64 本机开发 DMG/ZIP 已通过构建、DMG 校验和、ZIP 完整性与所需文件检查，未启动应用。
+
+开发安装包原生验证：提交 `04239f0` 的[三平台 CI](https://github.com/5ext9fca/MyCollab/actions/runs/40746830510)全部通过，实际生成 `MyCollab-0.1.0-win-x64-development.exe`、`MyCollab-0.1.0-mac-arm64-development.dmg/.zip` 和 `MyCollab-0.1.0-mac-x64-development.dmg/.zip`，包含于对应平台归档中。两种 macOS 各 54 项桌面测试通过，Windows 52 通过/2 项 macOS 专属跳过；其他既有回归及包内检查通过。未执行安装或 GUI；仓库发行环境列表目前为空，正式签名与更新服务仍需配置。
+
+### Electron GUI 隔离验收
+
+当前整体验收结论统一见 [开发客户端整体验收报告](desktop/ACCEPTANCE.md)，Windows 分项证据见 [Windows 验收报告](desktop/WINDOWS_ACCEPTANCE_REPORT.md)。下文保留各提交、平台及测试方式的历史验证记录，不能将旧的“待验收”直接当作最新状态，也不能将后续单项通过扩大为整个平台通过。
+
+#### 桌面测试的三个入口
+
+桌面环境测试统一位于 `desktop/tests/`，分为本地 macOS、本地 Windows、CI 三类。`shared/` 只存放两种本地入口复用的 Playwright 用例、HTTP 夹具与依赖锁文件；不直接作为第四种环境入口。原有 `desktop/electron/tests/` 边界单元测试和 `local_runner/tests/` 子进程测试保持原位置，供各平台共用。
+
+| 类别 | 入口 | 环境与覆盖 | 报告位置 |
+| --- | --- | --- | --- |
+| 本地 macOS | `desktop/tests/local-macos/run.mjs` | macOS 原生 Node 24、已安装开发版 `.app`；本机 HTTP 夹具与真实 Electron 宿主 | `desktop/test-results/local-macos/<运行标识>/` |
+| 本地 Windows | `desktop/tests/local-windows/run.ps1` | Windows 原生 Node 24、已安装开发版 EXE；同一组本机 HTTP 夹具与宿主用例 | `desktop/test-results/local-windows/<运行标识>/` |
+| CI | `.github/workflows/desktop.yml` → `desktop/tests/ci/check_gui.py`，Windows 另调用 `check_windows_install.py` | 原生三平台构建、真实 Django/PostgreSQL、假模型 CLI、包内 Runner；Windows CI 静默安装卸载 | `frontend/test-results/desktop/`、`desktop/build/windows-install-validation.json`，由工作流归档 |
+
+本地套件无需重新打包、不安装 Chromium、不依赖 PostgreSQL 或模型 CLI。服务只监听 `127.0.0.1` 随机端口，提供合成账号、素材和设计树；每用例使用独立 `--user-data-dir`，退出后只清理测试配置。保存对话框选择由测试替换，窗口恢复通过宿主事件触发，不代表原生交互实测。**本地 HTTP 夹具不验证 Django 权限、业务状态机或真实网络互通，不替代 CI 集成验收。**
+
+#### 本地 macOS 测试
+
+在 macOS 仓库根目录执行：
+
+```bash
+node desktop/tests/local-macos/run.mjs --app /Applications/MyCollab.app
+node desktop/tests/local-macos/run.mjs --app /Applications/MyCollab.app --smoke-only
+```
+
+`--app` 接受已安装开发版 `.app` 目录，默认 `/Applications/MyCollab.app`；`--report-root` 可指定报告根目录。入口检查 `darwin` 平台，拒绝在 WSL/Linux/Windows 上伪造 macOS 测试。需要本机 Node 与 npm；不会自动安装或卸载 App、配置钥匙串、调用模型或修改系统自启动。
+
+#### 本地 Windows 测试
+
+Windows PowerShell 中执行（仓库根目录）：
+
+```powershell
+& .\desktop\tests\local-windows\run.ps1 -AppPath 'C:\Program Files\MyCollab\MyCollab.exe'
+& .\desktop\tests\local-windows\run.ps1 -AppPath 'C:\Program Files\MyCollab\MyCollab.exe' -SmokeOnly
+```
+
+脚本兼容 Windows PowerShell 5.1（UTF-8 BOM），要求 Windows Node，`-ReportRoot` 可指定报告根目录。WSL 下调用的是 Windows PowerShell 与 Windows Node，不使用 Linux Electron。若系统策略拒绝 WSL UNC 路径上的未签名脚本，将 `tests` 目录复制到 Windows 本地目录、保留 `local-windows` 与 `shared` 的相对关系后，在原策略下运行：
+
+```powershell
+$source = '\\wsl.localhost\FedoraLinux-44\home\hx\MyCollab\desktop\tests'
+$localTests = Join-Path $env:TEMP ('mycollab-acceptance-tests-' + [guid]::NewGuid().ToString('N'))
+Copy-Item -LiteralPath $source -Destination $localTests -Recurse
+& (Join-Path $localTests 'local-windows\run.ps1') -ReportRoot '\\wsl.localhost\FedoraLinux-44\home\hx\MyCollab\desktop\test-results\local-windows'
+```
+
+不设置 `ExecutionPolicy Bypass`；本地脚本仍被策略拒绝时由本机管理员处理授权或签名。
+
+本地 Windows 另提供显式真实站点模式：
+
+```powershell
+& .\desktop\tests\local-windows\run.ps1 -LiveServer 'https://测试站点根地址' -ReportRoot '.\desktop\test-results\local-windows-live'
+```
+
+此模式会在指定站点写入测试数据，须先获得站点测试授权；用户在独立窗口手动登录专用账号，脚本最多等待 5 分钟，不接收聊天密码，不保存 trace、截图或登录状态。`shared/live.config.mjs` 与 `live.spec.mjs` 独立于默认夹具套件，默认运行绝不触发真实站点测试；`LiveServer` 与 `SmokeOnly` 互斥，只接受 HTTPS 根地址，保持证书校验。
+
+登录后由真实页面创建唯一“Windows自动验收”前缀的里程碑、两步依赖模板和资产，实例化两个任务并依次认领/提交/验收，检查里程碑必须手动完成；保存并刷新个人甘特筛选；创建设备，使用不存在的 CLI 路径验证 DPAPI 绑定、自检、包内 Runner 空闲启停、窗口隐藏恢复及退出登录停止。测试不创建辅助请求，不调用模型，不修改已有任务。只读 API 用于复核页面写入结果。`acceptance.json` 分项记录通过/失败和新建数据 ID；这些站点测试数据保留，不自动删除或归档，临时本机配置在退出后删除。真实供应商、网络中断待发箱恢复及进程异常终止仍需独立验收。
+
+2026-10-29 Windows 真实站点模式实际完成上述 6 项检查，全部通过；用户只手动登录一次。另一次只读进程检查确认没有 mycollab-runner 进程残留。夹具基础模式补充 HTTP 503 下载失败、目标为目录导致落盘失败的提示及恢复，11 项通过；完整模式另有 2 项既有问题回归，不将基础模式当作完整通过。
+
+两个本地入口都会将 `shared` 中的测试文件复制到系统临时工具目录，执行 `npm ci --ignore-scripts`、夹具服务测试和 Playwright。报告包含 HTML、JSON、截图、trace、应用可执行文件及 app.asar SHA-256；工具暂存目录保留便于复查。报告仅含测试数据，仍应检查后再分享。默认完整模式保留 `@known-issue` 用例的真实失败；基础模式显式排除这些用例，不等于完整验收通过。
+
+2026-10-29 Windows 11 x64 / Node 24.11.1 既有本机结果：完整套件 11 项中 9 项通过、英文默认文件名和树展开状态 2 项失败；基础模式 9 项通过；HTTP 夹具测试 1 项通过。历史报告保留原 `desktop/test-results/windows/` 路径。新 macOS 本地入口尚需 macOS 实机运行，不能沿用 Windows 或历史 CI 结果宣称通过。
+
+三入口整理后的本机复验：新 Windows 入口完整运行仍为 9 项通过、2 项相同产品失败，报告位于 `desktop/test-results/local-windows/20261029-174840-1f0a525d/`；HTTP 夹具测试通过。macOS 入口仅完成 Node 语法、帮助命令和 Windows 上拒绝执行检查。CI 脚本完成 Python 语法、仓库根路径与工作流引用检查，以及非 CI 环境拒绝执行检查；未触发远端 CI 或本地安装卸载。
+
+本地套件使用 Playwright 的实验性 [Electron API](https://playwright.dev/docs/api/class-electron)；版本或安装包变化后重新验证。真实安装向导、登录启动、卸载、Runner/供应商与双机矩阵按专项验收文档独立执行。
+
+#### CI 测试
+
+CI 专用脚本集中于 `desktop/tests/ci/`，工作流已使用新路径。`check_gui.py` 保留 `CI=true` 环境检查，创建并停止临时 PostgreSQL 集群；调用 `backend/accounts/test_desktop.py`，由其管理隔离测试数据库、媒体目录与假模型夹具，再运行 `frontend/playwright.desktop.config.ts`、`frontend/e2e/desktop*.ts`。业务集成用例保留在前端依赖所在目录，避免复制第二份业务用例或改变模块解析。`check_windows_install.py` 仍只接受 GitHub Windows 临时运行器，不用于本地安装卸载。发布工作流继续复用桌面工作流。
+
+下面保留完整后端集成验收的命令、覆盖和历史记录；本地高级排查可显式运行 Django 隔离命令，但不要伪造 CI 环境变量调用 CI 安装脚本。
+
+#### Django 与完整后端集成验收
+
+当前已恢复 GUI 验收授权，但不执行正式发行。先构建共享前端并安装锁定 Electron：`npm --prefix frontend run build`、`npm --prefix desktop run electron:setup`。在 backend 运行 `MYCOLLAB_DESKTOP_TEST=1 POSTGRES_DB=mycollab_desktop_gui .venv/bin/python manage.py test accounts.test_desktop --noinput`。此入口创建并销毁独立 PostgreSQL 测试库，启动真实 Django LiveServer 和 Electron 窗口；测试引导文件在加载产品宿主前指定临时 userData，不修改产品安全策略、用户配置或模型账号。
+
+`frontend/playwright.desktop.config.ts` 与浏览器文件传输配置分开；截图和 trace 位于 `frontend/test-results/desktop`。普通后端测试跳过此显式 GUI 入口。本机 macOS arm64 已通过服务器设置、登录、导航、刷新和退出流程；其他平台及真实安装产物的 GUI 行为仍需单独验证。此测试不启动 Runner 或调用模型。
+
+素材 GUI 验收已覆盖真实 multipart 上传、缩略图解码、授权读取与下载字节一致、退出拒绝读取、跨账号列表隔离及删除拒绝后保持登录。测试使用临时 MEDIA_ROOT；下载只替换系统保存路径选择，点击、IPC、主进程认证和流式落盘使用实际实现，不代表原生文件对话框验收通过。
+
+桌面业务 GUI 验收新增：通过真实页面发布任务、由发布者认领、提交人工验证说明并验收通过；刷新后读取实际 API 确认状态为 Done，验收记录仍显示。评论发布、编辑后刷新保留、确认删除均通过。本机 macOS arm64 的同一隔离验收同时回归登录、素材与账号隔离；这不替代多用户协作、子任务、其他业务路由或跨系统验收。
+
+本地 Agent GUI 验收使用真实 safeStorage 与 `desktop/build/runner/mac-arm64/mycollab-runner`，覆盖设备创建、加密保存、刷新解密读取、令牌不回显、自检、启动空闲轮询、手动停止、退出登录停止及另一账号绑定隔离。测试设备仅属于独立数据库，配置与密文位于临时 userData；OpenCode 使用不存在的隔离路径，自检应报告不可用，服务器应报告通过。不调用模型，不代表结果采纳、系统登录启动、旧版迁移或 Windows DPAPI 已验收。
+
+跨平台 GUI CI 已接入 `.github/workflows/desktop.yml` 的三个原生目标：构建后安装 Electron 测试运行时，使用 `desktop/tests/ci/check_gui.py` 新建仅监听本机的临时 PostgreSQL 集群，再运行隔离 Django/Electron 验收并保存截图与 trace 七天。macOS 安装 PostgreSQL 16；Windows 使用运行器预装工具（当前为 PostgreSQL 17），不触碰运行器原有数据库目录或服务。测试结束停止临时集群。该新增远端流程尚待实际运行验证；不等同于安装器交互或最低操作系统版本验收。正式发行工作流复用此桌面验证入口，因而也会包含 GUI 验证，但当前不执行正式发行。
+
+窗口生命周期 GUI 补验：Runner 空闲运行期间触发真实 BrowserWindow.close，确认窗口仍存在但已隐藏；重新显示后页面可操作且 Runner 继续等待任务。通过的是关闭隐藏与恢复行为，托盘菜单点击、登录系统后启动和系统休眠恢复仍需独立验收。
+
+桌面直传排查记录：本机两个隔离 Electron 会话在默认 mDNS 候选下完成配对和 offer/answer 交换，但 45 秒内仍停在建立连接、未传输字节；仅为测试进程启用原始 IP 候选后，2 MiB + 7 字节直传、双方 SHA-256 校验、真实 Chromium Blob 下载落盘与磁盘摘要一致均通过。保存位置由测试固定，未验收原生对话框。产品未启用该开关，默认连接问题尚未解决，不能据此宣称默认网络或双机直传已通过。新增直传验收仍在工作区排查，尚未提交到 CI。
+
+修复页面 beforeunload 阻止退出后客户端无法继续退出的问题：原生确认默认停留，取消后恢复退出控制状态并显示窗口，再次确认可正常结束进程。真实 Electron GUI 测试覆盖取消、窗口隐藏/恢复、再次确认退出；对话框选择由测试固定。桌面 54 项回归与严格类型检查通过。
+
+提交 `44666bf` 的[三平台 GUI CI](https://github.com/5ext9fca/MyCollab/actions/runs/40813474508)已全部通过。Windows x64、macOS arm64/x64 均实际运行隔离 Django 与 Electron 窗口，覆盖登录、Mission 发布/认领/提交/验收、评论、素材上传下载及账号隔离、系统 safeStorage 加密保存/刷新读取、原生 Runner 自检/启停/退出停止。三个目标均生成开发安装包并归档截图与 trace。此提交不包含后续关闭隐藏、离开保护修复或尚在排查的直传测试，不代表安装器交互、所有业务路由、真实双机网络与正式发行通过。
+
+桌面注册审批 GUI 已通过：新申请审批前拒绝登录，管理员批准后成员列表立即更新，新成员可登录，普通用户看不到管理入口且直接访问 `/manage` 会返回任务广场。验收修复了批准后成员列表仍使用旧数据的问题。前端 151 项测试、类型检查及构建通过；主题测试同步为加载实际外置 `theme-init.js`，不再假设内联脚本。
+
+桌面业务 GUI 补验已通过：设计条目创建、编辑后刷新显示修订内容；里程碑创建、详情打开后刷新保留目标说明；工作台切换甘特图、保存个人筛选、刷新后恢复甘特视图与保存筛选名称。上述操作均通过真实页面与隔离 Django/PostgreSQL；不代表设计依赖、生产模板实例化、里程碑完整状态变更等所有分支已覆盖。
+
+实际打包应用 GUI 验收：增加 `MYCOLLAB_TEST_APP_BINARY` 指定 App 可执行文件，测试传入临时 `--user-data-dir` 并断言 `app.isPackaged`。macOS arm64 开发目录包已通过核心业务、设计/里程碑/甘特筛选、私有素材、系统加密、包内 Runner、退出保护与注册审批。此验收发现并修复打包 ESM 主入口顶层等待 ready 的启动死锁；源码引导模式未能暴露该问题。三平台 CI 改为 `check_gui.py --app` 启动实际包内应用，远端新结果待确认。既有开发安装包需重新构建，不应再把旧包作为可启动验收通过的产物。直传对照仍使用源码宿主且不能证明默认连接可用；安装器交互尚未覆盖。
+
+GUI 验收入口直接运行 Node/Playwright CLI，避免 npm 包装进程超时后遗留测试。Playwright 总时限 150 秒、首个失败即停止；外层 180 秒。POSIX 独立进程组先发 TERM 让框架清理浏览器，再清理残留测试组；Windows 超时使用指定 PID 的进程树终止。正常打包 App 回归已通过，强制超时与系统原生弹窗仍可能需要检查遗留进程，不能把失败后的数据库清理当成验收成功。
+
+macOS arm64 开发安装产物已重新构建：从新版 DMG 只读挂载并复制 `MyCollab.app` 到 `desktop/build/安装验收 e669779/`，卸载镜像后通过签名完整性及实际 GUI 回归，覆盖包内前端、系统加密与原生 Runner。路径包含中文和空格。当前 DMG/ZIP 位于 `desktop/build/electron/`，哈希与源码提交记录在同目录 `local-validation.json`。此项验证安装副本运行，不代表 Finder 拖放交互、Gatekeeper、公证、其他平台安装器或默认 WebRTC 已通过。
+
+新增 Windows CI 开发安装验收入口 `desktop/tests/ci/check_windows_install.py`：仅允许 GitHub Windows 运行器，使用实际 NSIS `/S /currentuser /D=` 安装到临时中文空格目录，检查 App 与 Runner 后调用打包 GUI 验收，再静默卸载并检查主程序消失。生成 `desktop/build/windows-install-validation.json` 并随 GUI 产物归档。工作流与脚本已通过语法检查，Windows 原生执行结果待 CI 确认；不代表安装向导交互、最低 Windows 客户端版本或正式发行通过。
+
+本地 Agent 结果闭环 GUI 补验已通过：实际 macOS 安装副本内的 Runner 使用隔离假 CLI（固定结果、无供应商调用），重新绑定时留空沿用设备令牌，领取设计润色请求并回传；候选未自动更改表单，用户采纳标题后仍须手动保存，刷新后确认持久化。测试计数文件确认 CLI 仅执行一次。测试复用 Runner 原有跨平台夹具，Windows 使用 CI 已构建的原生假 CLI；本轮新增流程的远端结果尚待确认。
+
+
+桌面直传诊断入口已独立为 `MYCOLLAB_DESKTOP_TRANSFER_TEST=1`（配合 `MYCOLLAB_DESKTOP_TEST=1` 运行 `accounts.test_desktop`），默认业务 GUI 套件不包含这项尚未通过默认网络验收的测试。可用 `MYCOLLAB_TEST_APP_BINARY` 指定实际安装副本；测试断言打包状态及临时配置目录。macOS arm64 安装副本已在 `MYCOLLAB_TEST_RAW_IP=1` 对照模式完成双会话 2 MiB + 7 字节传输、SHA-256 校验与下载字节验证；仅固定保存路径，未验证原生对话框。默认 mDNS 与真实双机网络仍未验收通过，不将诊断成功作为产品网络验收结论。
+
+该入口可用 `MYCOLLAB_DESKTOP_TRANSFER_BYTES` 选择 `0`、`2097159`（默认）或 `104857600` 字节。测试从选文件前到下载校验及截图结束，约每 250 ms 顺序采样两端 `app.getAppMetrics()`，生成 `transfer-performance.json`，包含平台、文件大小、是否打包、原始 IP 对照标记、校验结果、采样错误数、原始进程工作集和各端离散采样峰值（KB）。采样失败会使测试失败；报告不存在或样本为空不能当作零内存。共享页可能重复计算，峰值可能遗漏采样间的瞬时变化；不含测试驱动进程，不代表真实双机或系统独占内存。测试用磁盘文件输入避免把大文件作为自动化 IPC 参数，空文件也必须实际落盘再核对摘要。
+
+
+
+本机 GUI 曾因 macOS 密码访问等待手动授权而超时（用户确认）。运行真实 safeStorage 验收前应留意系统弹窗并由用户完成授权；不以关闭系统保护、明文回退或替换加密实现通过验收。超时本身不能证明应用启动死锁。
+
+
+本地 Runner 自检增加可选 `opencode_error` 固定分类：`not_found`、`permission_denied`、`timeout`、`invalid_output`、`spawn_failed`、`nonzero_exit`、`version_mismatch`。主进程仅在 CLI 未通过时转发允许值；页面将分类显示为路径、权限、超时、安装或版本排错提示。仍只运行 `--version`，不调用模型，不传递异常文本、CLI 输出、设备令牌或供应商信息；账号与服务器隔离规则不变。
+
+
+桌面生产模板 GUI 补验通过：在实际 macOS arm64 安装副本中创建单步骤生产模板，刷新后重新读取；创建资产并选择模板、预览、生成待认领 Mission，刷新后生产批次及模板版本仍存在且不再提供重复生成入口。本机三项 GUI 测试合计 44.5 秒通过；多步骤依赖与生产任务完整协作仍需继续验收。双机开发验收步骤见 `desktop/ACCEPTANCE.md`，用户已确认有 Windows 实机可配合；实际默认网络矩阵尚未通过，本机默认 mDNS 双会话仍在 45 秒内未建立连接。
+
+
+macOS arm64 开发安装包已更新至 `dbea94a`，从 DMG 复制的 `desktop/build/安装验收 dbea94a/MyCollab.app` 通过三项 GUI 回归（49.4 秒），包括缺失 CLI 的具体提示与正常 CLI 自检、候选回传和模板实例化。首次等待系统密码访问确认后，用户完成授权，重跑通过。DMG/ZIP 哈希和验收状态已更新至 `desktop/build/electron/local-validation.json`。
+
+GUI 套件新增 `startup-baseline.json`：记录新进程到设置页可见的耗时、系统/架构、Electron/Chromium 版本与 `getAppMetrics()` 各进程内存快照（KB，按 Electron MemoryInfo 定义）。使用临时配置但未清系统磁盘缓存，启用 Playwright 与 trace，不包含 Runner；只用于后续同条件比较，不能视为纯冷启动、稳定空闲或传输峰值验收。JSON 直接落在 GUI 输出目录，随现有 CI 产物归档；本机副本保存在安装验收目录。
+
+
+版本检查子进程的标准输入改为关闭输入（DEVNULL），不继承桌面宿主持续开启的停止控制管道；模型请求仍使用独立 stdin 管道传递上下文，Windows Job 保护保持不变。新增真实 HTTP/子进程回归：保持宿主控制管道开启，自检应返回 CLI/服务器通过且不产生模型调用；三平台 CI 的独立二进制测试也运行此项。本机 Runner 42 项测试通过（2 项 Windows 专属跳过）。Windows GUI 的最新失败分类是版本检查超时，本项是否解决该阻塞仍待 Windows 原生复验。
+
+
+旧伴侣迁移新增隔离 GUI 证据：源码 Electron 宿主在加载前设置临时 home（仅测试引导脚本），真实页面导入默认旧配置，使用系统加密保存且令牌不回显，保留原文件逐字节不变；旧原生 Runner 持有设备锁时新宿主不能启动，旧 Runner 正常退出后新宿主复用同一状态目录进入空闲、停止并刷新后读回配置。此项不触碰用户真实 home，不调用模型；本机迁移测试与另外三项安装副本业务测试合计四项通过（52.4 秒）。该证据属于源码宿主与原生 Runner，不代表真实用户旧配置、旧待发箱恢复或打包应用迁移全部通过。
+
+
+开发包归档新增 `development-validation.json`，记录实际构建提交、PR 头提交、CI 运行编号、架构、打包 GUI 与安装/卸载步骤的原始 outcome，以及安装文件 SHA-256。仅构建成功且清单/归档成功时上传；GUI 失败也可保留该开发包用于诊断，清单如实保留 failure/skipped/not_run，不能把归档存在当成验收通过。仍为七天保留的开发产物，不正式发行。
+
+#### Windows 实机缺陷修复回归（2026-10-29）
+
+D01：下载默认名同时支持普通 `filename` 与 UTF-8 `filename*`，扩展参数解码失败时回退普通参数；清除路径、控制字符、Windows 保留名及结尾点空格。`desktop/electron/tests/filename.test.mjs` 覆盖协议优先级及安全回退，共享安装版用例继续验证实际保存对话框的默认名。
+
+U05：设计树展开状态改为 Pinia 会话状态；同一用户信息刷新保留，用户 ID 变化或退出同步清空。单元测试覆盖保留和身份隔离，共享安装版用例覆盖离开设计页面再返回。D01、U05 从已知失败标签移除，两种入口模式均执行这两项回归；旧报告的失败结论保留为对应版本的历史记录。
+
+macOS CI 凭据隔离：CI 的 GUI 证据按宿主及套件隔离输出：`frontend/test-results/desktop/ci-packaged/migration`、`ci-packaged/packaged` 与 `ci-installed/packaged`。`check_gui.py --artifact-group` 仅接受 `packaged` 或 `installed`，Windows 安装验收传入后者；前端配置拒绝未知分组或缺少明确套件。这样后续 Playwright 运行只清理自身目录，不覆盖先前迁移或打包副本证据。工作流仍归档 `frontend/test-results/desktop` 整个目录。本机未指定 CI 分组时保持原输出路径。
+
+`desktop/tests/ci/keychain.py` 只允许 GitHub 托管运行器创建一次性空钥匙串，保存并在 finally 恢复默认钥匙串及搜索列表，删除本次钥匙串。源码迁移与打包业务分别启动隔离 Django 套件，各自使用新的钥匙串，由真实 safeStorage 创建加密材料；不预置材料或放宽条目 ACL。本机默认仍运行全部四项测试，不执行这项 CI 设置。依据 [Electron 45 的钥匙串命名](https://github.com/electron/electron/blob/v45.1.0/shell/browser/electron_browser_main_parts.cc)：源码宿主与开发签名应用使用相同服务名，但签名不同。旧 CI 与预置双宿主 ACL 方案均在加密保存等待；该方案已移除。本机同版本由用户确认系统弹窗后四项 GUI 全部通过。
+
+CI 临时 PostgreSQL 使用系统分配的可绑定本地端口，并将同一端口传给 Django；启动失败会输出仅含启动阶段的日志后清理本次集群。`b6edd60` 的 Windows CI 在数据库启动阶段失败，尚未启动 GUI，旧脚本丢弃了临时日志，具体原因无法追溯；动态端口用于避免固定端口与 Windows 保留范围冲突，不将此推测写成已确认根因。
+
+#### OpenCode 2.2.0 与安装客户端真实模型验收（2026-10-29）
+
+Runner 的自检与执行统一使用精确版本白名单（2.1.3、2.2.0），拒绝未知补丁版本及预览版本。2.2.0 的 `run --standalone --format json --agent --model` 契约由本机帮助和[固定版本 CLI 源码](https://github.com/anomalyco/opencode/blob/v2.2.0/packages/cli/src/commands/handlers/run.ts)核对；使用 Runner 同一临时配置执行 `--standalone debug agents`，确认专用系统提示与通配拒绝规则实际生效，额外 browser/skill 规则仍为 deny。[官方权限说明](https://opencode.ai/v2/docs/permissions)及[该版本配置插件](https://github.com/anomalyco/opencode/blob/v2.2.0/packages/core/src/config/plugin/agent.ts)为升级依据，不按任意 2.x 放行。
+
+显式 GUI 入口使用 `MYCOLLAB_DESKTOP_TEST_SUITE=real-model`、`MYCOLLAB_DESKTOP_TEST=1`、`MYCOLLAB_LIVE_MODEL`、`MYCOLLAB_LIVE_OPENCODE` 和 `MYCOLLAB_TEST_APP_BINARY`，在 backend 运行 `.venv/bin/python manage.py test accounts.test_desktop --noinput`，同时设置独立 `POSTGRES_DB`。缺少模型、CLI、实际打包应用或隔离 API 时立即失败。普通测试和 CI 不选择此套件，不会调用付费模型。`model-contract` 模式运行同一断言但使用隔离假 CLI，可先无供应商调用验证脚本。只创建一个辅助请求，不自动重试；再次运行真实模式必须有相应调用授权。
+
+实际 macOS arm64 DMG 副本、包内 Runner、OpenCode 2.2.0 与本机已登录的 deepseek/deepseek-flash 完成一次完整 GUI 验收（47.8 秒）：系统加密绑定与自检、生成设计润色候选、未采纳时不改表单/数据库、显式采纳后仍不写库、保存后刷新核对内容和版本、确认仅一个成功请求、停止 Runner。前置三个非付费 GUI 用例通过，修正后的假 CLI 单项通过（33.3 秒）；Runner 42 项（2 项平台跳过）、前端 153 项、类型检查和构建通过。
+
+首次获授权请求也返回并保存了真实候选，但脚本在异步采纳完成前读取旧输入值，导致错误比较而失败；保留失败记录。修正为从只读请求结果取得候选并等待输入匹配，假 CLI 通过后获得第二次单独授权，真实整项通过。总计两次明确授权、两次辅助请求；不把首次失败改记为测试通过。摘要仅记录模型、平台、请求数、采纳/保存及停止结果；失败上下文可能包含虚构验收材料，不含供应商密钥或设备令牌。该结果不代表 Windows 原生供应商或 WSL 接入已验证。

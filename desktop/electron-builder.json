@@ -1,0 +1,65 @@
+{
+  "appId": "com.mycollab.desktop",
+  "productName": "MyCollab",
+  "asar": true,
+  "directories": {
+    "output": "build/electron"
+  },
+  "files": [
+    "electron/*.mjs",
+    "electron/preload.cjs",
+    "src-tauri/icons/icon.png",
+    "package.json"
+  ],
+  "extraFiles": [],
+  "extraResources": [
+    {
+      "from": "../frontend/dist",
+      "to": "frontend"
+    },
+    {
+      "from": "build/runner/${os}-${arch}",
+      "to": "runner"
+    }
+  ],
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "arm64",
+          "x64"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "arm64",
+          "x64"
+        ]
+      }
+    ],
+    "category": "public.app-category.productivity",
+    "icon": "src-tauri/icons/icon.icns",
+    "hardenedRuntime": true,
+    "extendInfo": {
+      "NSLocalNetworkUsageDescription": "MyCollab 使用局域网在设备之间直接传输文件。"
+    },
+    "minimumSystemVersion": "13.0"
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "perMachine": false
+  }
+}

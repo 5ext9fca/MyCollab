@@ -1,0 +1,43 @@
+{
+  "name": "mycollab-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "vitest run",
+    "tauri": "tauri",
+    "sidecar": "../backend/.venv/bin/python scripts/build_sidecar.py",
+    "bundle": "npm run sidecar && tauri build --features custom-protocol --bundles app",
+    "electron:dev": "npm run electron:setup && npm run electron:build && electron .",
+    "electron:build": "npm --prefix ../frontend run build",
+    "electron:check": "tsc -p tsconfig.electron.json && node --check electron/preload.cjs",
+    "electron:test": "node --test electron/tests/*.test.mjs",
+    "electron:pack": "npm run electron:build && node scripts/package_electron.mjs --dir",
+    "electron:dist:dev": "npm run electron:build && node scripts/package_electron.mjs --development",
+    "electron:dist": "npm run electron:build && node scripts/package_electron.mjs",
+    "electron:setup": "node node_modules/electron/install.js"
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/cli": "^2",
+    "@vitejs/plugin-vue": "^6",
+    "@vue/test-utils": "^2",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "element-plus": "^2",
+    "jsdom": "^30",
+    "typescript": "~6.0",
+    "vite": "^8",
+    "vitest": "^5",
+    "vue": "^3.5",
+    "vue-tsc": "^3"
+  },
+  "main": "electron/main.mjs",
+  "description": "MyCollab 完整桌面客户端",
+  "author": "MyCollab",
+  "dependencies": {
+    "electron-updater": "6.8.12"
+  }
+}

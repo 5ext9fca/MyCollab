@@ -1,4 +1,4 @@
-# Production stack: Caddy (HTTPS + static + SPA) -> Gunicorn (Django) -> PostgreSQL.
+# 公共 MyCaddy -> 内部 Web（静态文件 + SPA）-> Gunicorn -> PostgreSQL。
 # Usage:
 #   cd deploy
 #   cp .env.example .env   # then fill in the secrets
@@ -46,26 +46,27 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  caddy:
+  web:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.caddy
-    environment:
-      DOMAIN: ${DOMAIN:-localhost}
-    ports:
-      - "80:80"
-      - "443:443"
     volumes:
       - static_data:/srv/static:ro
-      - caddy_data:/data
-      - caddy_config:/config
+    networks:
+      default:
+      caddy:
+        aliases:
+          - mycollab-web
     depends_on:
       - backend
     restart: unless-stopped
+
+networks:
+  caddy:
+    external: true
+    name: ${CADDY_NETWORK:-caddy-public}
 
 volumes:
   db_data:
   static_data:
   media_data:
-  caddy_data:
-  caddy_config:

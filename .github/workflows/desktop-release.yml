@@ -1,0 +1,100 @@
+name: 桌面正式包构建（不发布）
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validation:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    uses: ./.github/workflows/desktop.yml
+  signed:
+    needs: validation
+    name: ${{ matrix.target }} 签名发行产物
+    environment: desktop-release-${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: mac-arm64
+            bundle: mac-arm64/MyCollab.app
+            runner: mac-arm64/MyCollab.app/Contents/Resources/runner/mycollab-runner
+          - os: macos-15-intel
+            target: mac-x64
+            bundle: mac/MyCollab.app
+            runner: mac/MyCollab.app/Contents/Resources/runner/mycollab-runner
+          - os: windows-2025
+            target: win-x64
+            runner: win-unpacked/resources/runner/mycollab-runner.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      PYTHONUTF8: '1'
+      MYCOLLAB_UPDATE_URL: ${{ vars.MYCOLLAB_UPDATE_URL }}
+      MYCOLLAB_UPDATE_PUBLISHER: ${{ vars.MYCOLLAB_UPDATE_PUBLISHER }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            desktop/package-lock.json
+            frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: 安装锁定依赖并构建 Runner
+        run: |
+          npm ci --prefix desktop
+          npm ci --prefix frontend
+          python -m pip install PyInstaller==6.22.3
+          python desktop/scripts/build_sidecar.py --electron
+      - name: 构建签名安装包（不上传更新服务）
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          node --input-type=module -e 'if (!process.env.CSC_LINK?.trim()) throw new Error("发行环境缺少签名证书 CSC_LINK")'
+          npm --prefix desktop run electron:dist
+      - name: 验证正式包内 Runner（不启动 GUI）
+        run: python desktop/scripts/check_runner.py desktop/build/electron/${{ matrix.runner }}
+      - name: 验证 macOS 签名与公证票据
+        if: runner.os == 'macOS'
+        env:
+          APP_BUNDLE: desktop/build/electron/${{ matrix.bundle }}
+        run: |
+          codesign --verify --deep --strict "$APP_BUNDLE"
+          xcrun stapler validate "$APP_BUNDLE"
+          spctl --assess --type execute --verbose=2 "$APP_BUNDLE"
+      - name: 验证 Windows 应用、Runner 和安装器签名
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem desktop/build/electron -File -Filter '*.exe')
+          if ($installers.Count -ne 1) { throw '未找到唯一 Windows 安装器' }
+          $files = @('desktop/build/electron/win-unpacked/MyCollab.exe', 'desktop/build/electron/win-unpacked/resources/runner/mycollab-runner.exe') + @($installers.FullName)
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file
+            if ($signature.Status -ne 'Valid') { throw "签名验证失败：$file" }
+          }
+      - name: 收集同次构建的安装包、更新清单与校验摘要
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: python desktop/scripts/collect_release.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}-signed
+          path: desktop/build/release/*
+          retention-days: 14
+          if-no-files-found: error

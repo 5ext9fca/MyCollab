@@ -1,3 +1,4 @@
+import { recordPerformance } from '../performance'
 /** 甘特图的纯日期坐标：不推算缺失日期，不改变业务排期。 */
 import type { WorkspaceEdge, WorkspaceNode } from '../api/types'
 import type { GroupInfo } from '../workspace/dto'
@@ -18,6 +19,7 @@ export interface GanttBar {
   clippedEnd: boolean
 }
 export function computeGanttLayout(nodes: WorkspaceNode[], edges: WorkspaceEdge[], grouping: GroupInfo | null, from: string, to: string, zoom: 'day' | 'week') {
+  const measuredAt = performance.now()
   const start = dayNumber(from), end = dayNumber(to)
   const scale = zoom === 'day' ? 32 : 14
   const levels = dependencyLevels(nodes.map(n => n.id), edges).levels
@@ -38,6 +40,7 @@ export function computeGanttLayout(nodes: WorkspaceNode[], edges: WorkspaceEdge[
       unscheduled, incomplete: !first || !last, clippedStart: a < start, clippedEnd: b > end,
       label: unscheduled ? '未排期' : `${a < start ? '← 延伸 ' : ''}${first ?? '未设开始'} → ${last ?? '未设结束'}${b > end ? ' 延伸 →' : ''}` })
   })
+  recordPerformance({ name: 'gantt_layout', duration_ms: performance.now() - measuredAt, nodes: nodes.length, edges: edges.length })
   return { positions, bars, rows, scale, days: end - start + 1, width: (end - start + 1) * scale,
     height: GANTT_FIRST_ROW + rows.length * GANTT_ROW_HEIGHT + 50,
     undatedY: undated.length ? GANTT_FIRST_ROW + dated.length * GANTT_ROW_HEIGHT - 115 : null }

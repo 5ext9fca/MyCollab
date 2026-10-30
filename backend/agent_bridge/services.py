@@ -275,8 +275,9 @@ def claim(device_id):
         request.save(update_fields=["status", "error", "updated_at"])
         return None
     request.status, request.attempt_id = "running", uuid.uuid4()
+    request.claimed_at = timezone.now()
     request.lease_expires_at = min(timezone.now() + timedelta(seconds=180), request.expires_at)
-    request.save(update_fields=["status", "attempt_id", "lease_expires_at", "updated_at"])
+    request.save(update_fields=["status", "attempt_id", "claimed_at", "lease_expires_at", "updated_at"])
     return request
 
 
@@ -285,7 +286,7 @@ def locked_attempt(device_id, request_id, attempt_id):
     device_available(device)
     device.last_seen_at = timezone.now()
     device.save(update_fields=["last_seen_at"])
-    request = device.requests.select_for_update().filter(pk=request_id, owner=device.owner, kind__in=protocol.KINDS).first()
+    request = device.requests.select_for_update().filter(pk=request_id, device=device, owner=device.owner, kind__in=protocol.KINDS).first()
     if not request:
         raise NotFound()
     if request.attempt_id != attempt_id:
