@@ -26,8 +26,8 @@
 | 身份认证 | Django Session、Cookie、CSRF | 同域浏览器登录与请求认证 |
 | 管理界面 | Django Admin + SPA 自建管理后台 | 数据检查、注册审批、成员与标签管理 |
 | 应用服务器 | Gunicorn，WSGI 部署 | 运行 Django HTTP 应用 |
-| HTTP 入口 | Caddy | HTTPS、静态文件、反向代理 |
-| 服务部署 | Docker Compose | 管理 Caddy、应用和数据库 |
+| HTTP 入口 | MyCaddy + 内部 Caddy | 公共入口负责 HTTPS，内部 Web 负责静态文件、反向代理 |
+| 服务部署 | Docker Compose | 管理内部 Web、应用和数据库；公共 MyCaddy 独立部署 |
 
 运行时 MUST 使用 Python 3.13（后端及 LocalRunner），本地虚拟环境与 Docker 镜像保持一致；Python 补丁版本跟随 3.13 系列更新。
 
@@ -405,15 +405,15 @@ MYCOLLAB_BROWSER_TEST=1 POSTGRES_DB=mycollab_browser .venv/bin/python manage.py 
 
 ### 生产部署
 
-无域名的局域网 IP 与公网 IP HTTPS 部署，见 [deploy/README.md](deploy/README.md)，包含内部 CA、公共 IP 短期证书、客户端信任和续期流程。
+生产部署见 [deploy/README.md](deploy/README.md)。独立 MyCaddy 管理公网地址、证书与 80/443，业务栈仅通过外部 `caddy-public` 网络接入；先创建该网络。
 
 ```bash
 cd deploy
-cp .env.example .env     # 填入 DJANGO_SECRET_KEY、POSTGRES_PASSWORD、DOMAIN 等
+cp .env.example .env     # 填入 DJANGO_SECRET_KEY、POSTGRES_PASSWORD、CADDY_NETWORK 等
 docker compose up -d --build
 ```
 
-Caddy 在同一域名下按 `/api/*`、`/admin/*`、`/static/*`、其余交给 SPA 的顺序处理请求；数据库只在内部网络开放。上传的附件保存在 `media_data` 卷（`/app/media`），Caddy 不提供该目录，下载一律经 `GET /api/library/files/{id}/`。备份、关闭 DEBUG、使用真实密钥等要求见 `TECH_STACK.md` 第 9 节。
+公共 MyCaddy 将网站请求代理至 `mycollab-web:80`；内部 Web 保留可信代理传入的 HTTPS 信息，并按 `/api/*`、`/admin/*`、`/static/*`、其余交给 SPA 的顺序处理请求；数据库只在内部网络开放。上传的附件保存在 `media_data` 卷（`/app/media`），Caddy 不提供该目录，下载一律经 `GET /api/library/files/{id}/`。备份、关闭 DEBUG、使用真实密钥等要求见 `TECH_STACK.md` 第 9 节。
 
 #### 站内日期提醒调度
 

@@ -24,7 +24,7 @@ frontend/src/         Vue SPA
   workspace/          工作台辅助逻辑
   tests/              前端测试
 local_runner/         用户本机 OpenCode 适配器及测试
-deploy/               Caddy、生产 Compose 与部署操作指南
+deploy/               内部 Web、生产 Compose 与部署操作指南（公网入口由 MyCaddy 管理）
 .cursor/rules/        AGENTS 索引的项目规则
 docker-compose.yml    本地 PostgreSQL
 testrun.sh            本地环境启动脚本

@@ -1,7 +1,12 @@
-# Single-domain deployment. Route priority matters: /api and /admin are matched
-# (and proxied) before the SPA fallback, so an API 404 never returns index.html.
+# 仅通过公共 MyCaddy 接入，不发布宿主机端口。
+{
+	servers {
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+	}
+}
 
-{$DOMAIN:localhost} {
+:80 {
 	encode gzip
 
 	handle /api/* {
